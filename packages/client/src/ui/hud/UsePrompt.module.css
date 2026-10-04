@@ -1,0 +1,39 @@
+/* Below the crosshair and centred on it, where the eye already is. */
+.prompt {
+  position: absolute;
+  top: 62%;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(90vw, 720px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  color: var(--hud-ink);
+  text-shadow: var(--hud-shadow);
+}
+
+.text {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.key {
+  display: inline-block;
+  min-width: 1.4em;
+  margin: 0 0.25em;
+  padding: 0 0.35em;
+  font: inherit;
+  border: 1px solid var(--hud-ink-dim);
+  border-radius: 3px;
+  background: var(--hud-outline);
+  text-shadow: none;
+}
+
+.dev {
+  font-size: 11px;
+  color: var(--hud-ink-dim);
+  font-family: ui-monospace, monospace;
+}

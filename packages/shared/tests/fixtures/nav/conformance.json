@@ -1,0 +1,154 @@
+{
+  "about": "The nav.bin conformance fixture (docs/engine/nav-format.md). conformance.nav.bin is this file encoded by `python3 -m scripts.cod.nav.conformance`; the Python test requires the encoder to reproduce it byte for byte, the TypeScript test requires the decoder to read this back out of it. Every v1 section is filled, and ZZZZ is a section no reader knows.",
+  "flags": ["HAS_GAME_WALK_LINKS", "DERIVE_WALK_LINKS"],
+  "nodes": [
+    { "position": [12.345, 0.017, -3.3], "type": "PATH", "yaw": null, "floorZ": true, "group": null, "abilities": [], "stance": [], "source": 0, "name": "" },
+    {
+      "position": [14.1, 0.02, -3.3],
+      "type": "COVER_LEFT",
+      "yaw": 1.5707963267948966,
+      "floorZ": true,
+      "group": null,
+      "abilities": [],
+      "stance": ["STAND", "CROUCH"],
+      "source": 1,
+      "name": "cover_ü"
+    },
+    {
+      "position": [10.0, 0.5, -6.25],
+      "type": "TRAVERSE_BEGIN",
+      "yaw": -2.5,
+      "floorZ": false,
+      "group": null,
+      "abilities": [],
+      "stance": [],
+      "source": 2,
+      "name": ""
+    },
+    {
+      "position": [10.0, 0.52, -9.75],
+      "type": "TRAVERSE_END",
+      "yaw": 0.1,
+      "floorZ": false,
+      "group": null,
+      "abilities": [],
+      "stance": [],
+      "source": 3,
+      "name": "wall_over_ende"
+    },
+    {
+      "position": [-120.5, 33.25, 400.125],
+      "type": "TURRET",
+      "yaw": 3.14159,
+      "floorZ": false,
+      "group": null,
+      "abilities": ["WALK", "MANTLE"],
+      "stance": ["PRONE"],
+      "source": null,
+      "name": ""
+    },
+    { "position": [0.25, -0.5, 1.75], "type": "PATH", "yaw": null, "floorZ": false, "group": 3, "abilities": [], "stance": [], "source": 5, "name": "" },
+    {
+      "position": [2.2, 5.5, -7.7],
+      "type": "COVER_MULTI",
+      "yaw": -0.75,
+      "floorZ": true,
+      "group": null,
+      "abilities": ["LADDER", "JUMP", "BOOST", "DROP"],
+      "stance": ["STAND", "CROUCH", "PRONE"],
+      "source": 4294967294,
+      "name": "🪜 ladder_top"
+    },
+    {
+      "position": [2.2, 9.3, -7.7],
+      "type": "JUMP_ATTACK",
+      "yaw": null,
+      "floorZ": true,
+      "group": 65534,
+      "abilities": [],
+      "stance": [],
+      "source": 7,
+      "name": ""
+    },
+    { "position": [-0.001, 1e-7, 65504.5], "type": "PATH", "yaw": null, "floorZ": false, "group": null, "abilities": [], "stance": [], "source": 8, "name": "" }
+  ],
+  "links": [
+    { "from": 1, "to": 0, "kind": "WALK", "gameCost": 69.75, "flags": ["GAME"], "traversal": null },
+    { "from": 0, "to": 1, "kind": "WALK", "gameCost": 69.75, "flags": ["GAME"], "traversal": null },
+    { "from": 2, "to": 3, "kind": "TRAVERSE", "gameCost": 15, "flags": ["GAME", "NEGOTIATION"], "traversal": 0 },
+    { "from": 0, "to": 2, "kind": "WALK", "gameCost": 131.3, "flags": ["GAME", "ONE_WAY_IN_GAME"], "traversal": null },
+    { "from": 4, "to": 5, "kind": "TRAVERSE", "gameCost": null, "flags": ["START_DISCONNECTED"], "traversal": 1 },
+    { "from": 6, "to": 0, "kind": "WALK", "gameCost": 3.3, "flags": ["GAME"], "traversal": null },
+    { "from": 1, "to": 6, "kind": "WALK", "gameCost": null, "flags": [], "traversal": null },
+    { "from": 6, "to": 7, "kind": "TRAVERSE", "gameCost": 60, "flags": ["GAME", "NEGOTIATION"], "traversal": 2 }
+  ],
+  "traversals": [
+    { "begin": 2, "end": 3, "kind": "MANTLE_OVER", "animscript": "wall_over_40" },
+    { "begin": 4, "end": 5, "kind": "SPECIAL", "animscript": "sprung_über_🧗" },
+    { "begin": 6, "end": 7, "kind": "LADDER_UP", "animscript": "ladder_up" }
+  ],
+  "meta": { "generator": "scripts/cod/nav/conformance.py", "source": { "game": "none", "note": "Grüße, 世界" } },
+  "skipped": { "dynamicNodes": 37, "zoneNodes": 5 },
+  "extra": [{ "tag": "ZZZZ", "version": 7, "required": false, "hex": "00010203fffefdfc0a" }],
+  "expected": {
+    "strings": ["", "cover_ü", "wall_over_ende", "🪜 ladder_top", "wall_over_40", "sprung_über_🧗", "ladder_up"],
+    "sections": [
+      { "tag": "NODE", "version": 1, "required": true },
+      { "tag": "LINK", "version": 1, "required": true },
+      { "tag": "TRAV", "version": 1, "required": true },
+      { "tag": "STRS", "version": 1, "required": true },
+      { "tag": "META", "version": 1, "required": false },
+      { "tag": "ZZZZ", "version": 7, "required": false }
+    ]
+  },
+  "vocab": {
+    "nodeTypes": {
+      "PATH": 0,
+      "COVER_STAND": 1,
+      "COVER_CROUCH": 2,
+      "COVER_CROUCH_WINDOW": 3,
+      "COVER_PRONE": 4,
+      "COVER_RIGHT": 5,
+      "COVER_LEFT": 6,
+      "COVER_WIDE_RIGHT": 7,
+      "COVER_WIDE_LEFT": 8,
+      "COVER_PILLAR": 9,
+      "COVER_MULTI": 10,
+      "CONCEALMENT_STAND": 11,
+      "CONCEALMENT_CROUCH": 12,
+      "CONCEALMENT_PRONE": 13,
+      "EXPOSED": 14,
+      "AMBUSH": 15,
+      "GUARD": 16,
+      "TURRET": 17,
+      "DOOR": 18,
+      "DOOR_INTERIOR": 19,
+      "SCRIPTED": 20,
+      "BALCONY": 21,
+      "REACQUIRE": 22,
+      "TRAVERSE_BEGIN": 23,
+      "TRAVERSE_END": 24,
+      "JUMP": 25,
+      "JUMP_ATTACK": 26
+    },
+    "nodeFlags": { "HAS_YAW": 1, "FLOOR_Z": 2, "DYNAMIC": 4 },
+    "stances": { "STAND": 1, "CROUCH": 2, "PRONE": 4 },
+    "abilities": { "WALK": 1, "DROP": 2, "MANTLE": 4, "LADDER": 8, "JUMP": 16, "BOOST": 32 },
+    "linkKinds": { "WALK": 0, "TRAVERSE": 1 },
+    "linkFlags": { "GAME": 1, "START_DISCONNECTED": 2, "ONE_WAY_IN_GAME": 4, "NEGOTIATION": 8 },
+    "traversalKinds": {
+      "UNKNOWN": 0,
+      "STEP_UP": 1,
+      "MANTLE_ON": 2,
+      "MANTLE_OVER": 3,
+      "JUMP_DOWN": 4,
+      "JUMP_ACROSS": 5,
+      "JUMP_UP": 6,
+      "LADDER_UP": 7,
+      "LADDER_DOWN": 8,
+      "SPECIAL": 9
+    },
+    "headerFlags": { "HAS_GAME_WALK_LINKS": 1, "DERIVE_WALK_LINKS": 65536 },
+    "sectionFlags": { "REQUIRED": 1 }
+  }
+}

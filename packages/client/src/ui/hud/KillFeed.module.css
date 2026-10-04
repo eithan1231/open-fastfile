@@ -1,0 +1,45 @@
+.feed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  font-size: 13px;
+  /* Its own ground rather than a shadow: a feed is several lines of small type
+     over whatever the player is looking at. */
+  background: var(--scrim);
+  border-radius: var(--radius-s);
+  color: var(--hud-ink-dim);
+}
+
+/* This player is in it. The one line of the feed they should not have to read. */
+.lineMine {
+  composes: line;
+  color: var(--hud-ink);
+  box-shadow: inset 2px 0 0 var(--hud-hit-lethal);
+}
+
+.name {
+  overflow: hidden;
+  max-width: 14ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.verb {
+  color: var(--hud-hit-lethal);
+}
+
+/* A suicide's cause, in words, after the name: there is no killer to put first. */
+.how {
+  white-space: nowrap;
+}

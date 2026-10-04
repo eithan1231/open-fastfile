@@ -1,0 +1,12 @@
+.screen {
+  background: var(--bg);
+}
+
+.body {
+  width: min(100%, 44ch);
+  margin: 14px 0 0 auto;
+  font-size: calc(clamp(15px, 1.9vh, 18px) * var(--menu-scale));
+  line-height: 1.4;
+  text-align: right;
+  color: var(--menu-text-dim);
+}

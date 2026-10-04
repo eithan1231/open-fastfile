@@ -1,0 +1,86 @@
+{
+ "game": "iw5",
+ "source": "src/ObjCommon/Game/IW5/Weapon/JsonWeaponAttachment.h",
+ "enums": {
+  "PenetrateType": {
+   "PENETRATE_TYPE_NONE": "none",
+   "PENETRATE_TYPE_SMALL": "small",
+   "PENETRATE_TYPE_MEDIUM": "medium",
+   "PENETRATE_TYPE_LARGE": "large"
+  },
+  "ImpactType": {
+   "IMPACT_TYPE_NONE": "none",
+   "IMPACT_TYPE_BULLET_SMALL": "bulletSmall",
+   "IMPACT_TYPE_BULLET_LARGE": "bulletLarge",
+   "IMPACT_TYPE_BULLET_AP": "bulletAp",
+   "IMPACT_TYPE_BULLET_EXPLODE": "bulletExplode",
+   "IMPACT_TYPE_SHOTGUN": "shotgun",
+   "IMPACT_TYPE_SHOTGUN_EXPLODE": "shotgunExplode",
+   "IMPACT_TYPE_GRENADE_BOUNCE": "grenadeBounce",
+   "IMPACT_TYPE_GRENADE_EXPLODE": "grenadeExplode",
+   "IMPACT_TYPE_ROCKET_EXPLODE": "rocketExplode",
+   "IMPACT_TYPE_PROJECTILE_DUD": "projectileDud"
+  },
+  "weapFireType_t": {
+   "WEAPON_FIRETYPE_FULLAUTO": "fullauto",
+   "WEAPON_FIRETYPE_SINGLESHOT": "singleshot",
+   "WEAPON_FIRETYPE_BURSTFIRE2": "burstfire2",
+   "WEAPON_FIRETYPE_BURSTFIRE3": "burstfire3",
+   "WEAPON_FIRETYPE_BURSTFIRE4": "burstfire4",
+   "WEAPON_FIRETYPE_DOUBLEBARREL": "doublebarrel"
+  },
+  "weapOverlayReticle_t": {
+   "WEAPOVERLAYRETICLE_NONE": "none",
+   "WEAPOVERLAYRETICLE_CROSSHAIR": "crosshair"
+  },
+  "weaponIconRatioType_t": {
+   "WEAPON_ICON_RATIO_1TO1": "1:1",
+   "WEAPON_ICON_RATIO_2TO1": "2:1",
+   "WEAPON_ICON_RATIO_4TO1": "4:1"
+  },
+  "ammoCounterClipType_t": {
+   "AMMO_COUNTER_CLIP_NONE": "none",
+   "AMMO_COUNTER_CLIP_MAGAZINE": "magazine",
+   "AMMO_COUNTER_CLIP_SHORTMAGAZINE": "shortmagazine",
+   "AMMO_COUNTER_CLIP_SHOTGUN": "shotgun",
+   "AMMO_COUNTER_CLIP_ROCKET": "rocket",
+   "AMMO_COUNTER_CLIP_BELTFED": "beltfed",
+   "AMMO_COUNTER_CLIP_ALTWEAPON": "altweapon"
+  },
+  "weapProjExposion_t": {
+   "WEAPPROJEXP_GRENADE": "grenade",
+   "WEAPPROJEXP_ROCKET": "rocket",
+   "WEAPPROJEXP_FLASHBANG": "flashbang",
+   "WEAPPROJEXP_NONE": "none",
+   "WEAPPROJEXP_DUD": "dud",
+   "WEAPPROJEXP_SMOKE": "smoke",
+   "WEAPPROJEXP_HEAVY": "heavy"
+  },
+  "AttachmentType": {
+   "ATTACHMENT_SCOPE": "scope",
+   "ATTACHMENT_UNDERBARREL": "underbarrel",
+   "ATTACHMENT_OTHER": "other"
+  },
+  "weapType_t": {
+   "WEAPTYPE_NONE": "none",
+   "WEAPTYPE_BULLET": "bullet",
+   "WEAPTYPE_GRENADE": "grenade",
+   "WEAPTYPE_PROJECTILE": "projectile",
+   "WEAPTYPE_RIOTSHIELD": "riotshield"
+  },
+  "weapClass_t": {
+   "WEAPCLASS_RIFLE": "rifle",
+   "WEAPCLASS_SNIPER": "sniper",
+   "WEAPCLASS_MG": "mg",
+   "WEAPCLASS_SMG": "smg",
+   "WEAPCLASS_SPREAD": "spread",
+   "WEAPCLASS_PISTOL": "pistol",
+   "WEAPCLASS_GRENADE": "grenade",
+   "WEAPCLASS_ROCKETLAUNCHER": "rocketlauncher",
+   "WEAPCLASS_TURRET": "turret",
+   "WEAPCLASS_THROWINGKNIFE": "throwingknife",
+   "WEAPCLASS_NON_PLAYER": "nonPlayer",
+   "WEAPCLASS_ITEM": "item"
+  }
+ }
+}

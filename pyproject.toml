@@ -1,0 +1,23 @@
+# Tooling config for the Python CoD import pipeline (scripts/cod/), the
+# reverse-engineering tools (reverse/) and the public mirror (publish/). The app
+# itself is TypeScript; see package.json. `include` is the one list of what ruff
+# covers, so `ruff check .` works where reverse/ and publish/ are absent.
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+include = ["scripts/**/*.py", "reverse/**/*.py", "publish/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+  "E741", # `l` for a list is fine in a comprehension
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Its modifier and register tables are printf templates, applied with `%`.
+"reverse/tools/d3d9dis.py" = ["UP031"]
+
+[tool.pytest.ini_options]
+testpaths = ["scripts/cod/tests"]
+pythonpath = ["."]

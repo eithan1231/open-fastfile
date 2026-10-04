@@ -1,0 +1,91 @@
+/* Bottom-left: the HUD's minimap has the top-left. */
+.stats {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: var(--layer-debug);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  background: var(--scrim);
+  border-radius: var(--radius-s);
+  pointer-events: none;
+}
+
+.inspector {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: var(--layer-debug);
+  width: 300px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--scrim-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  /* Selectable, so an asset path can be copied out of the dollhouse view. */
+  user-select: text;
+}
+
+.title {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  word-break: break-all;
+
+  /* A proxy is reported in the colour it is highlighted in. */
+  &[data-collider="true"] {
+    color: var(--collider);
+  }
+
+  &[data-pinned="true"]::after {
+    content: " \25CF";
+    color: var(--pinned);
+  }
+}
+
+.rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+
+  & dt {
+    color: var(--text-subtle);
+  }
+
+  & dd {
+    margin: 0;
+    word-break: break-all;
+  }
+}
+
+.hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+
+.crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: var(--layer-debug);
+  width: 11px;
+  height: 11px;
+  margin: -6px 0 0 -6px;
+  border: 1px solid rgba(10, 12, 15, 0.7);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--accent);
+  pointer-events: none;
+}

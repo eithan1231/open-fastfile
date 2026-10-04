@@ -1,0 +1,42 @@
+{
+  "name": "@3d/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The HTTP authority: worlds, assets, the client bundle, and the game-server registry",
+  "exports": {
+    "./worlds/*.js": "./src/worlds/*.ts",
+    "./db/*.js": "./src/db/*.ts",
+    "./package.json": "./package.json",
+    "./app.js": "./src/app.ts",
+    "./testing/app.js": "./testing/app.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env.local src/index.ts",
+    "start": "node --conditions=dist --env-file-if-exists=../../.env.local dist/index.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@3d/shared": "workspace:*",
+    "@hono/node-server": "^2.1.1",
+    "@node-rs/argon2": "^2.2.1",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.7",
+    "reflect-metadata": "^0.2.2",
+    "tsyringe": "^4.10.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.4.1",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.19.2",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

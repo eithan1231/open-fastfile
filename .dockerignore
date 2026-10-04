@@ -1,0 +1,16 @@
+# Allowlist, not a denylist: worlds/ alone is ~100 MB per imported map and the
+# exporter's .cache/ is larger still, so "everything, minus what we remember to
+# name" is the wrong way round here. Name what a build needs instead.
+*
+
+!/package.json
+!/pnpm-lock.yaml
+!/pnpm-workspace.yaml
+!/tsconfig.base.json
+!/packages
+
+# Re-excluded under packages/: the host's node_modules are the wrong platform's
+# binaries, and dist/ is built inside the image.
+**/node_modules
+**/dist
+**/tests

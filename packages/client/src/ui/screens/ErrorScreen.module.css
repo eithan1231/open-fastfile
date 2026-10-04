@@ -1,0 +1,56 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--layer-error);
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  box-sizing: border-box;
+  background: var(--danger-scrim);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin-bottom: 4px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.back {
+  font: inherit;
+  font-size: 13px;
+  color: var(--danger-text);
+  background: var(--danger-panel);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-s);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.hint {
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--danger-muted);
+}
+
+.detail {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--danger-text);
+  background: var(--danger-panel);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-m);
+}

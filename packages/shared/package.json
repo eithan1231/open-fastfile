@@ -1,0 +1,71 @@
+{
+  "name": "@3d/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "The .world language, the wire contracts, and the simulation both ends run",
+  "exports": {
+    "./dsl/*.js": {
+      "dist": "./dist/dsl/*.js",
+      "default": "./src/dsl/*.ts"
+    },
+    "./protocol/*.js": {
+      "dist": "./dist/protocol/*.js",
+      "default": "./src/protocol/*.ts"
+    },
+    "./worlds/*.js": {
+      "dist": "./dist/worlds/*.js",
+      "default": "./src/worlds/*.ts"
+    },
+    "./sim/*.js": {
+      "dist": "./dist/sim/*.js",
+      "default": "./src/sim/*.ts"
+    },
+    "./net/*.js": {
+      "dist": "./dist/net/*.js",
+      "default": "./src/net/*.ts"
+    },
+    "./lifecycle/*.js": {
+      "dist": "./dist/lifecycle/*.js",
+      "default": "./src/lifecycle/*.ts"
+    },
+    "./game/*.js": {
+      "dist": "./dist/game/*.js",
+      "default": "./src/game/*.ts"
+    },
+    "./collision/*.js": {
+      "dist": "./dist/collision/*.js",
+      "default": "./src/collision/*.ts"
+    },
+    "./rig/*.js": {
+      "dist": "./dist/rig/*.js",
+      "default": "./src/rig/*.ts"
+    },
+    "./physics/*.js": {
+      "dist": "./dist/physics/*.js",
+      "default": "./src/physics/*.ts"
+    },
+    "./nav/*.js": {
+      "dist": "./dist/nav/*.js",
+      "default": "./src/nav/*.ts"
+    },
+    "./testing/*.js": "./testing/*.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json --noCheck",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.collision.json && tsc -p tsconfig.rig.json && tsc -p tsconfig.physics.json && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-deterministic-compat": "catalog:",
+    "three": "catalog:",
+    "three-mesh-bvh": "^0.8.3",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/three": "catalog:",
+    "typescript": "catalog:"
+  }
+}

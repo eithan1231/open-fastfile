@@ -1,0 +1,7 @@
+{
+  // Tests run in Node (some under happy-dom), so they need Node's types on top
+  // of the browser project's DOM and JSX.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["vite/client", "node"] },
+  "include": ["tests", "src"]
+}

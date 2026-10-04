@@ -1,0 +1,6 @@
+{
+  // The tests exercise both tiers, so they see three.js; they are still checked
+  // without the DOM lib, because nothing in @3d/shared may need a browser.
+  "extends": "./tsconfig.json",
+  "include": ["tests", "testing", "src"]
+}

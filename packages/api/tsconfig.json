@@ -1,0 +1,17 @@
+{
+  // The authority is a Node process: it gets Node's types and no DOM. It has no
+  // geometry to do, so three.js and @3d/shared/collision are banned here by
+  // eslint.config.js — the process that serves every asset request should not
+  // carry a BVH library.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    // tsyringe resolves constructor dependencies from the metadata the compiler
+    // emits for a decorated class; without both of these its decorators are a
+    // syntax error and @inject() sees nothing.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["src", "tests"]
+}

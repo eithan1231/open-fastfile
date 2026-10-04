@@ -1,0 +1,4 @@
+// In its own file so that loading the world proves an `include` is served too.
+
+spawn { at: -5 0 0, look: 0 0 0 }
+spawn { at: 5 0 0, look: 0 0 0 }

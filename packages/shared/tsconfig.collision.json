@@ -1,0 +1,21 @@
+{
+  // The one subtree of @3d/shared allowed to use three.js.
+  //
+  // Collision queries are three-mesh-bvh over THREE.BufferGeometry, with
+  // Line3/Box3/Matrix4 doing the capsule maths. That is three as a geometry
+  // library, not as a renderer: no WebGLRenderer is ever constructed and no DOM
+  // is touched, so this code still runs identically in a browser and in Node —
+  // which is the property that matters, and why it belongs in the shared
+  // package at all. A client that predicts its own movement and a server that
+  // re-simulates it must resolve the same capsule against the same triangles,
+  // and two implementations would not.
+  //
+  // Note what is NOT relaxed: no DOM lib and no ambient @types, exactly as
+  // tsconfig.json. Only the three.js import is new.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/collision", "src/platform.d.ts"]
+}

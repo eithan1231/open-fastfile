@@ -1,0 +1,142 @@
+/* Centred on the screen, not in a region: this is where the camera points, and
+   the HUD's regions are at its corners. */
+.centre {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+}
+
+.hit,
+.hitLethal {
+  position: absolute;
+  top: -16px;
+  left: -16px;
+  width: 32px;
+  height: 32px;
+  overflow: visible;
+  fill: none;
+}
+
+.crosshair {
+  position: absolute;
+  /*
+    How far each arm stands off the middle: the weapon's own cone, which `--cone`
+    carries as a fraction of half the viewport's height, plus a fixed gap so a
+    perfectly accurate weapon still reads as a crosshair rather than a plus sign.
+    `50vh` is what turns the fraction back into pixels at any window size.
+  */
+  --reach: calc(4px + var(--cone, 0) * 50vh);
+}
+
+.arm {
+  position: absolute;
+  background: var(--hud-ink);
+  /* The world behind can be any colour, so each arm carries its own edge. */
+  filter: drop-shadow(0 0 1px var(--hud-outline));
+}
+
+.up,
+.down {
+  width: 2px;
+  height: 8px;
+  left: -1px;
+}
+
+.left,
+.right {
+  width: 8px;
+  height: 2px;
+  top: -1px;
+}
+
+.up {
+  bottom: var(--reach);
+}
+
+.down {
+  top: var(--reach);
+}
+
+.left {
+  right: var(--reach);
+}
+
+.right {
+  left: var(--reach);
+}
+
+.hit,
+.hitLethal {
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 1px var(--hud-outline));
+  animation: mark 400ms ease-out forwards;
+}
+
+.hit {
+  stroke: var(--hud-hit);
+}
+
+.hitLethal {
+  stroke: var(--hud-hit-lethal);
+}
+
+/* Out from the middle and away: the same shape a hit is read as in the games. */
+@keyframes mark {
+  from {
+    opacity: 1;
+    transform: scale(0.75);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hit,
+  .hitLethal {
+    animation: fade 400ms linear forwards;
+  }
+
+  @keyframes fade {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0;
+    }
+  }
+}
+
+.downed {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  text-shadow: var(--hud-shadow);
+}
+
+.downedTitle {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-health-low);
+}
+
+.downedCount {
+  font-size: 13px;
+  /* A tenth of a second at a time, so the line does not jump about as it counts. */
+  font-variant-numeric: tabular-nums;
+  color: var(--hud-ink-dim);
+}

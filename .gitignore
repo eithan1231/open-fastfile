@@ -1,0 +1,45 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+__pycache__/
+
+# Per-developer Claude Code settings (the shared ones live in .claude/settings.json)
+.claude/settings.local.json
+
+# Imported Call of Duty maps: the game's own geometry, textures and props, ~100 MB
+# per map. Rebuildable from the game files (see docs/cod/), and kept out of git
+# so the repo neither carries nor redistributes them.
+worlds/*-mw2/assets/
+worlds/*-mw3/assets/
+worlds/*-bo1/assets/
+worlds/*-bo2/assets/
+worlds/*-ghosts/assets/
+worlds/*-aw/assets/
+worlds/*-cw/assets/
+
+# The shared asset catalogue (weapons, and whatever moves in beside them). Built
+# from those same assets by `python3 -m scripts.cod catalog`, so it is the game's
+# content too and is kept out of git for exactly the same reason — and it is
+# regenerable in a second, from files this repo already does not carry.
+worlds/catalog/
+
+# The server's SQLite database and anything else it writes at runtime.
+.data/
+
+# Exporter scratch space (OpenAssetTools dumps, intermediate JSON).
+.cache/
+
+# Per-machine environment (dev server host, etc.)
+*.local
+
+# Python tooling (pytest, ruff): python3 -m venv --system-site-packages .venv
+.venv/
+
+# Where your Call of Duty installs are (docs/cod/README.md): per machine.
+cod.config.json
+
+# Derived from development builds' debug symbols, so never committed: each user
+# supplies their own and names it in cod.config.json (docs/cod/README.md).
+durango_types.json
+scripts/cod/data/s1/layout.json

@@ -1,0 +1,71 @@
+/* Health and ammunition: two corners of the same readout, so the type and the
+   shadow are shared and only the alignment differs. */
+
+.health {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-shadow: var(--hud-shadow);
+}
+
+.count {
+  min-width: 46px;
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  /* The number changes every tick of a regeneration; tabular figures stop it shifting. */
+  font-variant-numeric: tabular-nums;
+  color: var(--hud-health);
+}
+
+.countLow {
+  composes: count;
+  color: var(--hud-health-low);
+}
+
+.track {
+  width: 190px;
+  height: 6px;
+  background: rgba(8, 10, 13, 0.55);
+  border: 1px solid var(--hud-outline);
+  border-radius: 2px;
+}
+
+.fill {
+  height: 100%;
+  background: var(--hud-health);
+  /* Regeneration arrives a tick at a time; a short ease keeps it from stepping. */
+  transition: width 120ms linear;
+}
+
+.fillLow {
+  composes: fill;
+  background: var(--hud-health-low);
+}
+
+.ammo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  text-shadow: var(--hud-shadow);
+}
+
+.weapon {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hud-ink-dim);
+}
+
+.rounds {
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--hud-ink);
+}
+
+.roundsEmpty {
+  composes: rounds;
+  color: var(--hud-health-low);
+}

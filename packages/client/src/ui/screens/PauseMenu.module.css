@@ -1,0 +1,114 @@
+/* The world stays in view, blurred. */
+.screen {
+  background: var(--menu-veil);
+  backdrop-filter: blur(6px) saturate(0.8);
+}
+
+.block {
+  align-self: flex-end;
+  width: min(100%, 380px);
+  padding-top: 14px;
+}
+
+.heading {
+  margin: 0 0 8px;
+  text-align: right;
+  font: 600 calc(13px * var(--menu-scale)) / 1.2 var(--font-menu);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--menu-text-dim);
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--menu-rule);
+}
+
+.choice {
+  flex: 1;
+  padding: 7px 0;
+  font: 500 calc(clamp(16px, 2.1vh, 19px) * var(--menu-scale)) / 1.2 var(--font-menu);
+  text-transform: uppercase;
+  text-shadow: inherit;
+  color: var(--menu-text-dim);
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  & + & {
+    border-left: 1px solid var(--menu-rule);
+  }
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--menu-text-bright);
+    background: var(--menu-highlight-dim);
+  }
+
+  &[aria-checked="true"] {
+    color: var(--menu-text-bright);
+    background: var(--menu-highlight);
+  }
+}
+
+/* The range and its readout on one line, the number in a fixed column so that
+   dragging the slider does not shuffle it about. */
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  & input {
+    flex: 1;
+    min-width: 0;
+    accent-color: var(--menu-text-bright);
+    cursor: pointer;
+  }
+
+  & output {
+    width: 3.5ch;
+    text-align: right;
+    font: 500 calc(clamp(15px, 2vh, 18px) * var(--menu-scale)) / 1.2 var(--font-menu);
+    color: var(--menu-text-bright);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.controls {
+  align-self: flex-end;
+  width: min(100%, 420px);
+  margin: 0;
+  padding-top: 14px;
+  overflow-y: auto;
+  font-size: calc(clamp(15px, 1.9vh, 18px) * var(--menu-scale));
+
+  & div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(223, 226, 220, 0.08);
+  }
+
+  & dt {
+    color: var(--menu-text);
+  }
+
+  & dd {
+    margin: 0;
+    color: var(--menu-key);
+    white-space: nowrap;
+  }
+}
+
+/* A line of explanation under a panel's heading, level with its blocks. */
+.note {
+  align-self: flex-end;
+  width: min(100%, 380px);
+  margin: 14px 0 0;
+  text-align: right;
+  font-size: calc(clamp(14px, 1.8vh, 17px) * var(--menu-scale));
+  line-height: 1.35;
+  color: var(--menu-text-dim);
+}

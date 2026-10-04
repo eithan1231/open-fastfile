@@ -1,0 +1,26 @@
+{
+  // The isomorphism invariant, global side. Everything in this package must run
+  // identically in a browser and in Node, so it is typechecked with neither the
+  // DOM lib nor any ambient @types available: a stray `document.querySelector`
+  // or `process.cwd()` stops being a code-review question and becomes a build
+  // failure. The import side of the same rule is eslint.config.js.
+  //
+  // src/collision/, src/rig/ and src/physics/ are deliberately excluded and have
+  // their own configs. They are the subtrees allowed a library beyond ES2022 —
+  // collision/ needs three.js as a geometry library for three-mesh-bvh, rig/ as a
+  // scene graph and an animation mixer so that a server can pose the body it is
+  // tracing a bullet against, and physics/ needs three.js and Rapier because
+  // everything dynamic and replicated is simulated on both ends. See
+  // tsconfig.collision.json, tsconfig.rig.json and tsconfig.physics.json for the
+  // full argument in each case.
+  //
+  // Three is the number there is an argument for. If you add a fourth, say plainly
+  // what it is for: a quietly widening `types: []` is how this invariant dies.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": ["src/collision", "src/rig", "src/physics"]
+}

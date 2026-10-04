@@ -1,0 +1,8 @@
+# Rebuilt by each effort's tools from the games' own files: decompiled source,
+# disassembly listings, dumped assets and shader bytecode, tables lifted from an
+# executable. The publishers' material -- not ours to redistribute.
+*/out/
+tools/*/out/
+# Third-party checkouts a tool builds from (ooz is GPL-3): fetched, never committed.
+tools/ooz/src/
+__pycache__/

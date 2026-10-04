@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Copy to cod.config.json (gitignored) or point $COD_CONFIG at a copy, then run `python3 -m scripts.cod doctor`.",
+    "Every key is optional: a game left out is found in your Steam libraries, as its install or its downloaded depots.",
+    "games.<game>: one folder, a list of folders, or {\"dirs\": [...], \"exe\": \"<file>\", \"use\": \"auto|depots|install\"}. Games: mw2 mw3 bo1 bo2 ghosts aw cw.",
+    "dirs: folders used as given (a full 32-bit install anywhere, or depot folders). --game-dir <game>=<dir> and $COD_<GAME>_DIR win over them.",
+    "use: what Steam detection may pick when no dirs are named: auto (a 32-bit install, else the depots), depots, or install. --use <game>=... wins.",
+    "MW2, MW3, Black Ops and Black Ops II must be 32-bit builds: docs/cod/README.md#32-bit-builds.",
+    "exe: an executable to read (never run) for wavelet images; a 64-bit install's serves, and is found on its own.",
+    "iw6_durango: the folder holding iw6mp64_dh_server_durango.exe and .map (Ghosts only; $IW6_DURANGO).",
+    "iw6_durango_types: the type table generated from that build's .pdb (Ghosts only; $IW6_DURANGO_TYPES).",
+    "s1_layout_x360: the struct layout generated from the AW X360 build (optional; $S1_LAYOUT_X360).",
+    "ooz: the built ooz library, libooz.so or ooz.dll (Black Ops Cold War only; $OOZ_LIB)."
+  ],
+  "games": {
+    "mw3": { "use": "depots" },
+    "bo1": "/path/to/a/full/32-bit/Call of Duty Black Ops",
+    "bo2": { "dirs": ["/path/to/the/bo2/depots/copied/into/one/folder"] }
+  },
+  "iw6_durango": "/path/to/the/xbox-one-server-build",
+  "iw6_durango_types": "/path/to/durango_types.json",
+  "s1_layout_x360": "/path/to/layout.json",
+  "ooz": "/path/to/libooz.so"
+}

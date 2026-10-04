@@ -1,0 +1,63 @@
+/* The panel's picture, against the right edge under the right-aligned heading. */
+.preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  padding-top: 14px;
+}
+
+.thumb {
+  width: min(100%, 72vh);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--menu-rule);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+
+  & img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    visibility: hidden;
+  }
+
+  & img.loaded {
+    visibility: visible;
+  }
+}
+
+.category,
+.desc,
+.hint,
+.empty {
+  margin: 0;
+  font-size: calc(clamp(15px, 1.9vh, 18px) * var(--menu-scale));
+  line-height: 1.35;
+}
+
+.category {
+  margin-top: 10px;
+  color: var(--menu-text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: calc(14px * var(--menu-scale));
+}
+
+.desc {
+  margin-top: 8px;
+  max-width: 36em;
+}
+
+.hint {
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.empty {
+  margin-top: 14px;
+  text-align: right;
+}

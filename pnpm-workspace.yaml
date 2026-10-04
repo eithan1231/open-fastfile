@@ -1,0 +1,28 @@
+packages:
+  - "packages/*"
+
+# pnpm 10 refuses to run a dependency's install scripts unless it is listed here.
+# Both of these are native: better-sqlite3 compiles, and node-datachannel is
+# geckos.io's WebRTC transport. Without this they install "successfully" and then
+# fail at require time with a missing .node file.
+onlyBuiltDependencies:
+  - better-sqlite3
+  - node-datachannel
+
+# One version of the toolchain everywhere; packages say "catalog:".
+# Beware `pnpm add`: it rewrites this file and drops every comment in it.
+catalog:
+  typescript: ^5.6.3
+  vite: ^5.4.10
+  vitest: ^2.1.4
+  three: ^0.169.0
+  "@types/three": ^0.169.0
+  zod: ^4.6.4
+  # Pinned exact, and the caret's absence is the whole point: Rapier promises a
+  # cross-platform deterministic simulation for one *build*, so two machines on two
+  # versions is how corpses quietly stop agreeing. The `-deterministic` variant is
+  # the one that makes the promise at all (the plain build says it does not, and is
+  # ~8% faster for it); `-compat` inlines the wasm, so both ends load the same bytes
+  # without a bundler in the loop. Bumping it means re-recording the reference hash
+  # in packages/shared/tests/physicsDeterminism.test.ts, and nothing else.
+  "@dimforge/rapier3d-deterministic-compat": 0.20.0

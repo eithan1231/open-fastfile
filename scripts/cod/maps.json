@@ -1,0 +1,463 @@
+{
+  "_comment": "Every map imported into this repo's worlds/: the record of them, not a limit on what can be exported (`python3 -m scripts.cod maps` lists every map an install holds). Where each game is installed: cod.config.json; what an install holds: games.json.",
+  "maps": [
+    {
+      "world": "afghan-mw2",
+      "map": "mp_afghan",
+      "game": "mw2"
+    },
+    {
+      "world": "boneyard-mw2",
+      "map": "mp_boneyard",
+      "game": "mw2"
+    },
+    {
+      "world": "brecourt-mw2",
+      "map": "mp_brecourt",
+      "game": "mw2"
+    },
+    {
+      "world": "checkpoint-mw2",
+      "map": "mp_checkpoint",
+      "game": "mw2"
+    },
+    {
+      "world": "derail-mw2",
+      "map": "mp_derail",
+      "game": "mw2"
+    },
+    {
+      "world": "estate-mw2",
+      "map": "mp_estate",
+      "game": "mw2"
+    },
+    {
+      "world": "favela-mw2",
+      "map": "mp_favela",
+      "game": "mw2"
+    },
+    {
+      "world": "highrise-mw2",
+      "map": "mp_highrise",
+      "game": "mw2"
+    },
+    {
+      "world": "invasion-mw2",
+      "map": "mp_invasion",
+      "game": "mw2"
+    },
+    {
+      "world": "nightshift-mw2",
+      "map": "mp_nightshift",
+      "game": "mw2"
+    },
+    {
+      "world": "quarry-mw2",
+      "map": "mp_quarry",
+      "game": "mw2"
+    },
+    {
+      "world": "rundown-mw2",
+      "map": "mp_rundown",
+      "game": "mw2"
+    },
+    {
+      "world": "rust-mw2",
+      "map": "mp_rust",
+      "game": "mw2"
+    },
+    {
+      "world": "subbase-mw2",
+      "map": "mp_subbase",
+      "game": "mw2"
+    },
+    {
+      "world": "terminal-mw2",
+      "map": "mp_terminal",
+      "game": "mw2"
+    },
+    {
+      "world": "underpass-mw2",
+      "map": "mp_underpass",
+      "game": "mw2"
+    },
+    {
+      "world": "aground-mw3",
+      "map": "mp_aground_ss",
+      "game": "mw3"
+    },
+    {
+      "world": "alpha-mw3",
+      "map": "mp_alpha",
+      "game": "mw3"
+    },
+    {
+      "world": "boardwalk-mw3",
+      "map": "mp_boardwalk",
+      "game": "mw3"
+    },
+    {
+      "world": "bootleg-mw3",
+      "map": "mp_bootleg",
+      "game": "mw3"
+    },
+    {
+      "world": "bravo-mw3",
+      "map": "mp_bravo",
+      "game": "mw3"
+    },
+    {
+      "world": "carbon-mw3",
+      "map": "mp_carbon",
+      "game": "mw3"
+    },
+    {
+      "world": "courtyard-mw3",
+      "map": "mp_courtyard_ss",
+      "game": "mw3"
+    },
+    {
+      "world": "deltacamp-mw3",
+      "map": "so_deltacamp",
+      "game": "mw3"
+    },
+    {
+      "world": "dome-mw3",
+      "map": "mp_dome",
+      "game": "mw3"
+    },
+    {
+      "world": "exchange-mw3",
+      "map": "mp_exchange",
+      "game": "mw3"
+    },
+    {
+      "world": "hardhat-mw3",
+      "map": "mp_hardhat",
+      "game": "mw3"
+    },
+    {
+      "world": "interchange-mw3",
+      "map": "mp_interchange",
+      "game": "mw3"
+    },
+    {
+      "world": "lambeth-mw3",
+      "map": "mp_lambeth",
+      "game": "mw3"
+    },
+    {
+      "world": "moab-mw3",
+      "map": "mp_moab",
+      "game": "mw3"
+    },
+    {
+      "world": "mogadishu-mw3",
+      "map": "mp_mogadishu",
+      "game": "mw3"
+    },
+    {
+      "world": "nola-mw3",
+      "map": "mp_nola",
+      "game": "mw3"
+    },
+    {
+      "world": "paris-mw3",
+      "map": "mp_paris",
+      "game": "mw3"
+    },
+    {
+      "world": "plaza2-mw3",
+      "map": "mp_plaza2",
+      "game": "mw3"
+    },
+    {
+      "world": "radar-mw3",
+      "map": "mp_radar",
+      "game": "mw3"
+    },
+    {
+      "world": "roughneck-mw3",
+      "map": "mp_roughneck",
+      "game": "mw3"
+    },
+    {
+      "world": "seatown-mw3",
+      "map": "mp_seatown",
+      "game": "mw3"
+    },
+    {
+      "world": "shipbreaker-mw3",
+      "map": "mp_shipbreaker",
+      "game": "mw3"
+    },
+    {
+      "world": "terminal-mw3",
+      "map": "mp_terminal_cls",
+      "game": "mw3"
+    },
+    {
+      "world": "underground-mw3",
+      "map": "mp_underground",
+      "game": "mw3"
+    },
+    {
+      "world": "village-mw3",
+      "map": "mp_village",
+      "game": "mw3"
+    },
+    {
+      "world": "firingrange-bo1",
+      "map": "mp_firingrange",
+      "game": "bo1"
+    },
+    {
+      "world": "nuked-bo1",
+      "map": "mp_nuked",
+      "game": "bo1"
+    },
+    {
+      "world": "array-bo1",
+      "map": "mp_array",
+      "game": "bo1"
+    },
+    {
+      "world": "cairo-bo1",
+      "map": "mp_cairo",
+      "game": "bo1"
+    },
+    {
+      "world": "cosmodrome-bo1",
+      "map": "mp_cosmodrome",
+      "game": "bo1"
+    },
+    {
+      "world": "cracked-bo1",
+      "map": "mp_cracked",
+      "game": "bo1"
+    },
+    {
+      "world": "crisis-bo1",
+      "map": "mp_crisis",
+      "game": "bo1"
+    },
+    {
+      "world": "duga-bo1",
+      "map": "mp_duga",
+      "game": "bo1"
+    },
+    {
+      "world": "hanoi-bo1",
+      "map": "mp_hanoi",
+      "game": "bo1"
+    },
+    {
+      "world": "havoc-bo1",
+      "map": "mp_havoc",
+      "game": "bo1"
+    },
+    {
+      "world": "mountain-bo1",
+      "map": "mp_mountain",
+      "game": "bo1"
+    },
+    {
+      "world": "radiation-bo1",
+      "map": "mp_radiation",
+      "game": "bo1"
+    },
+    {
+      "world": "russianbase-bo1",
+      "map": "mp_russianbase",
+      "game": "bo1"
+    },
+    {
+      "world": "villa-bo1",
+      "map": "mp_villa",
+      "game": "bo1"
+    },
+    {
+      "world": "carrier-bo2",
+      "map": "mp_carrier",
+      "game": "bo2"
+    },
+    {
+      "world": "dockside-bo2",
+      "map": "mp_dockside",
+      "game": "bo2"
+    },
+    {
+      "world": "drone-bo2",
+      "map": "mp_drone",
+      "game": "bo2"
+    },
+    {
+      "world": "express-bo2",
+      "map": "mp_express",
+      "game": "bo2"
+    },
+    {
+      "world": "hijacked-bo2",
+      "map": "mp_hijacked",
+      "game": "bo2"
+    },
+    {
+      "world": "la-bo2",
+      "map": "mp_la",
+      "game": "bo2"
+    },
+    {
+      "world": "meltdown-bo2",
+      "map": "mp_meltdown",
+      "game": "bo2"
+    },
+    {
+      "world": "nightclub-bo2",
+      "map": "mp_nightclub",
+      "game": "bo2"
+    },
+    {
+      "world": "nuketown-bo2",
+      "map": "mp_nuketown_2020",
+      "game": "bo2"
+    },
+    {
+      "world": "overflow-bo2",
+      "map": "mp_overflow",
+      "game": "bo2"
+    },
+    {
+      "world": "raid-bo2",
+      "map": "mp_raid",
+      "game": "bo2"
+    },
+    {
+      "world": "slums-bo2",
+      "map": "mp_slums",
+      "game": "bo2"
+    },
+    {
+      "world": "socotra-bo2",
+      "map": "mp_socotra",
+      "game": "bo2"
+    },
+    {
+      "world": "turbine-bo2",
+      "map": "mp_turbine",
+      "game": "bo2"
+    },
+    {
+      "world": "village-bo2",
+      "map": "mp_village",
+      "game": "bo2"
+    },
+    {
+      "world": "transit-bo2",
+      "map": "zm_transit",
+      "game": "bo2",
+      "loadscreen": "zm_transit_zclassic_transit",
+      "common": [
+        "common_zm.ff",
+        "code_post_gfx_zm.ff",
+        "so_zclassic_zm_transit.ff",
+        "zm_transit_gump_busstation.ff",
+        "zm_transit_gump_cornfield.ff",
+        "zm_transit_gump_diner.ff",
+        "zm_transit_gump_farm.ff",
+        "zm_transit_gump_forest.ff",
+        "zm_transit_gump_forest2.ff",
+        "zm_transit_gump_labs.ff",
+        "zm_transit_gump_powerstation.ff",
+        "zm_transit_gump_town.ff",
+        "zm_transit_gump_tunnel.ff"
+      ]
+    },
+    {
+      "world": "theater-bo1",
+      "map": "zombie_theater",
+      "game": "bo1",
+      "common": ["common_zombie.ff", "common.ff", "../English/en_zombie_theater.ff"]
+    },
+    {
+      "world": "pentagon-bo1",
+      "map": "zombie_pentagon",
+      "game": "bo1",
+      "common": ["common_zombie.ff", "common.ff", "../English/en_zombie_pentagon.ff"]
+    },
+    {
+      "world": "prisonbreak-ghosts",
+      "map": "mp_prisonbreak",
+      "game": "ghosts"
+    },
+    {
+      "world": "comeback-aw",
+      "map": "mp_comeback",
+      "game": "aw"
+    },
+    {
+      "world": "dam-aw",
+      "map": "mp_dam",
+      "game": "aw"
+    },
+    {
+      "world": "detroit-aw",
+      "map": "mp_detroit",
+      "game": "aw"
+    },
+    {
+      "world": "greenband-aw",
+      "map": "mp_greenband",
+      "game": "aw"
+    },
+    {
+      "world": "instinct-aw",
+      "map": "mp_instinct",
+      "game": "aw"
+    },
+    {
+      "world": "lab2-aw",
+      "map": "mp_lab2",
+      "game": "aw"
+    },
+    {
+      "world": "laser2-aw",
+      "map": "mp_laser2",
+      "game": "aw"
+    },
+    {
+      "world": "levity-aw",
+      "map": "mp_levity",
+      "game": "aw"
+    },
+    {
+      "world": "prison-aw",
+      "map": "mp_prison",
+      "game": "aw"
+    },
+    {
+      "world": "recovery-aw",
+      "map": "mp_recovery",
+      "game": "aw"
+    },
+    {
+      "world": "refraction-aw",
+      "map": "mp_refraction",
+      "game": "aw"
+    },
+    {
+      "world": "solar-aw",
+      "map": "mp_solar",
+      "game": "aw"
+    },
+    {
+      "world": "terrace-aw",
+      "map": "mp_terrace",
+      "game": "aw"
+    },
+    {
+      "world": "venus-aw",
+      "map": "mp_venus",
+      "game": "aw"
+    }
+  ]
+}

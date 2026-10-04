@@ -1,0 +1,32 @@
+.frame {
+  position: relative;
+  width: clamp(140px, 24vh, 240px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--scrim-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-l);
+}
+
+/* Its top-left corner at the frame's centre, which is where the transform turns it (Minimap.tsx). */
+.map {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  transform-origin: 0 0;
+  user-select: none;
+}
+
+.player {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  fill: var(--minimap-player);
+  stroke: var(--scrim-strong);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}

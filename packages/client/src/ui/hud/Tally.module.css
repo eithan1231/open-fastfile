@@ -1,0 +1,38 @@
+/* The match's own numbers: the gametype's counters and the player's points.
+   Large figures in the HUD's ink, with its shadow for contrast. */
+
+.counters {
+  display: flex;
+  gap: 18px;
+  text-shadow: var(--hud-shadow);
+}
+
+.counter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-ink-dim);
+}
+
+.value {
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--hud-health-low);
+}
+
+.points {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--hud-ink);
+  text-shadow: var(--hud-shadow);
+}

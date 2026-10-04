@@ -1,0 +1,46 @@
+/* Right-aligned against the edge, under the right-aligned heading, as every panel is. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  padding-top: 14px;
+}
+
+.label {
+  margin: 0;
+  font: 600 calc(13px * var(--menu-scale)) / 1.2 var(--font-menu);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--menu-text-dim);
+}
+
+.gap {
+  margin-top: 18px;
+}
+
+.value {
+  margin: 2px 0 0;
+  font: 700 calc(clamp(22px, 3vh, 30px) * var(--menu-scale)) / 1.1 var(--font-menu);
+  text-transform: uppercase;
+  color: var(--menu-text-bright);
+}
+
+.desc,
+.hint {
+  margin: 0;
+  max-width: 36em;
+  font-size: calc(clamp(15px, 1.9vh, 18px) * var(--menu-scale));
+  line-height: 1.35;
+}
+
+.desc {
+  margin: 6px 0;
+}
+
+.hint {
+  margin-top: auto;
+  padding-top: 12px;
+}

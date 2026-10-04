@@ -1,0 +1,25 @@
+{
+  // The second subtree of @3d/shared allowed to use three.js, and the reason is
+  // the same one collision/ gives.
+  //
+  // A player is *moved* as a capsule and *shot* as a skeleton, so a server that
+  // judges a shot has to pose a body: build the rig, place its clips, read where
+  // the bones ended up. That is three as a scene-graph and animation library
+  // rather than as a renderer — no WebGLRenderer is constructed and no DOM is
+  // touched, so it runs identically in a browser and in Node.
+  //
+  // It lives here rather than in @3d/client for the reason `sim/` does: both ends
+  // need it, and two implementations of where a peer's head is would be a hit box
+  // somewhere other than the body on screen. `characterAnimator.ts` proves the
+  // mixer is a pure function of `sim/pose.ts`'s answer, which is what makes one
+  // implementation enough.
+  //
+  // Note what is NOT relaxed: no DOM lib and no ambient @types, exactly as
+  // tsconfig.json. Only the three.js import is new.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/rig", "src/platform.d.ts"]
+}

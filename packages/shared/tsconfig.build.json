@@ -1,0 +1,21 @@
+{
+  // Emit, not typechecking. `pnpm typecheck` is where this package's invariants
+  // live — four configs, each naming the subtree it allows a library beyond
+  // ES2022 — and none of them can emit the whole package, which is what a
+  // compiled server needs. So this one compiles all of src with --noCheck (the
+  // build scripts pass it) and enforces nothing: duplicating the boundaries here
+  // is how they end up disagreeing with the configs that mean them.
+  //
+  // dist/ mirrors src/ file for file rather than being bundled, which is what
+  // keeps `import.meta.dirname` pointing at the same depth in both.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true
+  },
+  "include": ["src"],
+  // The three subtrees the config above holds out; an emit build wants all of them.
+  "exclude": []
+}

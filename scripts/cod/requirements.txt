@@ -1,0 +1,4 @@
+# What an export needs. Tested with Pillow 10.2.0 and capstone 5.0.9.
+Pillow>=10.2,<12
+# Ghosts (IW6) only: scripts/cod/iw6/emulate.py interprets the Xbox One server's loaders with it.
+capstone>=5.0.9,<6

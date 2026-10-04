@@ -1,0 +1,8 @@
+{
+  // vite.config.ts runs in Node, not the browser.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"]
+  },
+  "include": ["vite.config.ts"]
+}

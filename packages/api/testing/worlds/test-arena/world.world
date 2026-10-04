@@ -1,0 +1,25 @@
+// A hand-written world for the api's tests, used where the repo's imported maps
+// are absent (see testing/app.ts). Its assets do not exist: the api serves world
+// text without reading a model, and a test that needs the files skips without them.
+
+world {
+  name: "Test Arena"
+  description: "A floor and two spawns, for the api's tests."
+  category: "Tests"
+}
+
+asset floor { source: "assets/floor.glb" }
+
+group map {
+  at: 0 0 0
+
+  model floor {
+    asset: floor
+    at: 0 0 0
+    size: 20 1 20
+  }
+}
+
+collision { source: "assets/collision.glb" }
+
+include "gameplay.world"

@@ -1,0 +1,92 @@
+/* The world's name sits level with the menus' titles (--top, from MenuScreen). */
+.screen {
+  background: radial-gradient(ellipse at 66% 36%, var(--menu-highlight-dim), var(--bg) 70%);
+}
+
+.picture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.pictureLoaded {
+  composes: picture;
+  opacity: 1;
+}
+
+/* Black over the left two fifths, fading out across the middle. */
+.shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.9) 34%, rgba(0, 0, 0, 0.35) 56%, transparent 72%),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.7), transparent 34%);
+}
+
+.about {
+  position: absolute;
+  top: var(--top);
+  left: 8vw;
+  width: min(34vw, 560px);
+}
+
+.name {
+  margin: 0;
+  font: 800 calc(clamp(28px, 4.6vh, 44px) * var(--menu-scale)) / 1.05 var(--font-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--menu-text-bright);
+}
+
+.category {
+  margin: 6px 0 0;
+  font: 500 calc(clamp(18px, 2.6vh, 24px) * var(--menu-scale)) / 1.2 var(--font-menu);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--menu-text-dim);
+}
+
+.description {
+  margin: 18px 0 0;
+  font: 400 calc(clamp(15px, 2.1vh, 19px) * var(--menu-scale)) / 1.35 var(--font-menu);
+}
+
+.progress {
+  position: absolute;
+  left: 8vw;
+  right: 8vw;
+  bottom: 14vh;
+}
+
+.label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font: 800 calc(clamp(18px, 2.8vh, 26px) * var(--menu-scale)) / 1 var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--menu-text-bright);
+}
+
+.step {
+  font: 400 calc(clamp(14px, 1.9vh, 17px) * var(--menu-scale)) / 1 var(--font-menu);
+  letter-spacing: 0.04em;
+  color: var(--menu-text-dim);
+}
+
+.track {
+  height: 10px;
+  background: var(--menu-rule);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.bar {
+  height: 100%;
+  background: var(--menu-text);
+  transition: width 0.25s ease-out;
+}

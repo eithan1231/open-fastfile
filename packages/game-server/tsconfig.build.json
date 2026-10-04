@@ -1,0 +1,23 @@
+{
+  // What ships: src compiled to dist, no tests. See packages/api/tsconfig.build.json.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    // Off, deliberately, and this is the load-bearing line in the file.
+    //
+    // tsconfig.json turns it on for the typechecker's sake; esbuild — which is
+    // what runs both processes under tsx, in dev and under vitest — ignores it,
+    // so the code is written for a container that sees only the tokens
+    // @inject() names. tsc honours it, and then tsyringe reads the emitted
+    // design:paramtypes for parameters nobody meant to inject: a constructor
+    // seam like `now: () => number = Date.now` becomes an attempt to resolve
+    // "Function", and the process dies on its first resolve with every test
+    // passing. Emitting no metadata is what keeps one set of semantics rather
+    // than two.
+    "emitDecoratorMetadata": false
+  },
+  "include": ["src"]
+}

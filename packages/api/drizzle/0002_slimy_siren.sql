@@ -1,0 +1,1 @@
+ALTER TABLE `loadouts` ADD `game` text;

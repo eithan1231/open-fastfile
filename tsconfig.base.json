@@ -1,0 +1,24 @@
+{
+  // The compiler options every package shares. Deliberately no `lib`, `types`,
+  // `jsx` or `include`: those are exactly the settings that differ per package,
+  // and they are what the boundaries are made of. @3d/shared drops the DOM lib
+  // and all ambient types; @3d/client adds the DOM and preact's JSX.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowJs": false,
+    "noEmit": true
+  }
+}

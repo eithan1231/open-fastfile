@@ -1,0 +1,20 @@
+{
+  // A Node process: Node's types, no DOM. It uses three.js as a geometry library
+  // to build its collision BVH, through @3d/shared/collision, so that a client's
+  // prediction and this server's authority run the same code rather than two
+  // versions of it.
+  //
+  // `scripts` is included deliberately: the world CLI lived outside every
+  // tsconfig in its previous home and so was never typechecked at all.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    // tsyringe resolves constructor dependencies from the metadata the compiler
+    // emits for a decorated class; without both of these its decorators are a
+    // syntax error and @inject() sees nothing.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["src", "scripts", "tests"]
+}

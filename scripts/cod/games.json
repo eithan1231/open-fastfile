@@ -1,0 +1,237 @@
+{
+  "_comment": "What each game's install looks like. Every path is relative to an install root; a game may have several roots (Steam depots downloaded one by one), and each path is looked up in every root, in order. `depots` are the Steam depots of the 32-bit build, in root order, each with the manifest the pipeline was built against; `merge_depots` means the game reads its folders as one tree, so its depots must be copied into one folder. `probe` is an executable read only to tell a 32-bit build from a 64-bit one. Where the roots are: installs.py and cod.config.json (docs/cod/README.md).",
+  "mw2": {
+    "title": "Modern Warfare 2 (2009)",
+    "engine": "iw4",
+    "steam": {
+      "app": 10190,
+      "folder": "Call of Duty Modern Warfare 2"
+    },
+    "zones": ["zone/english"],
+    "search": ["main"],
+    "exe": "iw4mp.exe",
+    "maps": {
+      "match": "^mp_",
+      "beside": "{map}_load.ff"
+    },
+    "depots": [
+      {
+        "app": 10180,
+        "depot": 10182,
+        "manifest": "4063260329988186194",
+        "holds": "main\\ (the .iwd archives)"
+      },
+      {
+        "app": 10180,
+        "depot": 10183,
+        "manifest": "8707803059832053468",
+        "holds": "zone\\english and main\\"
+      }
+    ]
+  },
+  "mw3": {
+    "title": "Modern Warfare 3 (2011)",
+    "engine": "iw5",
+    "steam": {
+      "app": 42690,
+      "folder": "Call of Duty Modern Warfare 3"
+    },
+    "zones": ["zone/english", "zone/dlc"],
+    "search": ["main"],
+    "common": ["zone/english/common_mp.ff", "zone/english/common.ff"],
+    "exe": "iw5mp.exe",
+    "maps": {
+      "match": "^mp_",
+      "beside": "{map}_load.ff"
+    },
+    "depots": [
+      {
+        "app": 42680,
+        "depot": 42683,
+        "manifest": "6381783964590594065",
+        "holds": "zone\\english (the base multiplayer and Spec Ops maps)"
+      },
+      {
+        "app": 42680,
+        "depot": 42682,
+        "manifest": "2661317971072643596",
+        "holds": "main\\ and zone\\dlc (Terminal, Aground, Courtyard)"
+      },
+      {
+        "app": 42690,
+        "depot": 42698,
+        "manifest": "5997898371746217629",
+        "holds": "zone\\dlc (the five Collection maps)"
+      },
+      {
+        "app": 42690,
+        "depot": 42691,
+        "manifest": "4104640605720756125",
+        "holds": "the 32-bit iw5mp.exe (optional: read for wavelet images)"
+      }
+    ]
+  },
+  "bo1": {
+    "title": "Black Ops",
+    "engine": "t5",
+    "steam": {
+      "app": 42710,
+      "folder": "Call of Duty Black Ops"
+    },
+    "zones": ["zone/Common"],
+    "search": ["main"],
+    "exe": "BlackOpsMP.exe",
+    "maps": {
+      "match": "^(mp|zombie)_",
+      "exclude": "_patch$"
+    },
+    "merge_depots": true,
+    "depots": [
+      {
+        "app": 42700,
+        "depot": 42702,
+        "manifest": "6257032900290287777",
+        "holds": "zone\\Common (every map) and main\\"
+      },
+      {
+        "app": 42700,
+        "depot": 42703,
+        "manifest": "8741537774138455205",
+        "holds": "zone\\English (the zombies maps' en_ zones) and main\\"
+      },
+      {
+        "app": 42710,
+        "depot": 42704,
+        "manifest": "2396700113547373447",
+        "holds": "BlackOpsMP.exe (optional: read for wavelet images)"
+      }
+    ]
+  },
+  "bo2": {
+    "_comment": "Named rather than defaulted: the common.ff beside the maps is the campaign's. There are no .iwd archives; `search` is unused.",
+    "title": "Black Ops II",
+    "engine": "t6",
+    "steam": {
+      "app": 202990,
+      "folder": "Call of Duty Black Ops II"
+    },
+    "zones": ["zone/all"],
+    "search": [""],
+    "common": ["zone/all/common_mp.ff"],
+    "probe": "t6mp.exe",
+    "maps": {
+      "match": "^(mp|zm)_",
+      "exclude": "_patch$|_gump_"
+    },
+    "merge_depots": true,
+    "depots": [
+      {
+        "app": 202970,
+        "depot": 202972,
+        "manifest": "44054127954755624",
+        "holds": "base.ipak and sound\\"
+      },
+      {
+        "app": 202970,
+        "depot": 202973,
+        "manifest": "131606837976547528",
+        "holds": "mp_carrier, mp_dockside, mp_drone, mp_overflow, mp_socotra and so.ipak"
+      },
+      {
+        "app": 202970,
+        "depot": 202974,
+        "manifest": "8534031140633404768",
+        "holds": "patch.ipak and sound\\ (the campaign's depot)"
+      },
+      {
+        "app": 202970,
+        "depot": 202975,
+        "manifest": "855173471322016522",
+        "holds": "en_base.ipak"
+      },
+      {
+        "app": 202970,
+        "depot": 212931,
+        "manifest": "1794283193511346342",
+        "holds": "the en_ zones of the five maps in 202973"
+      },
+      {
+        "app": 202990,
+        "depot": 202992,
+        "manifest": "6516382015411692772",
+        "holds": "the other multiplayer maps, common_mp.ff and mp.ipak"
+      },
+      {
+        "app": 202990,
+        "depot": 203001,
+        "manifest": "5470996728109450714",
+        "holds": "the multiplayer en_ zones"
+      },
+      {
+        "app": 202990,
+        "depot": 219091,
+        "manifest": "3185257489268655163",
+        "holds": "mp_nuketown_2020 and dlc0.ipak"
+      },
+      {
+        "app": 212910,
+        "depot": 212912,
+        "manifest": "7173492351802578203",
+        "holds": "zm_transit, its companions and zm.ipak"
+      },
+      {
+        "app": 212910,
+        "depot": 212921,
+        "manifest": "8942509767028602311",
+        "holds": "the zombies en_ zones"
+      }
+    ]
+  },
+  "ghosts": {
+    "title": "Ghosts",
+    "engine": "iw6",
+    "steam": {
+      "app": 209170,
+      "folder": "Call of Duty Ghosts"
+    },
+    "zones": [""],
+    "search": [""],
+    "common": ["common_mp.ff", "common_core_mp.ff", "code_post_gfx_mp.ff"],
+    "maps": {
+      "match": "^mp_",
+      "beside": "{map}_load.ff"
+    }
+  },
+  "aw": {
+    "_comment": "Named rather than defaulted: the common.ff beside the maps is an S1ffu100 zone, which scripts/cod/s1/ff.py does not read.",
+    "title": "Advanced Warfare",
+    "engine": "s1",
+    "steam": {
+      "app": 209660,
+      "folder": "Call of Duty Advanced Warfare"
+    },
+    "zones": [""],
+    "search": [""],
+    "common": ["common_core_mp.ff", "common_mp.ff"],
+    "maps": {
+      "match": "^mp_",
+      "beside": "{map}_load.ff"
+    }
+  },
+  "cw": {
+    "_comment": "Being added, and not yet in maps.json: docs/cod/games.md.",
+    "title": "Black Ops Cold War",
+    "engine": "t9",
+    "steam": {
+      "app": 1985810,
+      "folder": "Call of Duty Black Ops Cold War"
+    },
+    "zones": ["zone"],
+    "search": [],
+    "common": [],
+    "maps": {
+      "match": "^(mp|zm)_",
+      "exclude": "_common$"
+    }
+  }
+}

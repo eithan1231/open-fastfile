@@ -1,0 +1,54 @@
+.frame {
+  position: relative;
+  width: calc(clamp(160px, 28vh, 260px) * var(--menu-scale));
+  max-width: 100%;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--menu-text);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+/* A point at the player; the crosshair runs from it to the frame's edges, which clip it. */
+.marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    background: var(--menu-highlight);
+  }
+
+  &::before {
+    left: -1000px;
+    width: 2000px;
+    height: 1px;
+  }
+
+  &::after {
+    top: -1000px;
+    height: 2000px;
+    width: 1px;
+  }
+}
+
+.player {
+  position: absolute;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%) rotate(var(--heading, 0rad));
+  fill: var(--minimap-player);
+  stroke: var(--scrim-strong);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}

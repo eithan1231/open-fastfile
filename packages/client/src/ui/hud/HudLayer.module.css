@@ -1,0 +1,64 @@
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: var(--layer-hud);
+  pointer-events: none;
+}
+
+.region {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topLeft {
+  composes: region;
+  top: 16px;
+  left: 16px;
+}
+
+.topRight {
+  composes: region;
+  top: 16px;
+  right: 16px;
+  align-items: flex-end;
+}
+
+.bottomLeft {
+  composes: region;
+  bottom: 16px;
+  left: 16px;
+}
+
+.bottomCenter {
+  composes: region;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+}
+
+.bottomRight {
+  composes: region;
+  bottom: 16px;
+  right: 16px;
+  align-items: flex-end;
+}
+
+.toast {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(90vw, 900px);
+  overflow-wrap: anywhere;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: var(--scrim-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  /* Selectable, so a copied pose link can be retyped if the clipboard refused it. */
+  pointer-events: auto;
+  user-select: text;
+}

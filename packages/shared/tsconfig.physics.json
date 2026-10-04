@@ -1,0 +1,26 @@
+{
+  // The third subtree of @3d/shared allowed a library beyond `lib: ["ES2022"]`,
+  // and the only one allowed Rapier.
+  //
+  // Everything dynamic and replicated lives here. A grenade, a rocket, a care
+  // package and a corpse are one mechanism: a rigid body created from an
+  // authoritative spawn, stepped once per server tick on both ends, and — where
+  // gameplay reads it — corrected by the server. Two implementations of that
+  // would diverge, and a diverged grenade is a player killed by an explosion
+  // that happened somewhere else. It is here for the reason `sim/` is here.
+  //
+  // three.js is allowed for the reason rig/ has it: a ragdoll reads a
+  // CharacterRig's bind pose off a scene graph and writes the result back onto
+  // its bones. Rapier is allowed as a physics library, never as a loop — no
+  // requestAnimationFrame, no wall clock, `world.timestep` is `1 / tickRate`,
+  // and `step()` is called exactly once per server tick on both ends.
+  //
+  // Note what is NOT relaxed: no DOM lib and no ambient @types, exactly as
+  // tsconfig.json. Only the two imports are new.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/physics", "src/platform.d.ts"]
+}

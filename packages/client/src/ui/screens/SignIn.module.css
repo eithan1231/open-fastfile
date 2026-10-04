@@ -1,0 +1,114 @@
+/* One centred panel rather than the column-and-panel the other menus use: there
+   is nothing to choose between yet, so there is no column to put it in. */
+.screen {
+  display: grid;
+  place-items: center;
+}
+
+.panel {
+  /* Positioned, or MenuArt paints over it: the backdrop is absolute with a solid
+     background of its own, and a static sibling after it in the document still
+     loses. Every other menu piece is absolute for the same reason. */
+  position: relative;
+  width: min(420px, calc(100vw - 48px));
+  box-sizing: border-box;
+  padding: 28px 32px 24px;
+  background: var(--menu-column);
+  border: 1px solid var(--menu-rule);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.title {
+  margin: 0 0 18px;
+  font: 800 calc(clamp(22px, 3.2vh, 30px) * var(--menu-scale)) / 1 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--menu-text-bright);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  & span {
+    font: 600 calc(12px * var(--menu-scale)) / 1 var(--font-menu);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--menu-text-dim);
+  }
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 11px;
+  font: 500 calc(16px * var(--menu-scale)) / 1.2 var(--font-menu);
+  color: var(--menu-text-bright);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--menu-rule);
+  border-radius: 0;
+
+  &:focus {
+    outline: none;
+    border-color: var(--menu-text-dim);
+    background: rgba(0, 0, 0, 0.55);
+  }
+}
+
+.error {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: calc(14px * var(--menu-scale));
+  line-height: 1.35;
+  color: #e8a294;
+  background: rgba(150, 50, 38, 0.22);
+  border-left: 2px solid #b4503c;
+}
+
+.submit {
+  padding: 10px;
+  font: 700 calc(15px * var(--menu-scale)) / 1 var(--font-menu);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--menu-text-bright);
+  background: var(--menu-highlight-dim);
+  border: 1px solid var(--menu-rule);
+  cursor: pointer;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    outline: none;
+    background: var(--menu-highlight);
+  }
+
+  &:disabled {
+    color: var(--menu-text-dim);
+    cursor: default;
+  }
+}
+
+.toggle {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 4px;
+  font: 500 calc(14px * var(--menu-scale)) / 1 var(--font-menu);
+  color: var(--menu-text-dim);
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--menu-text);
+    text-decoration: underline;
+  }
+}

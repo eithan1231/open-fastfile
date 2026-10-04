@@ -1,0 +1,13 @@
+{
+  // The browser project. The DOM lib and preact's JSX live here and nowhere
+  // else: @3d/shared is typechecked without them, which is what keeps the
+  // simulation runnable on a server.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "types": ["vite/client"]
+  },
+  "include": ["src"]
+}

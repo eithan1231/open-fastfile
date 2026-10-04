@@ -1,0 +1,9 @@
+// The api tests' second map, for a lobby that changes map. See test-arena.
+
+world {
+  name: "Test Yard"
+  description: "A spawn and nothing else, for the api's tests."
+  category: "Tests"
+}
+
+spawn { at: 0 0 0 }

@@ -1,0 +1,10 @@
+{
+  // The repo-root scripts: scripts/check.ts and friends. Everything else now
+  // lives in a package and is typechecked by it.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["scripts", "vitest.workspace.ts"]
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@3d/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The browser game: renders a world, predicts the local player",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@3d/shared": "workspace:*",
+    "@geckos.io/client": "^3.1.0",
+    "@preact/signals": "^2.11.2",
+    "@preact/signals-core": "^1.14.4",
+    "preact": "^10.29.8",
+    "three": "catalog:",
+    "three-mesh-bvh": "^0.8.3"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@testing-library/preact": "^3.2.4",
+    "@types/node": "^26.4.1",
+    "@types/three": "catalog:",
+    "happy-dom": "^20.14.3",
+    "tsx": "^4.19.2",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}
