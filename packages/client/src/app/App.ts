@@ -645,6 +645,8 @@ export class App {
           // Before the corpses step: a part leaves at the tick it left on the server.
           this.session?.applyPresence(presence, tick);
           this.remotes.apply(others, tick, performance.now());
+          // Every body's hit boxes fetched before its first death, not at it.
+          this.corpses.prepare(this.remotes.drawnBodies());
           this.actors.apply(actors, tick, performance.now());
           this.actorVoices.apply(actors, performance.now() / 1000);
           // Off the snapshot and not off a frame: these are the server's own tick

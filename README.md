@@ -10,7 +10,16 @@ A browser 3D engine for walkable worlds, written as plain text. A world is a
 `.world` file: glTF models, a collision mesh, lights, spawns and triggers. Most
 of one is generated — Call of Duty maps imported by a Python pipeline — and what
 a human writes over it is the gameplay. The app parses, validates and renders it
-as a first-person scene. The project is heading towards a multiplayer game.
+as a first-person scene, and multiplayer is playable on top of it.
+
+## Multiplayer
+
+Multiplayer works for simple PvP and for primitive zombies. The server is
+authoritative: it compensates for lag and validates every interaction a client
+claims. There is one central server, `@3d/api`, which owns the worlds, the
+accounts and the matchmaking, and any number of game servers, which host the
+matches. Game servers hold no state of their own, so they can be deployed around
+the world, close to the players they host, to cut latency.
 
 ## Previews
 

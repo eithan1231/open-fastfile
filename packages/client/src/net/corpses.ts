@@ -186,6 +186,24 @@ export class Corpses {
     }
   }
 
+  /**
+   * Measure these bodies now, while they are still standing.
+   *
+   * A shape needs its sidecar, and asking for it at the death is asking too late:
+   * `spawn` cannot wait for a fetch, so the first death of every body put nobody on
+   * the floor. Called per snapshot with everyone drawn, which costs a map lookup
+   * once each is known and also covers a body built before physics loaded.
+   */
+  prepare(bodies: readonly { rig: CharacterRig }[]): void {
+    const api = this.ragdoll;
+    if (!this.physics || !api) {
+      return;
+    }
+    for (const { rig } of bodies) {
+      this.shapeFor(rig, api);
+    }
+  }
+
   /** Every corpse goes: a world change, a hot reload, the connection going away. */
   clear(): void {
     for (const corpse of this.corpses.values()) {
@@ -209,8 +227,8 @@ export class Corpses {
    * The sidecar is fetched rather than shipped: the ordinary client has never
    * needed `.hitboxes.json` — only the debug view did — so this is the first thing
    * that makes a body's boxes part of playing rather than of looking. It is a
-   * couple of kilobytes per body over the same public catalogue route, and the
-   * first corpse of a body is the one that pays for it.
+   * couple of kilobytes per body over the same public catalogue route, fetched by
+   * `prepare` while the body is alive so that its first corpse finds it here.
    */
   private shapeFor(rig: CharacterRig, api: RagdollApi): RagdollShape | undefined {
     const url = hitboxUrl(rig);
