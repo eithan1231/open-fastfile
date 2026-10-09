@@ -414,7 +414,8 @@ has the rest of the server's side.
   Showing it needs a dev-only message (`navDebug`, behind `NAV_DEBUG=1`) carrying
   each bot's remaining node ids, which nothing sends yet.
 - **A stuck link is shut for the whole match.** The follower's verdict is
-  deterministic (players do not collide with each other), so a link one bot could
+  deterministic (players do not collide with each other, and a push out of another
+  actor restarts the measure — [crowding](actors.md#crowding)), so a link one bot could
   not cross another would not either; but a verdict caused by a bad start (a bot
   standing oddly after a fall) shuts a link that was fine. Nothing re-opens one.
 - **A slice cannot stop inside one link's simulation** ([above](#budgets)), so a

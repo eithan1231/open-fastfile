@@ -133,6 +133,9 @@ export const PROPERTY_KINDS: Record<string, PropertyKind> = {
   "dark-tint": { valueKind: "number", unit: "none", minArity: 3, maxArity: 3 },
   desaturation: { valueKind: "number", unit: "none", minArity: 1, maxArity: 1 },
   "desaturation-dark": { valueKind: "number", unit: "none", minArity: 1, maxArity: 1 },
+  // The grade's last step: `pow(colour, 1 / gamma)`, so 1 is neutral and above
+  // it lifts the midtones. Not from a .vision file; an author's knob.
+  gamma: { valueKind: "number", unit: "none", minArity: 1, maxArity: 1 },
 
 
 
@@ -260,7 +263,7 @@ function retirementOf(type: string): string | undefined {
 export const NODE_TYPES: Record<string, NodeTypeSpec> = {
   world: { type: "world", nameMode: "none", singleton: true, properties: ["name", "description", "category", "game", "ambient", "sky", "visibility", "exposure"], children: "none" },
 
-  grade: { type: "grade", nameMode: "none", singleton: true, properties: ["light-tint", "medium-tint", "dark-tint", "desaturation", "desaturation-dark"], children: "none" },
+  grade: { type: "grade", nameMode: "none", singleton: true, properties: ["light-tint", "medium-tint", "dark-tint", "desaturation", "desaturation-dark", "gamma"], children: "none" },
 
 
   // A glTF model, declared once and placed by any number of `model` nodes.

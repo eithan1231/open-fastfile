@@ -338,6 +338,34 @@ describe("actors in a match", () => {
     expect(JSON.stringify(two.snapshots.map((s) => s.actors))).toBe(JSON.stringify(one.snapshots.map((s) => s.actors)));
   });
 
+  it("never stands two in one place: a pile at one spawn spreads, and a horde surrounds its quarry", () => {
+    const apart = (a: ReturnType<typeof arena>) => {
+      const feet = a.spawned.map((id) => a.ctx().actors.state(id)!.feet);
+      let nearest = Infinity;
+      for (let i = 0; i < feet.length; i++) {
+        for (let j = i + 1; j < feet.length; j++) {
+          nearest = Math.min(nearest, Math.hypot(feet[i]!.x - feet[j]!.x, feet[i]!.z - feet[j]!.z));
+        }
+      }
+      return nearest;
+    };
+    const touching = 2 * ZOMBIE_KIND.radius - 0.02;
+
+    const pile = arena({ nav: false, spawn: Array.from({ length: 4 }, () => ({ kind: "zombie", brain: ZOMBIE, at: { x: 0, y: 0, z: -8 } })) });
+    pile.run(1);
+    expect(apart(pile)).toBeGreaterThan(touching);
+
+    const blows = new Map<ActorId | undefined, number>();
+    const horde = arena({
+      spawn: Array.from({ length: 5 }, (_, i) => ({ kind: "zombie", brain: ZOMBIE, at: { x: 0, y: 0, z: -16 + i * 0.1 }, gait: "run" as const })),
+      hooks: { playerDamage: (_c, hit) => void blows.set(hit.actor, (blows.get(hit.actor) ?? 0) + 1) },
+    });
+    horde.run(16);
+    expect(apart(horde)).toBeGreaterThan(touching);
+    // Every one of them got round to the player, not just the first in the queue.
+    expect([...blows.keys()].sort()).toEqual(horde.spawned);
+  });
+
   it("is shot, heard by actorDamage and then actorDeath, lies for its corpse time and goes", () => {
     const damage: unknown[] = [];
     const deaths: unknown[] = [];

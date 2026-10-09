@@ -119,7 +119,9 @@ A world's `grade` (a CoD `.vision` film tweak for imported maps) is compiled
 into three's tone-mapping stage by overriding `CustomToneMapping`'s GLSL
 (`engine/grade.ts`). A post-process pass would cost a full-screen resolve each
 frame and lose MSAA. The override is global to the page, and the grade is part
-of every shader, so it must be set before materials compile.
+of every shader, so it must be set before materials compile. Its `gamma` is the
+last step, after tone mapping and the tints and before three's sRGB encode, so
+it bends the displayed curve without touching lighting.
 
 ## Quality levels
 

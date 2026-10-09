@@ -28,7 +28,9 @@ function vec3(v: { x: number; y: number; z: number }): string {
 /**
  * The replacement `CustomToneMapping`: ACES unchanged, then a three-zone tint
  * smoothstepped either side of mid-grey (no banding at 0.5), then desaturation
- * toward the tinted colour's luminance.
+ * toward the tinted colour's luminance, then gamma. The gamma curve is skipped
+ * at 1 so an ungamma'd grade compiles to the same shader it always did, and
+ * clamped at 0 first because `pow` of a negative is undefined in GLSL.
  *
  * Tints are absolute multipliers (1 is neutral) and used as authored; some
  * highlight clipping is part of the look. Desaturation is authored 0..4 but
@@ -36,6 +38,7 @@ function vec3(v: { x: number; y: number; z: number }): string {
  * what the game does there is unknown. No imported map goes near it.
  */
 export function gradeGlsl(grade: ResolvedGrade): string {
+  const gamma = grade.gamma === 1 ? "" : `\tcolor = pow( max( color, vec3( 0.0 ) ), vec3( ${f(1 / grade.gamma)} ) );\n`;
   return `vec3 CustomToneMapping( vec3 color ) {
 	const vec3 gradeDark = ${vec3(grade.darkTint)};
 	const vec3 gradeMedium = ${vec3(grade.mediumTint)};
@@ -50,7 +53,8 @@ export function gradeGlsl(grade: ResolvedGrade): string {
 		: mix( gradeMedium, gradeLight, smoothstep( 0.5, 1.0, gradeL ) );
 
 	float gradeD = mix( ${f(grade.desaturationDark)}, ${f(grade.desaturation)}, smoothstep( 0.0, 0.5, gradeL ) );
-	return mix( color, vec3( dot( color, gradeLuma ) ), clamp( gradeD, 0.0, 1.0 ) );
+	color = mix( color, vec3( dot( color, gradeLuma ) ), clamp( gradeD, 0.0, 1.0 ) );
+${gamma}	return color;
 }`;
 }
 

@@ -49,7 +49,7 @@ import { brainFor } from "@3d/shared/game/bots/registry.js";
 import type { PlayerId } from "@3d/shared/net/messages/fields.js";
 import { MODEL_FACING } from "@3d/shared/rig/character.js";
 import { couldHit, POSE_MARGIN } from "@3d/shared/rig/hitboxes.js";
-import type { CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
+import type { CapsuleResolution, CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
 import { rayBox } from "@3d/shared/sim/hit.js";
 import type { HitLocation } from "@3d/shared/sim/hitLocations.js";
 import { idleInput } from "@3d/shared/sim/input.js";
@@ -73,6 +73,15 @@ const IDLE_PERIOD = 2;
 const CAPSULE_LOCATION: HitLocation = "torsoUpper";
 /** Column-major identity, for a box already in world space. */
 const IDENTITY: readonly number[] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+/** The fastest one actor is pushed out of another, m/s: a pile at one spawn point spreads over a few ticks, not one. */
+const SEPARATION_SPEED = 4;
+/** Walking into a body within this sine of head-on is a meeting on one line, and sidesteps. */
+const HEAD_ON = 0.25;
+/** How far a head-on push leans to the right: a share of the push, before it is renormalised. */
+const SIDESTEP = 0.5;
+/** Radians between consecutive ids' ways out of a pile: never two the same, never a line. */
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 /** The shortest a traversal is crossed in, s: a step down still takes a few ticks. */
 const MIN_CROSSING = 0.2;
@@ -178,6 +187,8 @@ export class Actors {
   private readonly rewound = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
   private readonly boxMin: Vec3 = { x: 0, y: 0, z: 0 };
   private readonly boxMax: Vec3 = { x: 0, y: 0, z: 0 };
+  private readonly pushed: Vec3 = { x: 0, y: 0, z: 0 };
+  private readonly resolution: CapsuleResolution = { position: { x: 0, y: 0, z: 0 }, grounded: false };
 
   constructor(
     private readonly collision: CapsuleWorld,
@@ -333,12 +344,80 @@ export class Actors {
         host.fell(actor.id, actor.health);
         continue;
       }
+      this.separate(actor, host.dt);
       advanceCycle(actor, host.dt);
       this.swing(actor, host);
     }
     for (const actor of this.actors.values()) {
       actor.history.record(host.tick, actor.movement);
     }
+  }
+
+  /**
+   * Push a living actor out of the bodies it yields to: every older one, already
+   * stepped this tick, and any crossing a traversal, which nothing moves. The
+   * younger always yields, so a crowd settles in one pass, the same way every run,
+   * and the oldest in a crush is never held. The velocity into a body is taken off,
+   * as a wall's would be, and the world has the last word on where the push lands.
+   * Every pair, every tick: a horde is tens, not thousands.
+   */
+  private separate(actor: Actor, dt: number): void {
+    const m = actor.movement;
+    const v = m.velocity;
+    const { radius, height } = actor.body;
+    let px = 0;
+    let pz = 0;
+    for (const other of this.actors.values()) {
+      if (other === actor || other.diedAt !== null || (other.id > actor.id && !other.crossing)) {
+        continue;
+      }
+      const o = other.movement.feet;
+      if (o.y >= m.feet.y + height || m.feet.y >= o.y + other.body.height) {
+        continue;
+      }
+      let nx = m.feet.x - o.x;
+      let nz = m.feet.z - o.z;
+      const d = Math.hypot(nx, nz);
+      const depth = radius + other.body.radius - d;
+      if (depth <= 0) {
+        continue;
+      }
+      if (d > 1e-6) {
+        nx /= d;
+        nz /= d;
+      } else {
+        // One on top of another, as a pile at one spawn point is: each its own way
+        // round by its id, since one way for all lines them up and sandwiches the third.
+        nx = Math.cos(actor.id * GOLDEN_ANGLE);
+        nz = Math.sin(actor.id * GOLDEN_ANGLE);
+      }
+      // Walking straight into it, as two on one link do: lean the push to its own
+      // right, so it steps round rather than being shoved back down the link.
+      const speed = Math.hypot(v.x, v.z);
+      if (speed > 1e-6 && v.x * nx + v.z * nz < 0 && Math.abs(nx * v.z - nz * v.x) < HEAD_ON * speed) {
+        nx += (SIDESTEP * -v.z) / speed;
+        nz += (SIDESTEP * v.x) / speed;
+        const n = Math.hypot(nx, nz);
+        nx /= n;
+        nz /= n;
+      }
+      px += nx * depth;
+      pz += nz * depth;
+      const into = v.x * nx + v.z * nz;
+      if (into < 0) {
+        v.x -= into * nx;
+        v.z -= into * nz;
+      }
+    }
+    const length = Math.hypot(px, pz);
+    if (length === 0) {
+      return;
+    }
+    const scale = Math.min(1, (SEPARATION_SPEED * dt) / length);
+    Object.assign(this.pushed, { x: m.feet.x + px * scale, y: m.feet.y, z: m.feet.z + pz * scale });
+    const { position } = this.collision.resolveCapsule(this.pushed, radius, height, this.resolution);
+    Object.assign(m.feet, { x: position.x, y: position.y, z: position.z });
+    actor.driver.motor.jostled();
   }
 
   private think(actor: Actor, host: ActorHost, input: ReturnType<typeof idleInput>): void {

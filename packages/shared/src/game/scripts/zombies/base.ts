@@ -16,18 +16,19 @@
 // a purchase taken or refused are said here (`SAYS`), and a zombie's voice is its
 // kind's (`ActorKindDef.sounds`).
 
-import type { GameKey, ResolvedPoint } from "../../dsl/resolved.js";
-import type { PlayerId } from "../../net/messages/fields.js";
-import type { HitLocation } from "../../sim/hitLocations.js";
-import type { WorldIndex } from "../../worlds/worldIndex.js";
-import type { ActorGait } from "../actors/actor.js";
-import { TRANSIT_ZOMBIE_KIND, ZOMBIE_KIND, type ActorKindId } from "../actors/kinds.js";
-import type { GameView, ServerContext } from "../context.js";
-import type { DamageCause } from "../damage.js";
-import type { UsableThing } from "../focus.js";
-import { ZOMBIES_BO2_HORDE_GAMETYPE, ZOMBIES_GAMETYPE } from "../gametypes/zombies.js";
-import { defineScript } from "../hooks.js";
-import { hashString, seeded } from "../random.js";
+import type { GameKey, ResolvedPoint } from "../../../dsl/resolved.js";
+import type { PlayerId } from "../../../net/messages/fields.js";
+import type { HitLocation } from "../../../sim/hitLocations.js";
+import type { WorldIndex } from "../../../worlds/worldIndex.js";
+import type { ActorGait } from "../../actors/actor.js";
+import { TRANSIT_ZOMBIE_KIND, ZOMBIE_KIND, type ActorKindId } from "../../actors/kinds.js";
+import { ArmedWith } from "../../classes.js";
+import type { GameView, ServerContext } from "../../context.js";
+import type { DamageCause } from "../../damage.js";
+import type { UsableThing } from "../../focus.js";
+import { ZOMBIES_BO2_HORDE_GAMETYPE, ZOMBIES_GAMETYPE } from "../../gametypes/zombies.js";
+import { defineScript } from "../../hooks.js";
+import { hashString, seeded } from "../../random.js";
 
 /** Every player's purse at the start (`zombie_score_start_Np`, MEDIUM: 500 for any count). */
 export const START_POINTS = 500;
@@ -99,6 +100,20 @@ const HEARD = {
 
 /** The horde each game's worlds are overrun by; a game not here gets Black Ops'. */
 const HORDE: Partial<Record<GameKey, ActorKindId>> = { t5: ZOMBIE_KIND.id, t6: TRANSIT_ZOMBIE_KIND.id };
+
+const DEFAULT_LOADOUT: Partial<Record<GameKey, ArmedWith>> = {
+  t5: {
+    primary: {
+      weapon: "t5/m1911_mp",
+    },
+  },
+
+  t6: {
+    primary: {
+      weapon: "t6/fiveseven_mp",
+    },
+  },
+};
 
 /** Which kind this match spawns: its world's game's horde, or TranZit's in the preview gametype. */
 export function hordeKind(view: Pick<GameView, "game" | "gametype">): ActorKindId {
@@ -260,7 +275,9 @@ function endRound(ctx: ServerContext<ZombiesState>): void {
   const s = ctx.memory;
   s.phase = "break";
   s.since = ctx.now;
+
   ctx.publish({ what: SAYS.roundOver, value: s.round });
+
   for (const id of people(ctx)) {
     if (ctx.respawn(id) && s.round > RESPAWN_FLOOR_AFTER && ctx.points(id) < RESPAWN_FLOOR) {
       ctx.addPoints(id, RESPAWN_FLOOR - ctx.points(id));
@@ -270,10 +287,10 @@ function endRound(ctx: ServerContext<ZombiesState>): void {
 
 /** One spawn if one is due: at a spawner of a zone a living player stands in. */
 function spawnOne(ctx: ServerContext<ZombiesState>): void {
-  const s = ctx.memory;
-  if (s.left <= 0 || ctx.now < s.nextSpawnAt || aliveZombies(ctx) >= MAX_ALIVE) {
+  if (ctx.memory.left <= 0 || ctx.now < ctx.memory.nextSpawnAt || aliveZombies(ctx) >= MAX_ALIVE) {
     return;
   }
+
   const zones = new Set<string>();
   for (const id of people(ctx)) {
     if (alive(ctx, id)) {
@@ -282,26 +299,30 @@ function spawnOne(ctx: ServerContext<ZombiesState>): void {
       }
     }
   }
+
   const spawners = [...zones].flatMap((zone) => spawnersOf(ctx.world, zone));
   if (spawners.length === 0) {
     return; // nobody in a zone: spawning waits, as BO1's does with no active spawners
   }
-  let at = spawners[Math.floor(s.rng() * spawners.length)]!;
-  if (at === s.last) {
-    at = spawners[Math.floor(s.rng() * spawners.length)]!;
+
+  let at = spawners[Math.floor(ctx.memory.rng() * spawners.length)]!;
+  if (at === ctx.memory.last) {
+    at = spawners[Math.floor(ctx.memory.rng() * spawners.length)]!;
   }
-  s.last = at;
+
+  ctx.memory.last = at;
   ctx.actors.spawn({
     kind: hordeKind(ctx),
     brain: "zombie",
     objective: { kind: "hunt" },
     at: at.position,
     look: at.look,
-    gait: gaitFor(s.round, s.rng),
-    health: zombieHealth(s.round),
+    gait: gaitFor(ctx.memory.round, ctx.memory.rng),
+    health: zombieHealth(ctx.memory.round),
   });
-  s.left--;
-  s.nextSpawnAt = ctx.now + spawnDelay(s.round);
+
+  ctx.memory.left--;
+  ctx.memory.nextSpawnAt = ctx.now + spawnDelay(ctx.memory.round);
 }
 
 export const zombiesScript = defineScript<ZombiesState>({
@@ -329,6 +350,8 @@ export const zombiesScript = defineScript<ZombiesState>({
       last: undefined,
     }),
     combatRules: () => ({ respawnDelay: null }),
+    // No class menu, at the start or between deaths: the starting pistol is the script's (`playerJoin`).
+    classRules: () => ({ customClasses: false, change: "refuse" }),
     // The windows open: zombies climb in where BO1's boards would be.
     matchStart: (ctx) => {
       for (const window of windowClips(ctx.world)) {
@@ -339,39 +362,57 @@ export const zombiesScript = defineScript<ZombiesState>({
       ctx.setTeam(id, "survivors");
       ctx.addPoints(id, START_POINTS);
     },
+    playerSpawn: (ctx, id) => {
+      if (!ctx.game) {
+        return;
+      }
+
+      const loadout = DEFAULT_LOADOUT[ctx.game];
+
+      if (!loadout) {
+        return;
+      }
+
+      ctx.setLoadout(id, loadout);
+    },
     tick: (ctx) => {
-      const s = ctx.memory;
       const here = people(ctx);
-      if (s.phase === "over") {
-        if (ctx.now - s.since! >= GAME_OVER_SECONDS) {
-          ctx.endMatch(`everyone died in round ${s.round}`);
+
+      if (ctx.memory.phase === "over") {
+        if (ctx.now - ctx.memory.since! >= GAME_OVER_SECONDS) {
+          ctx.endMatch(`everyone died in round ${ctx.memory.round}`);
         }
         return;
       }
-      if (s.phase === "waiting") {
+
+      if (ctx.memory.phase === "waiting") {
         if (here.length > 0) {
-          s.since ??= ctx.now;
-          if (ctx.now - s.since >= FIRST_ROUND_DELAY) {
+          ctx.memory.since ??= ctx.now;
+          if (ctx.now - ctx.memory.since >= FIRST_ROUND_DELAY) {
             startRound(ctx, 1);
           }
         }
         return;
       }
+
       // With nobody left standing it is over, as `checkForAllDead` calls it.
       if (here.length > 0 && !here.some((id) => alive(ctx, id))) {
-        s.phase = "over";
-        s.since = ctx.now;
-        ctx.publish({ what: SAYS.gameOver, value: s.round });
+        ctx.memory.phase = "over";
+        ctx.memory.since = ctx.now;
+        ctx.publish({ what: SAYS.gameOver, value: ctx.memory.round });
         return;
       }
-      if (s.phase === "break") {
-        if (ctx.now - s.since! >= ROUND_BREAK) {
-          startRound(ctx, s.round + 1);
+
+      if (ctx.memory.phase === "break") {
+        if (ctx.now - ctx.memory.since! >= ROUND_BREAK) {
+          startRound(ctx, ctx.memory.round + 1);
         }
         return;
       }
+
       spawnOne(ctx);
-      if (s.left <= 0 && aliveZombies(ctx) === 0) {
+
+      if (ctx.memory.left <= 0 && aliveZombies(ctx) === 0) {
         endRound(ctx);
       }
     },
@@ -394,10 +435,12 @@ export const zombiesScript = defineScript<ZombiesState>({
       if (price === null || !ctx.world.isPresent(thing.target!)) {
         return;
       }
+
       if (ctx.points(player) < price) {
         ctx.publish({ what: SAYS.deny, player, value: price });
         return;
       }
+
       ctx.addPoints(player, -price);
       ctx.world.setPresent(thing.target!, false);
       ctx.publish({ what: SAYS.purchase, player, value: price });

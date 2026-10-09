@@ -364,6 +364,8 @@ export interface ResolvedGrade {
   desaturation: number;
   /** The same for dark pixels; CoD grades them separately and usually less. */
   desaturationDark: number;
+  /** Applied last as `pow(colour, 1 / gamma)`: 1 is neutral, above 1 lifts the midtones. Always positive. */
+  gamma: number;
 }
 
 /**

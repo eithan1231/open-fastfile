@@ -1048,7 +1048,7 @@ comment saying what it replaced:
 ```json
 {
   "world": { "sky": "#c3ccd8", "visibility": 400 },
-  "grade": { "desaturation": 0.25 },
+  "grade": { "desaturation": 0.25, "gamma": 0.8 },
   "shell": { "lightmap-intensity": 0.25 },
   "decals": { "decal": false },
   "sun": { "intensity": 1.2, "color": "#ffeecc", "shadows": false },

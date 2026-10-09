@@ -209,7 +209,8 @@ describe("a zombies round", () => {
     const spawned = ctx.actors.ids().map((id) => ctx.actors.state(id)!);
     expect(spawned).toHaveLength(6);
     for (const zombie of spawned) {
-      expect(WALKERS).toContainEqual({ x: zombie.feet.x, z: zombie.feet.z });
+      // Three to a walker, so each stands where it was put or a body's width or two off it, pushed out of the others.
+      expect(WALKERS.some((w) => Math.hypot(w.x - zombie.feet.x, w.z - zombie.feet.z) < 1)).toBe(true);
       expect(zombie.health).toBe(150);
     }
     // And no more: the round's six are all out.

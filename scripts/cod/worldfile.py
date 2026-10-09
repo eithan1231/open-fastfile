@@ -140,7 +140,7 @@ ZOMBIE_ZONES = ("zombie_", "zombietron", "nacht_", "zm_")
 OVERRIDES_FILE = "_overrides.json"
 OVERRIDE_SECTIONS = {
     "world": ("sky", "visibility", "exposure"),
-    "grade": ("light-tint", "medium-tint", "dark-tint", "desaturation", "desaturation-dark"),
+    "grade": ("light-tint", "medium-tint", "dark-tint", "desaturation", "desaturation-dark", "gamma"),
     "shell": ("collide", "lightmap", "lightmap-intensity"),
     "decals": ("collide", "decal", "lightmap", "lightmap-intensity"),
     "sun": ("type", "at", "intensity", "color", "shadows"),

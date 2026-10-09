@@ -52,6 +52,7 @@ describe("grade — schema", () => {
       darkTint: { x: 1, y: 1, z: 1 },
       desaturation: 0,
       desaturationDark: 0,
+      gamma: 1,
     });
   });
 
@@ -65,8 +66,26 @@ describe("grade — schema", () => {
   });
 
   it("rejects an unknown property", () => {
-    const diags = resolve("grade { gamma: 2.2 }").diagnostics;
-    expect(diags.some((d) => d.message.includes("gamma"))).toBe(true);
+    const diags = resolve("grade { contrast: 1.2 }").diagnostics;
+    expect(diags.some((d) => d.message.includes("contrast"))).toBe(true);
+  });
+
+  it("accepts a gamma and carries it through", () => {
+    const result = resolve("grade { gamma: 1.2 }");
+    expect(result.diagnostics).toHaveLength(0);
+    expect(result.world!.grade!.gamma).toBe(1.2);
+  });
+
+  it("warns about a gamma at or below zero and falls back to neutral", () => {
+    const result = resolve("grade { gamma: 0 }");
+    expect(result.diagnostics.some((d) => d.code === "gamma-out-of-range")).toBe(true);
+    expect(hasErrors(result.diagnostics)).toBe(false);
+    expect(result.world!.grade!.gamma).toBe(1);
+  });
+
+  it("warns about a gamma far outside the usual range", () => {
+    const diags = resolve("grade { gamma: 22 }").diagnostics;
+    expect(diags.some((d) => d.code === "gamma-out-of-range")).toBe(true);
   });
 
   it("warns when a tint leaves the 0..2 scale, the usual sign of wrong units", () => {
@@ -118,6 +137,7 @@ describe("grade — GLSL", () => {
     darkTint: { x: 1, y: 1, z: 1 },
     desaturation: 0,
     desaturationDark: 0,
+    gamma: 1,
   };
 
   /** Every float literal in GLSL needs a decimal point; a bare `1` is an int and fails to compile. */
@@ -172,6 +192,16 @@ describe("grade — GLSL", () => {
     // lives at the point of use.
     const glsl = gradeGlsl({ ...identity, desaturation: 4, desaturationDark: 4 });
     expect(glsl).toContain("clamp( gradeD, 0.0, 1.0 )");
+  });
+
+  it("leaves the gamma curve out at 1, so an ungamma'd grade is unchanged", () => {
+    expect(gradeGlsl(identity)).not.toContain("pow(");
+  });
+
+  it("applies gamma last, as pow(colour, 1 / gamma) on non-negative colour", () => {
+    const glsl = gradeGlsl({ ...identity, gamma: 2 });
+    expect(glsl).toContain("pow( max( color, vec3( 0.0 ) ), vec3( 0.500000 ) )");
+    expect(glsl.indexOf("pow(")).toBeGreaterThan(glsl.indexOf("clamp( gradeD"));
   });
 
   it("emits float literals GLSL will accept", () => {

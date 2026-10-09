@@ -748,6 +748,7 @@ export function resolveWorld(statements: Statement[]): ResolveResult {
         darkTint: tintOf(ctx, gradeNode, "dark-tint"),
         desaturation: desaturationOf(ctx, gradeNode, "desaturation"),
         desaturationDark: desaturationOf(ctx, gradeNode, "desaturation-dark"),
+        gamma: gammaOf(ctx, gradeNode),
       }
     : undefined;
 
@@ -860,6 +861,24 @@ function desaturationOf(ctx: ResolveContext, node: ObjectNode, key: string): num
   const v = numbersOf(prop, (n) => n)[0] ?? 0;
   if (prop && (v < 0 || v > 4)) {
     ctx.warn(`"${key}" is a 0..4 amount where 0 leaves colour alone and 1 is fully grey; ${v} is outside it`, prop.span, "desaturation-out-of-range");
+  }
+  return v;
+}
+
+/**
+ * Read a `grade`'s gamma, warning outside 0.5..2.5. Zero or below has no
+ * meaning as an exponent's reciprocal, so it warns and falls back to neutral
+ * rather than reaching the shader as an infinity.
+ */
+function gammaOf(ctx: ResolveContext, node: ObjectNode): number {
+  const prop = findProp(node, "gamma");
+  const v = numbersOf(prop, (n) => n)[0] ?? 1;
+  if (prop && !(v > 0)) {
+    ctx.warn(`"gamma" must be above 0 (1 is neutral); ${v} is ignored`, prop.span, "gamma-out-of-range");
+    return 1;
+  }
+  if (prop && (v < 0.5 || v > 2.5)) {
+    ctx.warn(`"gamma" is a curve where 1 is neutral; ${v} is far outside the usual 0.5..2.5`, prop.span, "gamma-out-of-range");
   }
   return v;
 }

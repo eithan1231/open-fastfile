@@ -18,7 +18,7 @@ import type { Script } from "./hooks.js";
 import { castScript } from "./scripts/cast.js";
 import { chaseScript } from "./scripts/chase.js";
 import { countdownScript } from "./scripts/countdown.js";
-import { zombiesScript } from "./scripts/zombies.js";
+import { zombiesScript } from "./scripts/zombies/base.js";
 
 export { DEFAULT_GAMETYPE, GAMETYPES, gametype, admits, admitsMap };
 

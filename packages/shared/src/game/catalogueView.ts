@@ -11,7 +11,7 @@
 // GLB behind it is the client's business.
 
 import type { GameKey } from "../dsl/resolved.js";
-import type { WeaponId } from "../sim/weaponRegistry.js";
+import { weaponKey, type WeaponId } from "../sim/weaponRegistry.js";
 import type { ActorEntry } from "./actors/assets.js";
 
 /**
@@ -75,8 +75,11 @@ export interface AnimationsEntry {
  * nothing degrades — capsules, or an unarmed player — rather than failing.
  */
 export interface CatalogueView {
-  /** Whether this id names a weapon the catalogue still holds. */
-  weapon(id: WeaponId): { game: string; id: string } | undefined;
+  /**
+   * The weapon this id names, if the catalogue still holds it. `id` is the full
+   * `WeaponId` (`<game>/<name>`) that `arm`/`setLoadout` take, not the entry's bare name.
+   */
+  weapon(id: WeaponId): { game: string; id: WeaponId } | undefined;
   /** Every body for a game, in catalogue order. */
   charactersFor(game: GameKey): readonly CharacterEntry[];
   /** Every pair of hands for a game, in catalogue order. */
@@ -136,8 +139,8 @@ export function catalogueViewOf(index: CatalogIndexBody, weapons: WeaponLookup):
 
   return {
     weapon: (id) => {
-      const entry = weapons.entry(id);
-      return entry ? (entry as { game: string; id: string }) : undefined;
+      const entry = weapons.entry(id) as { game: string; id: string } | undefined;
+      return entry ? { game: entry.game, id: weaponKey(entry) } : undefined;
     },
     charactersFor: (game) => characters.get(game) ?? [],
     viewhandsFor: (game) => viewhands.get(game) ?? [],

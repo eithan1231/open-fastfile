@@ -252,19 +252,44 @@ tick, and a brain sees players where this tick left them. In spawn order:
    and it is not asked until the world's graph is baked — it stands, as a bot
    does.
 3. It is stepped through `stepMovement` with its kind's capsule at its gait's speed,
-   against the `ai` channel. Actors do not collide with each other or with
-   players. One crossing a traversal is moved along it instead, and one whose
+   against the `ai` channel. One crossing a traversal is moved along it instead, and one whose
    motor has just handed it a traversal begins crossing it
    ([where it goes](#where-it-goes)); neither is thought for, falls or swings.
 4. Below the world's kill plane it dies, `outOfWorld`, past a script's say.
-5. Its gait cycle turns by the ground it covered ([gait](#gait)).
-6. Its swing goes on, lands or ends, or one begins ([melee](#melee)); a blow is
+5. It is pushed out of the actors it yields to ([crowding](#crowding)).
+6. Its gait cycle turns by the ground it covered ([gait](#gait)).
+7. Its swing goes on, lands or ends, or one begins ([melee](#melee)); a blow is
    queued as `melee`, by nobody.
 
 A brain asks for a blow with the goal `attack { target }`. The motor only stands
 and faces the target; the blow is the runtime's, because it is the kind's number
 and cooldown and not the brain's. A bot given `attack` stands and faces, and hits
 nothing.
+
+## Crowding
+
+Two living actors never stand in one place (`Actors.separate`). Right after its
+step, an actor is pushed out of every capsule it overlaps among those it **yields
+to**: every older actor, which has already been stepped this tick, and any actor
+crossing a traversal, which nothing moves. The younger always yields, so one pass
+in spawn order settles a crowd the same way on every run, and the oldest in a
+crush is never held: a queue at a window always moves.
+
+- The push is at most `SEPARATION_SPEED` (4 m/s), so a pile at one spawn point
+  spreads over a few ticks. Feet exactly on top of one another go each their own
+  way round, by the id's golden angle; one way for all would line them up.
+- The world has the last word on where it lands (`resolveCapsule` on the `ai`
+  channel), and the velocity into the other body is taken off, as a wall's would
+  be, so one held head-on fades to its idle rather than marching on the spot.
+- Walking straight into one, as two on one link do, the push leans to its own
+  right, so it steps round rather than being shoved back down the link.
+- **A push is not being stuck.** It tells the motor (`Motor.jostled`), which
+  measures the leg's progress afresh from where it was left. Without that, a
+  walker shoved half a metre back cannot win it back inside the follower's 30
+  ticks, and a link it was queueing on is shut for every actor in the match.
+
+Players are not in it: an actor still walks through a player and a player
+through it. A dead one stops nobody.
 
 ## Damage
 
@@ -363,8 +388,11 @@ it is judged where the shooter saw them.
 - **A swing's clip does not move it.** The walk and run swings carry 1.1–2.7 m/s of
   root motion and `attack_forward` up to 0.48 m/s, none of it played: the motor
   stands for `attack`, so a zombie marches on the spot while it swings.
-- **Nothing separates actors.** They pass through each other and through players,
-  so a horde converging on one player stands in one place.
+- **Actors and players pass through each other.** Actors keep apart from one
+  another ([crowding](#crowding)), but a zombie can still stand inside a player.
+- **Crowding is greedy, not planned.** Nothing routes a zombie round a crowd; it is
+  pushed and steps round. One standing still on a narrow walk (a brain that failed,
+  an idle one) holds the younger ones behind it for as long as it stands there.
 - **No actor rides a ragdoll.** A dead actor plays `die`; it has no physics body.
 - **A climb is a straight line.** The body is moved from begin to end at an even
   rate while its climb plays, whatever the clip's own root motion does over the

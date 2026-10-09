@@ -161,6 +161,7 @@ character — as distinct from its lighting, which is what `light` and
 | `dark-tint`         | 3 numbers (RGB) | `1 1 1` |
 | `desaturation`      | number, 0–4     | `0`     |
 | `desaturation-dark` | number, 0–4     | `0`     |
+| `gamma`             | number, above 0 | `1`     |
 
 The three tints are linear RGB multipliers applied after tone mapping,
 blended smoothly by each pixel's luminance: `dark-tint` at black,
@@ -177,7 +178,18 @@ something any grade wants.
 Omitting the node leaves rendering exactly as it was; a `grade { }` with no
 properties is the identity grade.
 
-A `grade` models tint and desaturation only. Overall contrast, brightness and
+`gamma` is the last step: a curve applied to the finished colour as
+`colour^(1/gamma)`. `1` is neutral; above 1 lifts the midtones and shadows
+without moving black or white, below 1 deepens them. Where `exposure` scales
+everything, including what is already bright, `gamma` is the knob for a world
+whose dark interiors read too black while its highlights are fine. Values
+outside 0.5–2.5 draw a warning; 0 or below is ignored.
+
+```
+grade { gamma: 1.2 }
+```
+
+Beyond that, a `grade` models tint and desaturation only. Overall contrast and
 inversion are deliberately not modelled — use `exposure` for brightness. If
 you are porting a grade from a source that has those as separate controls,
 check they sit at their neutral values first.

@@ -116,6 +116,18 @@ export class Motor implements MotorView {
     this.traversal = -1;
   }
 
+  /**
+   * The runtime pushed it out of another body: the leg's progress is measured
+   * afresh from where it was left, so a crowd queueing at a window, or a walker
+   * shoved back half a metre, is not a stuck link shut for every mover in the match.
+   */
+  jostled(): void {
+    if (this.cursor) {
+      this.cursor.best = Infinity;
+      this.cursor.sinceBest = 0;
+    }
+  }
+
   /** Forget the goal and the path: the bot died, or left. */
   reset(): void {
     this.goal = IDLE;
