@@ -6,6 +6,7 @@ meanings and how they were established are in docs/cod/reference.md#materials.
 """
 
 import os
+import re
 from collections import namedtuple
 
 from .files import read_json
@@ -203,14 +204,46 @@ def colour_maps(mat_root, game_key):
     return found
 
 
-def surface_images(colormap, drop):
-    """The colour maps a shell needs: every used material's but the dropped non-surfaces'.
+# A Black Ops generated material blends up to three layers over its base in one
+# pass, and its techset spells each: `l_sm_r0c0n0s0_b1c1n1s1_m2c2` is layer 1
+# blended and layer 2 multiplied. Each mode is the lit pixel shader's own
+# (docs/cod/reference.md#layered-materials). Other games' layers are not read yet.
+LAYER_MODES = {"b": "blend", "m": "multiply", "a": "add", "t": "test"}
+LAYERED_GAMES = ("t5",)
+_LAYER_IN_TECHSET = re.compile(r"_([a-z])([1-9])c\2")
+
+
+def material_layers(data, game_key):
+    """[{"mode", "image"}] for each layer drawn over the base, in order; [] for one that has none.
+
+    A layer whose mode or colour map is unknown ends the list rather than being
+    skipped: the vertex data addresses layers by position.
+    """
+    if game_key not in LAYERED_GAMES:
+        return []
+    images = {tex.get("name"): tex.get("image") for tex in data.get("textures", []) if tex.get("semantic") == "colorMap"}
+    layers = []
+    for k, (letter, index) in enumerate(_LAYER_IN_TECHSET.findall(data.get("techniqueSet") or ""), start=1):
+        mode, image = LAYER_MODES.get(letter), images.get(f"colorMap{index}")
+        if int(index) != k or mode is None or image is None:
+            break
+        layers.append({"mode": mode, "image": image})
+    return layers
+
+
+def surface_images(colormap, drop, states=None):
+    """The colour maps a shell needs: every used material's but the dropped non-surfaces', with their layers'.
 
     A dropped material draws nothing, and asking for its image anyway reported a
     false MISSING on every BO2 map: `wpc/shadowcaster` names an image `shadow` no zone holds.
     """
     dropped = set(drop)
-    return {image for name, image in colormap.items() if name not in dropped}
+    images = set()
+    for name, image in colormap.items():
+        if name not in dropped:
+            images.add(image)
+            images.update(layer["image"] for layer in (states or {}).get(name, {}).get("layers", ()))
+    return images
 
 
 def material_images(mat_root, name):
@@ -244,6 +277,7 @@ def material_render_state(data, game_key):
         "doubleSided": state.get("cullFace") == "none",
         "castsShadow": bool({MTL_GAMEFLAG_CASTS_SHADOW, MTL_GAMEFLAG_CASTS_SHADOW_ALPHATEST} & set(flags)),
         "flag": flag_parms(data, game_key),
+        "layers": material_layers(data, game_key),
         "drop": any(t in techset for t in SURFACES_BY_GAME[game_key].drop_techsets),
     }
 

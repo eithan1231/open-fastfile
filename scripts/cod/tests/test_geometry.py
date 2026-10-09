@@ -23,7 +23,18 @@ from scripts.cod.collision import (
     surface_of,
 )
 from scripts.cod.gltf import glb_bounds, pack, read_glb, write_glb
-from scripts.cod.shell import VERTEX, VERTEX_STRIDE, check_winding, decode_vertices, export_shell, unpack_unit_vec
+from scripts.cod.shell import (
+    VERTEX,
+    VERTEX_STRIDE,
+    check_winding,
+    decode_layers,
+    decode_vertices,
+    export_shell,
+    layer_stride,
+    measured_strides,
+    neutralise_generated,
+    unpack_unit_vec,
+)
 from scripts.cod.units import UNITS_PER_M, to_engine
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -131,8 +142,57 @@ def test_decode_vertices_reads_each_field_from_its_own_offset():
     assert uv == pytest.approx([0.25, 0.5] * 2)
     assert lmp == pytest.approx([0.75, 0.125] * 2)
     assert col == [10, 20, 30, 40] * 2
-    # Black Ops keeps layer weights in RGB, so only alpha survives there.
-    assert decode_vertices(vertex, 1, "t5")[4] == [255, 255, 255, 40]
+    # Black Ops' plain surfaces keep their tint; only a layered surface's weights are whitened.
+    assert decode_vertices(vertex, 1, "t5")[4] == [10, 20, 30, 40]
+    col = [10, 20, 30, 40] * 2
+    layered = {"material": "*1n_2(a:b)", "baseIndex": 0, "firstVertex": 1, "triCount": 1}
+    assert neutralise_generated(col, [layered], [0, 0, 0], "t5") == 1
+    assert col == [10, 20, 30, 40, 255, 255, 255, 255]
+
+
+def test_layer_stride_counts_uvs_and_normal_mapped_tangents():
+    assert layer_stride("*10n_13(a:b)") == 8
+    assert layer_stride("*16n_18n(a:b)") == 12
+    assert layer_stride("*2n_18n_42(a:b:c)") == 20
+    assert layer_stride("wc/concrete") is None
+
+
+def test_decode_layers_reads_each_vertex_by_its_index_and_weights_from_bgra():
+    # Two vertices of one `*1n_2_3n` surface: layers 1 and 2 each a UV, then layer 2's tangent.
+    def vertex(colour):
+        return struct.pack("<3f", 0, 0, 0) + bytes(4) + bytes(colour) + bytes(VERTEX_STRIDE - 20)
+
+    verts = vertex([0, 0, 0, 0]) * 3 + vertex([51, 102, 0, 255]) + vertex([255, 0, 0, 0])
+    assert layer_stride("*1n_2_3n(a:b:c)") == 20
+    layer_data = bytes(4)  # the surface's data starts after another's
+    layer_data += struct.pack("<4f", 0.5, 1.5, 2.5, 3.5) + bytes(4)
+    layer_data += struct.pack("<4f", -1.0, -2.0, -3.0, -4.0) + bytes(4)
+    states = {"*1n_2_3n(a:b:c)": {"layers": [{"mode": "blend"}, {"mode": "multiply"}]}}
+    surface = {
+        "material": "*1n_2_3n(a:b:c)",
+        "firstVertex": 3,
+        "vertexCount": 2,
+        "triCount": 1,
+        "baseIndex": 0,
+        "vertexLayerData": 4,
+    }
+
+    layers = decode_layers({"vertexCount": 5, "surfaces": [surface]}, verts, layer_data, [1, 0, 1], states)
+
+    # Layer 1's weight is byte 1 (COLOR0.y), layer 2's byte 0 (COLOR0.z): D3DCOLOR is BGRA.
+    assert layers[1][9:] == pytest.approx([0.5, 1.5, 0.4, -1.0, -2.0, 0.0])
+    assert layers[2][9:] == pytest.approx([2.5, 3.5, 0.2, -3.0, -4.0, 1.0])
+    assert layers[1][:9] == [0.0] * 9  # vertices no layered surface uses
+
+
+def test_the_layer_stride_is_measured_where_the_name_misspells_it():
+    # `*30_166n` names a tangent its data does not hold: 8 bytes a vertex, not 12.
+    surfaces = [
+        {"material": "*30_166n(a:b)", "firstVertex": 10, "vertexCount": 4, "vertexLayerData": 100},
+        {"material": "*16n_18n(a:b)", "firstVertex": 20, "vertexCount": 2, "vertexLayerData": 132},
+        {"material": "wc/plain", "firstVertex": 0, "vertexCount": 9, "vertexLayerData": 0},
+    ]
+    assert measured_strides(surfaces, 156) == {100: 8, 132: 12}
 
 
 # -- Ghosts (IW6) ---------------------------------------------------------------

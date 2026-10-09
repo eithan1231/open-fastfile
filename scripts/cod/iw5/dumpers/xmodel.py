@@ -261,6 +261,17 @@ def texture_of(material, semantics, preferred, fold=True):
 
 
 COLOUR_PREFERENCE = (("c", "p"), ("r", "k"), ("d", "p"))
+
+
+def colour_map_of(material, game):
+    """The image a model's material is coloured by. Not OAT's choice on T5/T6: there the numbered
+    `colorNMap` slots also spell `c`..`p`, come first, and hold what a technique layers over the colour
+    (a char mask, an env map, a glow), so `colorMap` itself is asked for before any of them
+    (docs/cod/pitfalls.md#a-reveal-mask-dust-or-thermal-map-as-the-colour)."""
+    own = texture_of(material, {TS_COLOR_MAP}, COLOUR_PREFERENCE)
+    return own or texture_of(material, COLOUR_MAPS.get(game, {TS_COLOR_MAP}), COLOUR_PREFERENCE)
+
+
 NORMAL_PREFERENCE = (("n", "p"),)
 
 
@@ -278,7 +289,7 @@ def lod_data(walk, model, name, index, surfs, bones, stats):
             lod.materials.append(
                 glb.ModelMaterial(
                     plain(material) or "",
-                    texture_of(material, COLOUR_MAPS.get(walk.game, {TS_COLOR_MAP}), COLOUR_PREFERENCE),
+                    colour_map_of(material, walk.game),
                     texture_of(material, {TS_NORMAL_MAP}, NORMAL_PREFERENCE, fold=False),
                 )
             )

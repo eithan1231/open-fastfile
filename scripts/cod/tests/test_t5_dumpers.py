@@ -7,6 +7,7 @@ default .cache/cod/golden).
 
 import glob
 import os
+import re
 import struct
 import zlib
 
@@ -308,6 +309,11 @@ def nuked_dump(tmp_path_factory):
     return out
 
 
+# What this backend writes that OAT's golden dump never held: the layer data of
+# Black Ops' generated materials (docs/cod/reference.md#layered-materials).
+BEYOND_OAT = re.compile(r"(^|\.)(vertexLayerData|layerDataSize|layerFile)$|\.gfxworld_layers\.bin$")
+
+
 @pytest.mark.parametrize("sub", sorted(WORLD.values()))
 def test_nuked_s_world_loses_nothing_the_golden_dump_holds(nuked_dump, sub):
     golden = os.path.join(GOLDEN, "work", "nuked-bo1", sub)
@@ -315,7 +321,19 @@ def test_nuked_s_world_loses_nothing_the_golden_dump_holds(nuked_dump, sub):
         pytest.skip(f"no golden dump at {golden}")
     report = equiv.compare_trees(golden, str(nuked_dump / sub))
     assert not report.failed, report.files
-    assert report.compared and report.count(equiv.EXTRA) == 0
+    extra = [
+        (rel, key)
+        for rel, items in report.files.items()
+        for status, key, _ in items
+        if status == equiv.EXTRA and not BEYOND_OAT.search(rel if key == "(file)" else key)
+    ]
+    assert report.compared and extra == []
+
+
+# Where this backend departs from OAT on purpose: a model coloured by its `colorMap`, not by the
+# numbered colour slot OAT picks first (xmodel.colour_map_of). On mp_nuked that is one material,
+# on every LOD: `global_burn_mask` before, `p_jun_wood_stack_c` now.
+NOT_OAT = ("materials[name=mc/mtl_p_jun_wood_stack].pbrMetallicRoughness.baseColorTexture.",)
 
 
 @pytest.mark.parametrize("sub", sorted(ASSETS.values()))
@@ -324,7 +342,13 @@ def test_nuked_s_own_assets_lose_nothing_the_golden_dump_holds(nuked_dump, sub, 
     if not os.path.isdir(golden):
         pytest.skip(f"no golden dump at {golden}")
     report = equiv.compare_trees(golden_subset(golden, str(nuked_dump / sub), str(tmp_path / "golden")), str(nuked_dump / sub))
-    assert not report.failed, report.files
+    failed = [
+        (rel, key, detail)
+        for rel, items in report.files.items()
+        for status, key, detail in items
+        if status in equiv.FAILURES and not key.startswith(NOT_OAT)
+    ]
+    assert failed == []
     assert report.compared
 
 
@@ -344,3 +368,19 @@ def test_nuked_s_path_nodes_are_its_node_entities_with_the_game_s_own_links(tmp_
     assert nav.meta["entityMatch"]["compared"] == "x y z type" and nav.meta["entityMatch"]["worst"] < 0.001
     assert nav.meta["links"] == {"traverse": 10, "walk": 1506, "walkOneWay": 20}
     assert nav.meta["traversals"] == {"JUMP_DOWN": 4, "MANTLE_ON": 4, "MANTLE_OVER": 2}
+
+
+def test_a_model_is_coloured_by_its_color_map_not_a_numbered_slot_before_it():
+    """T5's `clothcharr` and `wpn_clrdtl` techsets put a char mask or env map in `color0Map`, first."""
+
+    def slot(semantic, name, image_name):
+        return Rec(
+            {"semantic": semantic, "nameStart": ord(name[0]), "nameEnd": ord(name[-1]), "u": Rec({"image": Named(image_name)})}
+        )
+
+    table = [slot(0xC, "color0Map", "char_burning_mask"), slot(xmodel.TS_COLOR_MAP, "colorMap", "couch_c")]
+    couch = Named("mc/mtl_couch", Rec({"textureTable": table, "textureCount": 2}))
+    assert xmodel.colour_map_of(couch, "t5") == "couch_c"
+    # With no `colorMap` at all, a numbered slot is still better than nothing.
+    glow = Named("mc/mtl_glow", Rec({"textureTable": table[:1], "textureCount": 1}))
+    assert xmodel.colour_map_of(glow, "t5") == "char_burning_mask"

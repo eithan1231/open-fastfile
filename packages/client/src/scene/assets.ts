@@ -18,6 +18,7 @@ import { bakeSkinnedMeshes } from "./bake.js";
 import { applyFlagWind, type ShaderClock } from "./flag.js";
 import { hullGeometryFrom } from "@3d/shared/collision/hulls.js";
 import { blendedMaterialFor, configureLightmapTexture } from "./importedMaterials.js";
+import { layersOf, layersPlugin } from "./layers.js";
 import { audioContext } from "../engine/audio/context.js";
 
 export interface LoadedAsset {
@@ -73,7 +74,7 @@ interface ModelEntry {
 }
 
 function defaultLoaders(): AssetLoaders {
-  const gltf = new GLTFLoader();
+  const gltf = new GLTFLoader().register(layersPlugin);
   const textures = new THREE.TextureLoader();
   return {
     gltf: (url) =>
@@ -441,6 +442,7 @@ function texturesOf(material: THREE.Material): THREE.Texture[] {
       out.push(value);
     }
   }
+  out.push(...layersOf(material).map((layer) => layer.map));
   return out;
 }
 

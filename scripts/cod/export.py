@@ -276,7 +276,9 @@ def export_map(
     print("[3/13] converting textures")
     lossless = {colormap[m] for m in used if m in colormap and states.get(m, {}).get("blend") not in (None, "alpha")}
     tex_dir = os.path.join(work, "tex")
-    ok, missing, failed = convert_textures(img_dir, surface_images(colormap, drop), tex_dir, lossless=lossless)
+    ok, missing, failed = convert_textures(
+        img_dir, surface_images(colormap, drop, states), tex_dir, lossless=lossless, search=search
+    )
     print(f"      {ok} converted, {len(missing)} missing, {failed} failed")
     if missing:
         print(

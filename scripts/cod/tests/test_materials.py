@@ -7,6 +7,7 @@ from scripts.cod.materials import (
     drawn_state_and_technique,
     material_blend_mode,
     material_file_stem,
+    material_layers,
     material_render_state,
     surface_images,
 )
@@ -76,6 +77,7 @@ def test_render_state():
         "doubleSided": True,
         "flag": None,
         "castsShadow": True,
+        "layers": [],
         "drop": False,
     }
 
@@ -158,3 +160,31 @@ def test_a_dropped_non_surface_asks_for_no_image(tmp_path):
     colours, _, drop, _ = classify_materials(str(tmp_path), {"wpc/shadowcaster", "wpc/brick"}, "t6")
     assert drop == ["wpc/shadowcaster"]
     assert surface_images(colours, drop) == {"wpc_brick"}
+
+
+def colour_slots(*images):
+    return [
+        {"name": "colorMap" + (str(k) if k else ""), "semantic": "colorMap", "image": image} for k, image in enumerate(images)
+    ]
+
+
+def test_a_black_ops_techset_spells_its_layers():
+    data = {"techniqueSet": "l_sm_r0c0n0s0x0_b1c1n1s1x1_m2c2", "textures": colour_slots("mud", "snow", "grime")}
+    assert material_layers(data, "t5") == [{"mode": "blend", "image": "snow"}, {"mode": "multiply", "image": "grime"}]
+    assert material_render_state(data, "t5")["layers"] == material_layers(data, "t5")
+    # Other games' layered techsets are not read yet.
+    assert material_layers(data, "iw5") == []
+
+
+def test_a_layer_that_cannot_be_drawn_ends_the_list():
+    # The vertex data addresses layers by position, so layer 2 must not slide into layer 1's place.
+    data = {"techniqueSet": "l_sm_r0c0_x1c1_b2c2", "textures": colour_slots("base", "one", "two")}
+    assert material_layers(data, "t5") == []
+    data = {"techniqueSet": "l_sm_r0c0_b1c1_a2c2", "textures": colour_slots("base", "one")}
+    assert material_layers(data, "t5") == [{"mode": "blend", "image": "one"}]
+
+
+def test_a_layered_shell_asks_for_its_layer_images():
+    states = {"*1n_2n(a:b)": {"layers": [{"mode": "blend", "image": "b_c"}]}}
+    assert surface_images({"*1n_2n(a:b)": "a_c"}, [], states) == {"a_c", "b_c"}
+    assert surface_images({"*1n_2n(a:b)": "a_c"}, ["*1n_2n(a:b)"], states) == set()

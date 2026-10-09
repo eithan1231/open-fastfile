@@ -2,8 +2,10 @@
 
 The manifest is IW5's (iw5/dumpers/gfxworld.py)
 plus what T5 carries beyond it: each surface's `lightmapIndex` and `flags`, the
-three lightmap pages per entry (`primary`, `secondary`, `secondaryB`), and the
-dpvs surface ranges with `sortedSurfIndex`. T5 stores the world's and each brush
+three lightmap pages per entry (`primary`, `secondary`, `secondaryB`), the
+dpvs surface ranges with `sortedSurfIndex`, and the third blob: `vld`, a
+generated (layered) material's extra layers, which each surface finds by its
+byte offset `vertexLayerData` (docs/cod/reference.md#layered-materials). T5 stores the world's and each brush
 model's bounds as corners, where IW4/IW5 store a midpoint and a half size.
 """
 
@@ -27,6 +29,7 @@ def surfaces(world):
         material = surface["material"]
         if material is not None and material.name:
             entry["material"] = material.name
+        entry["vertexLayerData"] = surface["tris.vertexLayerData"]
         entry["lightmapIndex"] = surface["lightmapIndex"]
         entry["flags"] = surface["flags"]
         out.append(entry)
@@ -74,6 +77,8 @@ def manifest(asset, vertex_stride):
         indexCount=world["draw.indexCount"],
         indexStride=iw5.INDEX_STRIDE,
         indexFile=f"{asset.name}.gfxworld_indices.bin",
+        layerDataSize=world["draw.vertexLayerDataSize"],
+        layerFile=f"{asset.name}.gfxworld_layers.bin",
         surfaceCount=world["surfaceCount"],
         staticModelCount=world["dpvs.smodelCount"],
         surfaces=surfaces(world),
@@ -98,7 +103,8 @@ def write(walk, out, ctx=None):
         data = manifest(asset, walk.program.struct("GfxWorldVertex").size)
         iw5._check_counts(asset.name, data, vertices, indices)
         write_json(asset_path(out, f"{asset.name}.gfxworld.json"), data)
-        for filename, array in ((data["vertexFile"], vertices), (data["indexFile"], indices)):
+        blobs = ((data["vertexFile"], vertices), (data["indexFile"], indices), (data["layerFile"], world["draw.vld.data"]))
+        for filename, array in blobs:
             if array is not None and len(array):
                 with open(asset_path(out, filename), "wb") as fh:
                     fh.write(array.bytes())

@@ -347,6 +347,11 @@ In this order, since each step assumes the previous:
   read the glb to say so.
 - **`catalogHash` covers weapons only.** A client and a server built from different
   actor exports draw different creatures and do not refuse each other.
+- **Only russianbase-bo1 draws its terrain layers.** Every other Black Ops world's
+  `world.glb` predates the layer export and draws each layered surface as its base
+  alone, so blends show as hard seams until its shell is re-exported. Black Ops
+  II, Ghosts and AW keep their layers elsewhere, and none of the three is read
+  yet ([layered materials](docs/cod/reference.md#layered-materials)).
 - **An actor walks a graph measured for a player.** Which nodes are usable and which
   links a part's corridor fills were sampled with a player's capsule.
 

@@ -61,6 +61,16 @@ material with an unlit `MeshBasicMaterial` using the game's equation:
 Replacements are cached per source material in the world's `AssetStore`, so
 every placement shares one and instancing can still pool them.
 
+**Layered materials.** A material carrying the `COD_material_layers` glTF
+extension draws up to three more textures over its base colour in one pass,
+each weighted per vertex (`scene/layers.ts`). A GLTFLoader plugin resolves the
+textures after the root, because the loader clones a material per vertex-colour
+variant and a clone has no `onBeforeCompile`. The layers mix right after
+`map_fragment`, so the vertex colour, the lightmap and fog apply to the result
+once, as in the game's shader. The textures live in a `WeakMap` rather than
+`userData`, which `Material.copy` deep-copies through JSON. Each mode and where
+its numbers come from: [layered materials](../cod/reference.md#layered-materials).
+
 **Lightmaps.** The atlas is sampled with the second UV set (`channel = 1`;
 channel 0 tiles into the hundreds on a map shell), with glTF's vertical
 convention (`flipY = false`), clamped, and without mipmaps: neighbouring charts

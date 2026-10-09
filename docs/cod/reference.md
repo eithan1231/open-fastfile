@@ -85,9 +85,11 @@ every vertex measured (MW3 and Black Ops), which makes that `/127`;
 fields instead ([reverse/iw6-zone](../../reverse/iw6-zone/README.md#static-models-and-vertices)).
 
 **Colour:** on IW4/IW5 the alpha is a layer blend weight and RGB is white on
-97% of vertices. Black Ops puts layer weights in RGB instead (one channel per
-layer), so `shell.py` neutralises its RGB. The render state, not the vertex
-alpha, decides whether a material is transparent.
+97% of vertices. Black Ops and Black Ops II put layer weights in RGB instead,
+but only on generated (`*`) surfaces ([layered materials](#layered-materials)),
+so `shell.py` whitens those and keeps every other surface's RGB as a tint: on
+zombie_theater that tint is what draws `incandescent_white` bulbs black. The
+render state, not the vertex alpha, decides whether a material is transparent.
 
 Surfaces index as `indices[baseIndex + t*3 + i] + firstVertex`. Surfaces share
 the vertex buffer, so a partial export (the decal pass) compacts to the vertices
@@ -180,6 +182,48 @@ exports, and has not been done.
 `generated/_342n_22.json`; `material_file_stem` maps a surface's material name
 to that file. That is 275 of mp_firingrange's 407 shell materials.
 Ghosts' (`*108_11`, `*r101dn_101z`) take the same path, with nothing to cut.
+
+### Layered materials
+
+A generated material is a base plus up to three layers drawn over it **in one
+pass**, each weighted per vertex: snow fading into mud, grime up a wall, a stain
+painted on plaster. Its name lists them (`*81n_129n(wc/rus_ter_mud_puddle:wc/a_ter_snow_ice_3_blend)`),
+`n` marking one with a normal map. Draw the base alone and every surface edge
+is a hard seam, because neighbouring surfaces have different bases. IW4/IW5 have
+no such materials: a blend there is a second surface, faded by vertex alpha.
+
+On **Black Ops** (read from `pimp_shader_layer_lmap_*`, the LIT pixel shaders of
+the `l_sm_r0c0…_b1c1…` techsets, with `reverse/t5-fx/shaders.py --techset`):
+
+- **The techset spells each layer's mode**, `_<mode><k>c<k>`: `b1c1n1s1` is
+  layer 1 blended. Colour map k is the texture named `colorMap<k>`.
+  `w` is the layer's weight, `c` its colour, applied in layer order before
+  lighting (normal and specular maps are lerped by the same factor):
+
+  | Mode | Result                   | On mp_russianbase |
+  | ---- | ------------------------ | ----------------- |
+  | `b`  | `lerp(base, c, c.a·w)`   | 166               |
+  | `m`  | `base · lerp(1, c, w)`   | 124               |
+  | `a`  | `base + c·c.a·w`         | 2                 |
+  | `t`  | `c.a·w ≥ 0.5 ? c : base` | 6                 |
+
+- **The weights are vertex colour**: layer 1 is COLOR0.y, 2 is .z, 3 is .w.
+  D3DCOLOR is BGRA in memory, so those are bytes 1, 0 and 3. A decal layer's
+  weight is 255 and its texture's alpha does the shaping.
+- **Each layer's texture coordinate is in `GfxWorldDraw.vld`**, at the
+  surface's `srfTriangles_t.vertexLayerData` byte offset plus the vertex's
+  index (from `firstVertex`) times a stride: a float2 per layer, then a packed
+  tangent per layer whose name token ends in `n`, so `*16n_18n` is 12 bytes.
+  That rule from the name matches the gap to the next surface's data on 1,038
+  of mp_russianbase's 1,039 layered surfaces; `*30_166n` (whose base has no
+  normal map) holds 8. So `shell.measured_strides` takes the stride from the gap
+  and falls back to the name.
+
+The exporter carries them as the glTF extension `COD_material_layers` (mode and
+texture per layer) and an attribute `_LAYERk` of (u, v, weight) per vertex;
+the client's `scene/layers.ts` draws them. Black Ops II keeps its layers in
+`vd1` ([reverse/t6-zone](../../reverse/t6-zone/README.md#the-world-vertices-data-oat)),
+Ghosts in a second `*a…` pass and AW in one pass; none of the three is read yet.
 
 Not used yet: normal, specular and detail maps, `colorTint` and the other
 constants, sampler clamping, and `cameraRegion`. `STATE_FLAG_DECAL` marks
