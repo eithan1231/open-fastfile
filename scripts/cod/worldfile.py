@@ -705,6 +705,10 @@ def write_volumes_world(out_dir, map_name, triggers):
     return path
 
 
+# The createfx placements that play an effect: once, or again and again (Black Ops' loopfx).
+EFFECT_CREATES = ("createOneshotEffect", "createLoopEffect")
+
+
 def _effect_lines(placements, effects, available):
     """One `effect` node per createfx placement whose definition was exported.
 
@@ -715,7 +719,7 @@ def _effect_lines(placements, effects, available):
     """
     lines, skipped, unknown, taken = [], 0, set(), {}
     for p in placements:
-        if p.get("create") != "createOneshotEffect" or "at" not in p:
+        if p.get("create") not in EFFECT_CREATES or "at" not in p:
             skipped += 1
             continue
         path = effects.get(p.get("fxid"))
@@ -744,6 +748,10 @@ def _effect_lines(placements, effects, available):
             props.append(f"rotate: {num(ex, 3)} {num(ey, 3)} {num(ez, 3)}")
         if p.get("delay"):
             props.append(f"delay: {num(float(p['delay']), 3)}")
+        if p["create"] == "createLoopEffect" and float(p.get("delay") or 0) > 0:
+            # loopfx's delay is both when the first instance starts and how long
+            # each waits before the next (clientscripts/mp/_fx.csc).
+            props.append(f"repeat: {num(float(p['delay']), 3)}")
         lines.append(f"effect {base}_{taken[base]} {{ " + ", ".join(props) + " }")
     return lines, skipped, unknown
 

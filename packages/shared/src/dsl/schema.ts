@@ -178,6 +178,9 @@ export const PROPERTY_KINDS: Record<string, PropertyKind> = {
   // running, which is what stops every ambient effect in a map from visibly
   // winding up on load.
   delay: { valueKind: "number", unit: "none", minArity: 1, maxArity: 1 },
+  // Seconds, on an `effect`: play it again once it has finished and at least this
+  // long has passed since it last started (Black Ops' createfx `loopfx`).
+  repeat: { valueKind: "number", unit: "none", minArity: 1, maxArity: 1 },
 
   // A `sound` placement: which alias out of the world's `sounds` table, and how
   // loud. `alias` is a bare name rather than a quoted string because that is what
@@ -346,7 +349,7 @@ export const NODE_TYPES: Record<string, NodeTypeSpec> = {
   // A piece of the world's `collision` glb that can be absent: outside its
   // `mode`s, or once a script removes it. A part no `solid` names is always there.
   solid: { type: "solid", nameMode: "optional-free", properties: ["part", "tag", "mode", "use"], children: "none", required: ["part"] },
-  effect: { type: "effect", nameMode: "optional-free", properties: ["at", "rotate", "fx", "delay", "tag"], children: "none", rotateArity: [3, 3], required: ["fx"] },
+  effect: { type: "effect", nameMode: "optional-free", properties: ["at", "rotate", "fx", "delay", "repeat", "tag"], children: "none", rotateArity: [3, 3], required: ["fx"] },
 
   // Where the world plays one of its aliases. `at` is optional and that is the
   // whole difference from `effect`: a placement with no `at` is the world's bed,

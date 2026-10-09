@@ -19,14 +19,20 @@ attribute float iRot;
 attribute vec4 iColor;
 attribute float iFrame;
 attribute float iMode;
+attribute vec4 iShape;
 attribute vec3 iAxisA;
 attribute vec3 iAxisB;
 
 uniform vec2 atlasGrid;
 uniform float featherDepth;
+uniform float eyeOffset;
+uniform vec3 falloff;
+uniform vec3 falloffBegin;
+uniform vec3 falloffEnd;
 
 varying vec2 vUv;
 varying vec4 vColor;
+varying float vViewDepth;
 
 // The authored colour is display-referred, as a hex colour is: linearise it the
 // way THREE.Color linearises the sky, or the output transfer brightens it twice.
@@ -34,56 +40,110 @@ vec3 srgbToLinear(vec3 c) {
   return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThanEqual(c, vec3(0.04045))));
 }
 
+vec3 safeNormalize(vec3 v, vec3 fallback) {
+  float l = length(v);
+  return l > 1e-6 ? v / l : fallback;
+}
+
 void main() {
   // Corners at +-1: size is a half-extent (FX_GenQuadVerts builds
-  // origin +- size0*A +- size1*B), so the quad is twice size on each side. The
-  // corner is scaled, then turned: A = cos*P2 + sin*P3 and up = -sin*P2 + cos*P3,
-  // an anticlockwise turn of the scaled corner. Turning first and scaling after
-  // skews a non-square sprite.
-  vec2 sq = position.xy * iSize;
+  // origin +- size0*A +- size1*B), so the quad is twice size on each side.
+  // T5 narrows the top or bottom edge (iShape.xy, its trim) and moves the centre
+  // by its pivot in units of A' and B', where B points down the sprite: so the
+  // pivot's second half is negated in this y-up corner space. Then the corner is
+  // scaled, then turned: A = cos*R + sin*U, an anticlockwise turn of the scaled
+  // corner. Turning first and scaling after skews a non-square sprite.
+  float trim = position.y > 0.0 ? iShape.x : iShape.y;
+  vec2 sq = (vec2(position.x * trim, position.y) + vec2(iShape.z, -iShape.w)) * iSize;
   float c = cos(iRot);
   float s = sin(iRot);
   vec2 rq = vec2(sq.x * c - sq.y * s, sq.x * s + sq.y * c);
+
+  // The camera's axes in world space: the rows of the view rotation.
+  vec3 camRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+  vec3 camUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+  vec3 camBack = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
+  const vec3 worldUp = vec3(0.0, 1.0, 0.0);
+
+  // Every type is GenSpriteVerts over a right (R) and up (U) axis, and a normal
+  // (N) the falloff shaders read. Modes are DRAW_* in emitter.ts.
+  int mode = int(iMode + 0.5);
+  vec3 centre = iPos;
+  vec3 R = camRight;
+  vec3 U = camUp;
+  vec3 N = camBack;
+  if (mode == 1) {
+    // Oriented (and rotated): the quad lies in the frame's axis[1] / axis[2] plane.
+    R = iAxisA;
+    U = iAxisB;
+    N = cross(R, U);
+  } else if (mode == 2 || mode == 3) {
+    // Tail: half-length size1 along the velocity, centred size1 behind the
+    // particle; a line is centred size1 ahead. Across it, facing the camera.
+    centre = iPos + iAxisA * (mode == 2 ? -iSize.y : iSize.y);
+    N = safeNormalize(cameraPosition - centre, camBack);
+    R = safeNormalize(cross(iAxisA, cameraPosition - centre), camRight);
+    U = iAxisA;
+  } else if (mode >= 4) {
+    vec3 toEye = safeNormalize(cameraPosition - iPos, camBack);
+    if (mode == 4) {
+      // Upright about the world's up, turned with the view's heading.
+      R = safeNormalize(vec3(camBack.z, 0.0, -camBack.x), camRight);
+      U = worldUp;
+      N = camBack;
+    } else if (mode == 5) {
+      // Facing the eye rather than the view plane.
+      U = camUp;
+      R = safeNormalize(cross(U, toEye), camRight);
+      N = toEye;
+    } else {
+      R = safeNormalize(vec3(toEye.z, 0.0, -toEye.x), camRight);
+      U = worldUp;
+      N = toEye;
+    }
+  }
+  vec3 world = centre + R * rq.x + U * rq.y;
 
   // Must be named mvPosition: the fog_vertex chunk below reads exactly that
   // identifier. Call it anything else and the shader fails to compile the moment
   // the world has fog -- and a batch whose program never links simply does not
   // draw, while the system goes on simulating particles perfectly happily.
-  vec4 mvPosition;
-  if (iMode < 0.5) {
-    mvPosition = modelViewMatrix * vec4(iPos, 1.0);
-    mvPosition.xy += rq;
-  } else if (iMode < 1.5) {
-    // Oriented: the quad lies in the run frame's axis[1] / axis[2] plane.
-    vec3 world = iPos + iAxisA * rq.x + iAxisB * rq.y;
-    mvPosition = modelViewMatrix * vec4(world, 1.0);
-  } else {
-    // Tail: half-length size1 along the velocity, half-width size0 across it
-    // facing the camera, with the centre pulled back by its own half-length.
-    vec3 toCamera = cameraPosition - iPos;
-    vec3 side = cross(iAxisA, toCamera);
-    float sideLength = length(side);
-    side = sideLength > 1e-6 ? side / sideLength : vec3(0.0);
-    vec3 centre = iPos - iAxisA * iSize.y;
-    vec3 world = centre + side * (position.x * iSize.x) + iAxisA * (position.y * iSize.y);
-    mvPosition = modelViewMatrix * vec4(world, 1.0);
+  vec4 mvPosition = modelViewMatrix * vec4(world, 1.0);
+
+  // zfeather's near-camera fade: a sprite fades out over featherDepth as it
+  // reaches the eye, which is what stops a sheet the camera walks through from
+  // filling the screen. It reads the depth before the eye offset moves it.
+  float viewDepth = -mvPosition.z;
+  vViewDepth = viewDepth;
+  float nearFade = featherDepth > 0.0 ? clamp(viewDepth / featherDepth, 0.0, 1.0) : 1.0;
+
+  // T5's eyeoffset: pull the vertex eyeOffset toward the eye along its own ray,
+  // so it draws over what it would have been buried in at the same screen size.
+  if (eyeOffset > 0.0 && viewDepth > eyeOffset) {
+    mvPosition.xyz *= (viewDepth - eyeOffset) / viewDepth;
   }
   gl_Position = projectionMatrix * mvPosition;
 
   // Atlas cell: column is the low bits, row the rest. D3D counts rows from the
   // top of the sheet; three's textures are flipped, so row 0 is the top band.
+  // A trimmed edge samples the middle of its cell, as its corners move inwards.
   float cols = max(atlasGrid.x, 1.0);
   float rows = max(atlasGrid.y, 1.0);
   float frame = floor(iFrame + 0.5);
   float column = mod(frame, cols);
   float row = floor(frame / cols);
-  vUv = vec2((uv.x + column) / cols, (uv.y + rows - 1.0 - row) / rows);
+  float u = 0.5 + (uv.x - 0.5) * trim;
+  vUv = vec2((u + column) / cols, (uv.y + rows - 1.0 - row) / rows);
 
-  // zfeather's near-camera fade: a sprite fades out over featherDepth as it
-  // reaches the eye, which is what stops a sheet the camera walks through from
-  // filling the screen.
-  float nearFade = featherDepth > 0.0 ? clamp(-mvPosition.z / featherDepth, 0.0, 1.0) : 1.0;
-  vColor = vec4(srgbToLinear(iColor.rgb), iColor.a * nearFade);
+  vec4 color = vec4(srgbToLinear(iColor.rgb), iColor.a * nearFade);
+  if (falloff.z > 0.0) {
+    // T5's falloff: fade and tint a sprite by how squarely it faces the eye.
+    float facing = dot(safeNormalize(cameraPosition - world, N), N);
+    float f = clamp(facing * facing * falloff.x + falloff.y, 0.0, 1.0);
+    color.rgb *= srgbToLinear(mix(falloffEnd, falloffBegin, f));
+    color.a *= f;
+  }
+  vColor = color;
 
   #include <fog_vertex>
 }
@@ -91,19 +151,65 @@ void main() {
 
 const FRAGMENT = /* glsl */ `
 uniform sampler2D map;
+uniform float featherDepth;
+uniform sampler2D sceneDepth;
+uniform vec2 depthResolution;
+uniform vec2 nearFar;
+uniform float softEnabled;
 
 varying vec2 vUv;
 varying vec4 vColor;
+varying float vViewDepth;
+
+// zfeather's other half: fade where the sheet nears what is behind it, by
+// sat((sceneDepth - particleDepth) / featherDepth). Behind a wall it is 0, so a
+// sheet crossing the world melts into it rather than cutting a line.
+float softness() {
+  if (softEnabled < 0.5 || featherDepth <= 0.0) return 1.0;
+  float d = texture2D(sceneDepth, gl_FragCoord.xy / depthResolution).x * 2.0 - 1.0;
+  float scene = 2.0 * nearFar.x * nearFar.y / (nearFar.y + nearFar.x - d * (nearFar.y - nearFar.x));
+  return clamp((scene - vViewDepth) / featherDepth, 0.0, 1.0);
+}
 
 void main() {
   vec4 texel = texture2D(map, vUv);
+#if defined(OUTPUT_ALPHA) || defined(OUTPUT_LUMA)
+  // T5's additive sets multiply colour by alpha in the shader and blend one/one.
+  // The game does it in display space, so the colour is encoded first and the
+  // output transfer skipped: encoding a product is not the product of encodings.
+  vec3 rgb = linearToOutputTexel(vec4(texel.rgb * vColor.rgb, 1.0)).rgb;
+  float a = texel.a * vColor.a * softness();
+  #ifdef OUTPUT_LUMA
+    a *= dot(rgb, vec3(0.25, 0.5, 0.25));
+  #endif
+  gl_FragColor = vec4(rgb * a, a);
+#else
+  float soft = softness();
   gl_FragColor = texel * vColor;
+  gl_FragColor.a *= soft;
   // The materials' alpha test is gt0: only a fully transparent texel is dropped.
   if (gl_FragColor.a <= 0.0) discard;
-
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
+  #ifdef SOFT_RGB
+    // A blend that ignores source alpha (one/one, invdestcolor/one) fades by its colour.
+    gl_FragColor.rgb *= soft;
+  #endif
+#endif
+
+#ifdef FOG_FADE
+  // An additive sheet fades to nothing in fog, rather than adding fog colour.
+  #ifdef USE_FOG
+    #ifdef FOG_EXP2
+      float fogFactor = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+    #else
+      float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+    #endif
+    gl_FragColor *= 1.0 - fogFactor;
+  #endif
+#else
   #include <fog_fragment>
+#endif
 }
 `;
 
@@ -159,6 +265,11 @@ export interface FxMaterialOptions {
   fog: boolean;
   /** Metres; 0 for none. */
   featherDepth: number;
+  output?: "straight" | "alpha" | "luma";
+  fogFade?: boolean;
+  falloff?: { scale: number; bias: number; begin: readonly number[]; end: readonly number[] };
+  /** Metres; 0 or absent for none. */
+  eyeOffset?: number;
 }
 
 /**
@@ -179,8 +290,22 @@ export function fxMaterial(map: THREE.Texture, opts: FxMaterialOptions, atlas: {
         map: { value: null },
         atlasGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
         featherDepth: { value: opts.featherDepth },
+        sceneDepth: { value: null },
+        depthResolution: { value: new THREE.Vector2(1, 1) },
+        nearFar: { value: new THREE.Vector2(0.1, 200) },
+        softEnabled: { value: 0 },
+        eyeOffset: { value: opts.eyeOffset ?? 0 },
+        falloff: { value: new THREE.Vector3(opts.falloff?.scale ?? 0, opts.falloff?.bias ?? 0, opts.falloff ? 1 : 0) },
+        falloffBegin: { value: new THREE.Vector3(...(opts.falloff?.begin ?? [1, 1, 1]).slice(0, 3)) },
+        falloffEnd: { value: new THREE.Vector3(...(opts.falloff?.end ?? [1, 1, 1]).slice(0, 3)) },
       },
     ]),
+    defines: {
+      ...(opts.output === "alpha" ? { OUTPUT_ALPHA: "" } : {}),
+      ...(opts.output === "luma" ? { OUTPUT_LUMA: "" } : {}),
+      ...(opts.fogFade ? { FOG_FADE: "" } : {}),
+      ...(opts.blendSrc !== "srcalpha" && opts.blendDst === "one" ? { SOFT_RGB: "" } : {}),
+    },
     vertexShader: VERTEX_PARS + VERTEX,
     fragmentShader: FRAGMENT_PARS + FRAGMENT,
     transparent: true,
@@ -211,7 +336,7 @@ export function fxMaterial(map: THREE.Texture, opts: FxMaterialOptions, atlas: {
 export class FxBatch {
   readonly mesh: THREE.Mesh;
   private readonly geometry: THREE.InstancedBufferGeometry;
-  private readonly attrs: Record<"pos" | "size" | "rot" | "color" | "frame" | "mode" | "axisA" | "axisB", THREE.InstancedBufferAttribute>;
+  private readonly attrs: Record<"pos" | "size" | "rot" | "color" | "frame" | "mode" | "shape" | "axisA" | "axisB", THREE.InstancedBufferAttribute>;
   private n = 0;
 
   constructor(
@@ -239,6 +364,7 @@ export class FxBatch {
       color: attr("iColor", 4),
       frame: attr("iFrame", 1),
       mode: attr("iMode", 1),
+      shape: attr("iShape", 4),
       axisA: attr("iAxisA", 3),
       axisB: attr("iAxisB", 3),
     };
@@ -263,7 +389,7 @@ export class FxBatch {
     if (i >= this.capacity) {
       return;
     }
-    const { pos, size, rot, color, frame, mode, axisA, axisB } = this.attrs;
+    const { pos, size, rot, color, frame, mode, shape, axisA, axisB } = this.attrs;
     pos.array[i * 3] = v.x;
     pos.array[i * 3 + 1] = v.y;
     pos.array[i * 3 + 2] = v.z;
@@ -276,6 +402,10 @@ export class FxBatch {
     color.array[i * 4 + 3] = v.a;
     frame.array[i] = v.frame;
     mode.array[i] = v.mode;
+    shape.array[i * 4] = v.trimTop;
+    shape.array[i * 4 + 1] = v.trimBottom;
+    shape.array[i * 4 + 2] = v.pivotX;
+    shape.array[i * 4 + 3] = v.pivotY;
     axisA.array[i * 3] = v.ax;
     axisA.array[i * 3 + 1] = v.ay;
     axisA.array[i * 3 + 2] = v.az;
@@ -301,6 +431,20 @@ export class FxBatch {
 
   get count(): number {
     return this.n;
+  }
+
+  /** Whether this batch's material fades where it meets the world (a zfeather sheet). */
+  get feathered(): boolean {
+    return (this.material.uniforms.featherDepth!.value as number) > 0;
+  }
+
+  /** Point the soft-particle fade at this frame's scene depth. */
+  useDepth(depth: { texture: THREE.Texture; resolution: THREE.Vector2; nearFar: THREE.Vector2 }): void {
+    const u = this.material.uniforms;
+    u.sceneDepth!.value = depth.texture;
+    (u.depthResolution!.value as THREE.Vector2).copy(depth.resolution);
+    (u.nearFar!.value as THREE.Vector2).copy(depth.nearFar);
+    u.softEnabled!.value = 1;
   }
 
   dispose(): void {

@@ -542,6 +542,7 @@ class ResolveContext {
       rotation,
       fx: stringOf(findProp(stmt, "fx"))!,
       delay: numbersOf(findProp(stmt, "delay"), (v) => v)[0] ?? 0,
+      repeat: Math.max(numbersOf(findProp(stmt, "repeat"), (v) => v)[0] ?? 0, 0),
     }));
   }
 

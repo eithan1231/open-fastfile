@@ -356,3 +356,85 @@ def test_rewriting_effects_reproduces_a_full_export(tmp_path):
     assert export.rewrite_effects("mp_x", str(world))
     assert (world / "fx.world").read_text() == full
     assert 'include "fx.world"' in (world / "world.world").read_text()
+
+
+# -- Black Ops (T5) --------------------------------------------------------------------------------
+
+
+def test_a_world_s_global_wind_comes_from_its_fx_script_dvars():
+    data = {"scripts": {"maps/mp/mp_x_fx.gsc": {"dvars": {"enable_global_wind": 1, "wind_global_vector": "-110 -160 -140"}}}}
+    assert fx.global_wind(data) == pytest.approx(239.4, abs=0.1)
+    data["scripts"]["maps/mp/mp_x_fx.gsc"]["dvars"]["enable_global_wind"] = 0
+    assert fx.global_wind(data) == 0.0
+    assert fx.global_wind({}) == 0.0
+
+
+def test_wind_moves_life_and_spawn_interval_toward_their_max_wind_values():
+    windy = elem(lifeSpanMsec=rng(1000, 200), maxWindStrength=400, lifespanAtMaxWind=3000, spawnIntervalAtMaxWind=500)
+    out = fx._convert_elem(windy, wind=200)  # half the strongest wind
+    assert out["life"] == pytest.approx([2.0, 0.1])  # lerp(1000 + 200r, 3000, 0.5), in seconds
+    assert out["spawn"]["interval"] == pytest.approx(0.3)
+    # No max strength, or no wind: untouched.
+    assert fx._convert_elem(elem(maxWindStrength=0, lifespanAtMaxWind=3000), wind=200)["life"] == [1.0, 0.0]
+    assert fx._convert_elem(windy)["life"] == pytest.approx([1.0, 0.2])
+
+
+def test_a_t5_atlas_unpacks_its_cell_count_and_index_range():
+    t5 = {"behavior": 3, "index": 4, "fps": 0, "loopCount": 0, "colIndexBits": 2, "rowIndexBits": 2}
+    out = fx._convert_elem(elem(atlas={**t5, "entryCountAndIndexRange": (3 << 9) | 16}))["atlas"]
+    assert out["entryCount"] == 16 and out["indexRange"] == 3 and "entryCountAndIndexRange" not in out
+
+
+def test_trim_and_pivot_are_written_only_where_they_change_the_quad():
+    def shape(union, flags=0, pivot=(0.0, 0.0)):
+        out = fx._convert_elem(elem(union=union, flags=flags, billboardPivot=list(pivot)))
+        return {k: out[k] for k in ("trim", "pivot") if k in out}
+
+    full = {"kind": "billboard", "topWidth": 1.0, "bottomWidth": 1.0}
+    assert shape(full) == {}
+    assert shape({"kind": "billboard", "topWidth": 0.29, "bottomWidth": 1.7}) == {"trim": [0.29, 1.0]}  # clamped
+    assert shape(full, pivot=(0.0, -1.0)) == {}  # a pivot without its flag
+    assert shape(full, flags=0x200000, pivot=(0.0, -1.0)) == {"pivot": [0.0, -1.0]}
+    assert shape({"kind": "cloudDensityRange", "base": 3, "amplitude": 0}) == {}
+
+
+def test_a_t5_technique_set_says_what_its_shader_writes():
+    feather = {"featherParms": [0.2, 5.0, 0, 0]}
+    assert fx._shader("effect_zfeather", feather) == {"output": "straight", "fogFade": False}
+    assert fx._shader("effect_add_nofog", {}) == {"output": "alpha", "fogFade": True}
+    assert fx._shader("effect_zfeather_add_nofog", feather) == {"output": "luma", "fogFade": True}
+    falloff = fx._shader(
+        "effect_zfeather_falloff_eyeoffset",
+        {
+            "falloffParms": [0, 0, 4.5, -0.1],
+            "falloffBeginColor": [1, 1, 1, 1],
+            "falloffEndColor": [0.5] * 4,
+            "eyeOffsetParms": [10, 0, 0, 0],
+        },
+    )
+    assert falloff["falloff"] == {"scale": 4.5, "bias": -0.1, "begin": [1, 1, 1, 1], "end": [0.5] * 4}
+    assert falloff["eyeOffset"] == pytest.approx(10 / UNITS_PER_M)
+    assert fx._shader("distortion_scale_zfeather", feather) == {"undrawn": "distortion"}
+
+
+def test_a_loop_effect_repeats_after_its_own_delay(tmp_path):
+    """Black Ops' loopfx: `delay` is when the first instance starts and how long each waits for the next."""
+    data = _meta(
+        [
+            {"create": "createLoopEffect", "fxid": "snow", "at": [1.0, 2.0, 3.0], "delay": 1.5},
+            {"create": "createLoopEffect", "fxid": "snow", "at": [0.0, 0.0, 0.0], "delay": 0},
+        ],
+        {"snow": "weather/snow"},
+    )
+    path, _, n_places, skipped, _ = worldfile.write_fx_world(str(tmp_path), "mp_x", data, {"weather/snow"})
+    lines = [line for line in open(path).read().splitlines() if line.startswith("effect ")]
+    assert n_places == 2 and skipped == 0
+    assert "delay: 1.500" in lines[0] and "repeat: 1.500" in lines[0]
+    assert "repeat" not in lines[1]  # no wait: it plays once and is never polled again
+
+
+def test_a_cloud_carries_its_density_and_its_material_has_no_fog():
+    out = fx._convert_elem(elem(type="CLOUD", union={"kind": "cloudDensityRange", "base": 1024, "amplitude": 0}))
+    assert out["cloudDensity"] == [1024, 0] and "trim" not in out
+    assert fx._shader("particle_cloud_outdoor", {}) == {"output": "straight", "fogFade": False, "fog": False}
+    assert fx._shader("particle_cloud_add", {})["output"] == "alpha"

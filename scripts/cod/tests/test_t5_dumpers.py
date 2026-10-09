@@ -181,10 +181,9 @@ def test_a_shared_run_of_zeros_read_as_model_pointers_is_no_model():
 # -- The registry ----------------------------------------------------------------------------------
 
 
-def test_sound_is_one_asset_and_effects_are_dumped_empty():
+def test_sound_is_one_asset_and_effects_are_dumped():
     backend = Backend()
-    assert backend.provides("gfxworld", "clipmap", "xmodel", "material", "image", "xanim", "weapon", "sound")
-    assert backend.dumps("fx") and not backend.provides("fx")
+    assert backend.provides("gfxworld", "clipmap", "xmodel", "material", "image", "xanim", "weapon", "sound", "fx")
     assert dumpers.NOTHING_AT_ALL == {"loadedsound"}
 
 

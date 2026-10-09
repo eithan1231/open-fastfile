@@ -39,6 +39,8 @@ export interface FxAtlas {
   colIndexBits: number;
   rowIndexBits: number;
   entryCount: number;
+  /** T5 only: how many cells start mode 3 (`fixedRange`) cycles through from `index`. */
+  indexRange?: number;
 }
 
 export type FxSpawn =
@@ -72,8 +74,10 @@ export const RAND = {
   size0: 26,
   size1: 27,
   scale: 28,
+  /** T5: a cloud's particle count. */
+  cloudCount: 29,
 } as const;
-export const RAND_COUNT = 29;
+export const RAND_COUNT = 30;
 
 export interface FxElem {
   type: string;
@@ -110,6 +114,12 @@ export interface FxElem {
   randomSeed: number;
   /** Raw FxElemDef flags; see FX_FLAG_* in emitter.ts. */
   flags: number;
+  /** T5: the quad's (top, bottom) width as a fraction of full, a trapezoid. Absent means (1, 1). */
+  trim?: readonly [number, number];
+  /** T5: the centre moved by `pivot[0]` half-widths along A and `pivot[1]` half-heights along B. */
+  pivot?: readonly [number, number];
+  /** T5 CLOUD: how many of the shared 1024 points one cloud draws, `[base, amplitude]` as an FxIntRange. */
+  cloudDensity?: readonly [number, number];
 }
 
 export interface FxEffect {
@@ -141,9 +151,27 @@ export interface FxMaterial {
   fog: boolean;
   /** Metres, from zfeather's featherParms: fades a sprite as it nears the camera. */
   featherDepth: number | null;
+  /**
+   * T5: what the shader writes. `straight` is IW5's zfeather blend; `alpha` is
+   * colour times alpha (`effect_add`), `luma` colour times alpha times its own
+   * luminance (`effect_zfeather_add`). Absent means `straight`.
+   */
+  output?: "straight" | "alpha" | "luma";
+  /** T5: an additive sheet fades to black in fog rather than toward the fog colour. */
+  fogFade?: boolean;
+  /** T5: `f = sat(dot(view, normal)^2 * scale + bias)` tints by lerp(end, begin, f) and scales alpha by f. */
+  falloff?: { scale: number; bias: number; begin: readonly number[]; end: readonly number[] };
+  /** T5: metres the sprite is pulled toward the eye, keeping its size on screen. */
+  eyeOffset?: number;
+  /** A technique set the runtime cannot draw (distortion), so its elems are counted instead. */
+  undrawn?: string;
 }
 
+/** Whose conventions the library follows, where the games differ (docs/cod/reference.md#effects-fx). */
+export type FxGame = "iw5" | "t5";
+
 export interface FxLibrary {
+  game: FxGame;
   effects: Record<string, FxEffect>;
   materials: Record<string, FxMaterial>;
 }
@@ -158,11 +186,12 @@ const LIBRARY_VERSION = 4;
  * rendering bug rather than a stale asset.
  */
 export function readFxLibrary(data: unknown, source: string): FxLibrary {
-  const d = data as { _version?: number; effects?: Record<string, FxEffect>; materials?: Record<string, FxMaterial> };
+  const d = data as { _version?: number; game?: FxGame; effects?: Record<string, FxEffect>; materials?: Record<string, FxMaterial> };
   if (d?._version !== LIBRARY_VERSION) {
     throw new Error(`${source}: fx library version ${String(d?._version)}, expected ${LIBRARY_VERSION}; re-export the world`);
   }
-  return { effects: d.effects ?? {}, materials: d.materials ?? {} };
+  // Libraries written before T5 carry no game: they are all MW3's.
+  return { game: d.game ?? "iw5", effects: d.effects ?? {}, materials: d.materials ?? {} };
 }
 
 /**

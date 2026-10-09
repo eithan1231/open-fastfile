@@ -231,6 +231,11 @@ export class FirstPersonControls {
     this.holdKick();
   }
 
+  /** Put the camera at the player now rather than on the next frame. */
+  snapCamera(): void {
+    this.placeCamera(1);
+  }
+
   /**
    * Take the server's answer, and redo everything it has not seen yet.
    *

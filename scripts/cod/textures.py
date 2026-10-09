@@ -103,23 +103,28 @@ def texture_index(root):
     return index
 
 
-def convert_textures(iwi_root, wanted, out_dir, max_size=512, lossless=()):
+def convert_textures(iwi_root, wanted, out_dir, max_size=512, lossless=(), search=None):
     """Convert every wanted colour map to .jpg (opaque) or .png (alpha, or `lossless`).
 
     Returns (converted, missing names, failed). Multiply/add decals are
     `lossless`: they modulate the wall under them, so JPEG artefacts would land
-    on the wall itself.
+    on the wall itself. With an .iwd `search` path, an image the dump lacks is
+    read from there: a zone that names an image by reference only ships no pixels.
     """
     os.makedirs(out_dir, exist_ok=True)
     have = texture_index(iwi_root)
     ok, failed, missing = 0, 0, []
     for name in sorted(wanted):
         path = have.get(name)
+        img = None
+        if not path and search:
+            img, path = _iwd_image(search, (f"images/{name}.iwi",))
         if not path:
             missing.append(name)
             continue
         try:
-            img, _, _, _ = decode_texture(path)
+            if img is None:
+                img, _, _, _ = decode_texture(path)
             if max(img.size) > max_size:
                 scale = max_size / max(img.size)
                 img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))), Image.LANCZOS)

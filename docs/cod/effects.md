@@ -7,9 +7,12 @@ engine side is in [rendering.md](../engine/rendering.md#effects).
 
 **Status.** MW3 (IW5) effects export and render: `dome-mw3` carries 60
 placements of 23 effect definitions, and its sandstorm renders tan and low over
-the hills, matching a screenshot of the real game. MW2 (IW4) and Black Ops (T5)
-maps have their placements in `export_metadata.json` but no effect definitions,
-because only the IW5 backend writes `FxEffectDef` (see
+the hills, matching a screenshot of the real game. Black Ops (T5) effects export
+and render too: `russianbase-bo1` carries 284 placements of 27 effects, 51 of them
+repeating, including its falling snow (particle clouds); seen in the browser but
+not yet against the real game.
+MW2 (IW4) and the other Black Ops maps have their placements in
+`export_metadata.json` but no effect definitions yet (see
 [below](#what-is-still-missing)).
 
 ## Exporting a map's effects
@@ -35,9 +38,12 @@ Stage 12 of `python3 -m scripts.cod export <map>` (`export.py`
    references (a leading comma in `--list`).
 2. **Placements.** The metadata stage has already parsed
    `maps/createfx/<map>_fx.gsc` into `export_metadata.json` (`fx.effects`, the
-   `loadfx` alias table, and `fx.placements`). Only `createOneshotEffect`
-   placements are effects; `createLoopSound` ones are sounds and are counted,
-   not exported.
+   `loadfx` alias table, and `fx.placements`). `createOneshotEffect` and
+   `createLoopEffect` placements are effects; `createLoopSound` ones are sounds
+   and are counted, not exported. A loop effect (only Black Ops' maps have them)
+   is written with its one wait as both `delay` and `repeat`: Black Ops' `loopfx`
+   (`clientscripts/mp/_fx.csc`) plays it, waits that long, then polls every quarter
+   second until the last play has finished before starting the next.
 3. **Closure.** Starting from the placed effects, follow every child —
    `effectOnDeath`, `effectOnImpact`, `effectEmitted`, and RUNNER elements.
    dome's 11 placed effects pull in 12 more. A child that was not dumped is
@@ -49,11 +55,27 @@ Stage 12 of `python3 -m scripts.cod export <map>` (`export.py`
    colour map, the literal blend factors, `featherParms`, and whether its
    technique set is `_nofog`. Convert the colour maps to PNG, losslessly — an
    additive or faint sheet carries its shape in brightness, where JPEG ringing
-   shows.
+   shows. An image the zones name by reference only, shipping no pixels
+   (`fxt_smk_puff` on russianbase), is read from the `.iwd` search path instead.
+   `featherParms` becomes the runtime's soft-particle depth: a sheet fades out
+   where it meets the scene behind it.
 6. **Write** `assets/fx/effects.json` (the library; `_version` 4) and
    `assets/fx/textures/`, then `fx.world`: one `fx { source: … }` and one
    `effect` per placement, with placement angles through `props.engine_euler`
    like any prop. `world.world` gets `include "fx.world"`.
+
+`--effects-export-only` runs stage 12 alone from a fresh dump of the map's and
+its companions' effects, materials and images, leaving every other file in the
+world as it is (a full re-export would undo the props harvest).
+
+**Black Ops** differs in what it writes, not in the stage. The T5 dumper
+(`scripts/cod/t5/dumpers/fx.py`) writes T5's own type names, its trim, pivot,
+wind and packed atlas; the converter bakes the level's global wind
+(`wind_global_vector` in the fx script's dvars) into each elem's life and spawn
+interval, unpacks the atlas, and reads each technique set's shader parameters
+(`output`, `fogFade`, `falloff`, `eyeOffset`). The library records its `game`, and
+the runtime follows that game's conventions where the two differ
+([reference.md](reference.md#black-ops-t5)).
 
 `--effects-only` rewrites `fx.world` alone from the committed metadata and the
 library already on disk, with no game files. It is byte-identical to what the
@@ -80,13 +102,10 @@ are in [reverse/iw5-fx](../../reverse/iw5-fx/README.md).
 
 ## What is still missing
 
-- **Other games.** An `FxEffectDef` dumper for T5 (whose `FxElemType` list
-  differs from index 2 on, so types must be written as names) and for IW4.
+- **Other games.** An `FxEffectDef` dumper for IW4, and for T6 (whose
+  `FxElemDef` is byte-identical to T5's; its placements are in compiled scripts).
 - **Impacts.** `FxImpactTable` and IW5's `SurfaceFxTable` have no dumper either,
   and nothing in the engine casts a hit ray yet.
-- **Soft particles against geometry.** The `zfeather` shaders fade a sheet where
-  it meets the scene, using scene depth. The engine has no depth texture, so
-  sheets cut a hard line into terrain.
 - **Lighting** by `lightingFrac`, and occlusion fading.
 - **Element types:** clouds, sparks, models (falling debris), lights, decals,
   sounds, trails. Each is counted and logged when skipped, never approximated.

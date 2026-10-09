@@ -5,6 +5,7 @@
 // world's AssetStore, so leaving the world frees them with everything else.
 
 import { FxBatch, fxMaterial } from "../engine/fx/batch.js";
+import { FxCloudBatch, cloudGeometry } from "../engine/fx/cloud.js";
 import { readFxLibrary, type FxLibrary } from "../engine/fx/library.js";
 import type { FxBuild, FxPlacement } from "../engine/fx/system.js";
 import type { AssetStore } from "./assets.js";
@@ -12,6 +13,8 @@ import type { ResolvedEffect, ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 
 /** Per material, how many particles its batch can hold at once. */
 const BATCH_CAPACITY = 2048;
+/** Per material, how many clouds can draw at once: each is a mesh of its own. */
+const CLOUD_CAPACITY = 64;
 
 export interface BuiltFx {
   library: FxLibrary;
@@ -26,6 +29,7 @@ export function fxPlacements(effects: readonly ResolvedEffect[]): FxPlacement[] 
     position: { x: e.position.x, y: e.position.y, z: e.position.z },
     rotation: { x: e.rotation.x, y: e.rotation.y, z: e.rotation.z },
     delay: e.delay,
+    repeat: e.repeat,
   }));
 }
 
@@ -52,6 +56,7 @@ export async function buildFx(world: ResolvedWorld, baseUrl: string, assets: Ass
 
   // Every material any placed effect draws with, and the atlas each one uses.
   const wanted = new Map<string, { cols: number; rows: number; sortOrder: number }>();
+  const clouded = new Map<string, number>();
   const seen = new Set<string>();
   const walk = (name: string, depth: number): void => {
     const effect = library.effects[name];
@@ -66,15 +71,22 @@ export async function buildFx(world: ResolvedWorld, baseUrl: string, assets: Ass
         }
         continue;
       }
-      const material = elem.visuals.names[0];
-      if (!material || wanted.has(material)) {
+      if (elem.type === "CLOUD") {
+        for (const material of elem.visuals.names) {
+          clouded.set(material, elem.sortOrder);
+        }
         continue;
       }
-      // The atlas is a square-ish grid of entryCount cells; the index bits say
-      // how it is cut. 2 col bits and 2 row bits is the common 4x4 sheet.
-      const cols = 1 << elem.atlas.colIndexBits;
-      const rows = 1 << elem.atlas.rowIndexBits;
-      wanted.set(material, { cols: Math.max(cols, 1), rows: Math.max(rows, 1), sortOrder: elem.sortOrder });
+      for (const material of elem.visuals.names) {
+        if (wanted.has(material)) {
+          continue;
+        }
+        // The atlas is a square-ish grid of entryCount cells; the index bits say
+        // how it is cut. 2 col bits and 2 row bits is the common 4x4 sheet.
+        const cols = 1 << elem.atlas.colIndexBits;
+        const rows = 1 << elem.atlas.rowIndexBits;
+        wanted.set(material, { cols: Math.max(cols, 1), rows: Math.max(rows, 1), sortOrder: elem.sortOrder });
+      }
     }
   };
   for (const placement of world.effects) {
@@ -88,7 +100,7 @@ export async function buildFx(world: ResolvedWorld, baseUrl: string, assets: Ass
     // it, and several effects share one -- so the mapping travels in the library
     // rather than being guessed from the material name.
     const state = library.materials[material];
-    if (!state) {
+    if (!state || state.undrawn) {
       continue;
     }
     const texture = assets.fxSprite(`${baseUrl}assets/fx/textures/${state.texture}`);
@@ -101,6 +113,10 @@ export async function buildFx(world: ResolvedWorld, baseUrl: string, assets: Ass
         doubleSided: state.doubleSided,
         fog: state.fog,
         featherDepth: state.featherDepth ?? 0,
+        output: state.output,
+        fogFade: state.fogFade,
+        falloff: state.falloff,
+        eyeOffset: state.eyeOffset,
       },
       atlas,
     );
@@ -110,5 +126,18 @@ export async function buildFx(world: ResolvedWorld, baseUrl: string, assets: Ass
     batchOf.set(material, material);
   }
 
-  return { library, placements: fxPlacements(world.effects), build: { batches, batchOf } };
+  // One point buffer for every cloud in the world, built only when one is drawn.
+  const clouds = new Map<string, FxCloudBatch>();
+  const buffer = clouded.size > 0 ? cloudGeometry() : undefined;
+  for (const [material, sortOrder] of clouded) {
+    const state = library.materials[material];
+    if (!state || state.undrawn || !buffer) {
+      continue;
+    }
+    const texture = assets.fxSprite(`${baseUrl}assets/fx/textures/${state.texture}`);
+    const opts = { output: state.output, blendSrc: state.blendSrc, blendDst: state.blendDst };
+    clouds.set(material, new FxCloudBatch(texture, buffer, opts, CLOUD_CAPACITY, state.sortKey ?? sortOrder));
+  }
+
+  return { library, placements: fxPlacements(world.effects), build: { batches, batchOf, clouds } };
 }

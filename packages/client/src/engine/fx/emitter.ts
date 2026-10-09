@@ -6,7 +6,9 @@
 // interpreter; this way `seekTo` is exact and the whole thing tests in Node.
 
 import { unitsToMetres } from "@3d/shared/sim/units.js";
-import type { FxElem, FxVisualState } from "./library.js";
+import type { CloudView } from "./cloud.js";
+import { CLOUD_POINTS } from "./cloud.js";
+import type { FxElem, FxGame, FxVisualState } from "./library.js";
 import { RAND, RAND_COUNT, emptyVisualState, sampleRange, sampleTravel, sampleVelocity, sampleVis, seeded, seedOf } from "./library.js";
 
 /*
@@ -27,6 +29,14 @@ export const FX_FLAG_LOCAL_VELOCITY = 0x01000000;
 export const FX_FLAG_WORLD_VELOCITY = 0x02000000;
 export const FX_FLAG_GRAVITY = 0x04000000;
 export const FX_FLAG_NONUNIFORM_SIZE = 0x10000000;
+/**
+ * T5's billboard facing (s_allFlagDefs, FX_DrawElem_BillboardSprite): 0x80000
+ * keeps the quad upright about the world's up, 0x100000 faces the eye rather
+ * than the view plane, and both together do both. Unread on IW5.
+ */
+export const FX_FLAG_BILLBOARD_MASK = 0x180000;
+export const FX_FLAG_USE_WORLD_UP = 0x80000;
+export const FX_FLAG_ALIGN_VIEWPOINT = 0x100000;
 
 /** `gravity` is a multiple of 800 units/s^2 (FX_IntegrateWithGravity), here in m/s^2. */
 /**
@@ -41,6 +51,12 @@ const GRAVITY = unitsToMetres(800);
 export const DRAW_BILLBOARD = 0;
 export const DRAW_ORIENTED = 1;
 export const DRAW_TAIL = 2;
+/** A tail mirrored about its particle: it leads rather than trails (T5's LINE). */
+export const DRAW_LINE = 3;
+/** Billboards that keep the world's up, face the eye, or both (FX_FLAG_BILLBOARD_MASK). */
+export const DRAW_BILLBOARD_WORLD_UP = 4;
+export const DRAW_BILLBOARD_VIEWPOINT = 5;
+export const DRAW_BILLBOARD_VIEWPOINT_UP = 6;
 
 type Vec = [number, number, number];
 
@@ -81,6 +97,8 @@ export interface EmitterPlacement {
   position: { x: number; y: number; z: number };
   rotation: { x: number; y: number; z: number };
   delay: number;
+  /** Seconds between instances of a repeating placement, or 0/absent for one that plays once. */
+  repeat?: number;
 }
 
 export interface ParticleView {
@@ -96,6 +114,11 @@ export interface ParticleView {
   a: number;
   frame: number;
   mode: number;
+  /** The quad's top and bottom width as fractions of full (T5's trim), and its pivot. */
+  trimTop: number;
+  trimBottom: number;
+  pivotX: number;
+  pivotY: number;
   ax: number;
   ay: number;
   az: number;
@@ -105,10 +128,38 @@ export interface ParticleView {
 }
 
 export function emptyView(): ParticleView {
-  return { x: 0, y: 0, z: 0, w: 0, h: 0, rot: 0, r: 1, g: 1, b: 1, a: 1, frame: 0, mode: DRAW_BILLBOARD, ax: 0, ay: 0, az: 0, bx: 0, by: 0, bz: 0 };
+  return {
+    x: 0,
+    y: 0,
+    z: 0,
+    w: 0,
+    h: 0,
+    rot: 0,
+    r: 1,
+    g: 1,
+    b: 1,
+    a: 1,
+    frame: 0,
+    mode: DRAW_BILLBOARD,
+    trimTop: 1,
+    trimBottom: 1,
+    pivotX: 0,
+    pivotY: 0,
+    ax: 0,
+    ay: 0,
+    az: 0,
+    bx: 0,
+    by: 0,
+    bz: 0,
+  };
 }
 
 const scratchVis: FxVisualState = emptyVisualState();
+const scratchView: ParticleView = emptyView();
+/** A cloud's scale is a distance, in game units, unlike a sprite's (which is never read). */
+const CLOUD_SCALE = unitsToMetres(1);
+/** T5's useGaussianCloud: the cloud draws the buffer's gaussian half rather than its cube. */
+const FX_FLAG_GAUSSIAN_CLOUD = 0x400000;
 const scratchLocal: number[] = [0, 0, 0];
 const scratchWorld: number[] = [0, 0, 0];
 
@@ -129,6 +180,7 @@ export class FxEmitter {
     readonly elem: FxElem,
     readonly elemIndex: number,
     readonly placement: EmitterPlacement,
+    readonly game: FxGame = "iw5",
   ) {
     // A negative delay means the map wants this already running; `seekTo` replays it.
     this.nextSpawn = Math.max(0, placement.delay);
@@ -142,6 +194,30 @@ export class FxEmitter {
 
   get time(): number {
     return this.t;
+  }
+
+  /**
+   * Whether this elem has nothing left to do: no particle alive or waiting to be
+   * born, and none still to spawn. An elem that loops for ever is never done,
+   * which is what keeps a repeating effect made of one from ever restarting.
+   */
+  get done(): boolean {
+    if (this.particles.length > 0) {
+      return false;
+    }
+    const spawn = this.elem.spawn;
+    return spawn.kind === "looping" ? spawn.count !== null && this.spawned >= spawn.count : this.spawned > 0;
+  }
+
+  /** Play again from `at` (effect seconds): a repeating placement's next instance. */
+  restart(at: number): void {
+    this.spawned = 0;
+    this.nextSpawn = at;
+  }
+
+  /** Whether a particle's spawn delay has run out, so it is drawn. */
+  isBorn(p: Particle): boolean {
+    return this.t >= p.born;
   }
 
   /** Whether local-frame travel and elem axes turn with the placement. */
@@ -207,6 +283,9 @@ export class FxEmitter {
 
     const e = this.elem;
     const life = Math.max(sampleRange(e.life, r[RAND.life]!), 1 / 1000);
+    // FX_SpawnElem holds each particle back by its own spawn delay (key 18); it
+    // lives its whole life after that, and is not drawn before.
+    const born = at + Math.max(sampleRange(e.spawnDelay, r[RAND.spawnDelay]!), 0);
 
     // FX_GetOriginForElem: the origin range, in the placement's axes only with
     // the flag. (The exporter already swapped the ranges into engine axis order.)
@@ -243,7 +322,7 @@ export class FxEmitter {
     }
 
     this.particles.push({
-      born: at,
+      born,
       life,
       sequence,
       sx: ox,
@@ -293,9 +372,13 @@ export class FxEmitter {
     out.b = scratchVis.color[2]!;
     out.a = scratchVis.color[3]!;
     out.frame = this.atlasFrame(p, u, ageMs);
+    out.trimTop = e.trim?.[0] ?? 1;
+    out.trimBottom = e.trim?.[1] ?? 1;
+    out.pivotX = e.pivot?.[0] ?? 0;
+    out.pivotY = e.pivot?.[1] ?? 0;
 
     out.mode = DRAW_BILLBOARD;
-    if (e.type === "TAIL") {
+    if (e.type === "TAIL" || e.type === "LINE") {
       // A tail stretches along its velocity (FX_DrawTail).
       sampleVelocity(e.velSamples, u, p.rands, scratchLocal, scratchWorld);
       let [vx, vy, vz] = [scratchLocal[0]!, scratchLocal[1]!, scratchLocal[2]!];
@@ -306,12 +389,31 @@ export class FxEmitter {
       vy += scratchWorld[1]! - (g * age) / 1000;
       vz += scratchWorld[2]!;
       const len = Math.hypot(vx, vy, vz);
+      // T5's tails roll like any sprite (FX_GenSpriteVerts); IW5's draw is unread on that point.
+      if (this.game === "iw5") {
+        out.rot = 0;
+      }
       if (len > 1e-9) {
-        out.mode = DRAW_TAIL;
+        out.mode = e.type === "LINE" ? DRAW_LINE : DRAW_TAIL;
         out.ax = vx / len;
         out.ay = vy / len;
         out.az = vz / len;
       }
+    } else if (e.type === "SPRITE_ROTATED") {
+      // FX_DrawElem_RotatedSprite: the elem's own spawn angles, as a Quake axis,
+      // taken through the run-mode frame and drawn as an oriented sprite on
+      // axis[1] and axis[2]. No angular velocity: the angles are fixed at spawn.
+      const [pitch, yaw, roll] = [0, 1, 2].map((k) => sampleRange(e.spawnAngles[k]!, p.rands[RAND.spawnAngles + k]!));
+      const [sp, cp, sy, cy, sr, cr] = [Math.sin(pitch!), Math.cos(pitch!), Math.sin(yaw!), Math.cos(yaw!), Math.sin(roll!), Math.cos(roll!)];
+      let left = toEngine(sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, sr * cp);
+      let up = toEngine(cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp);
+      if (framed) {
+        left = rotate(this.rotation, ...left);
+        up = rotate(this.rotation, ...up);
+      }
+      out.mode = DRAW_ORIENTED;
+      [out.ax, out.ay, out.az] = left;
+      [out.bx, out.by, out.bz] = up;
     } else if (e.type === "SPRITE_ORIENTED") {
       // FX_DrawOrientedSprite (0x4d60e0): the quad spans axis[1] and axis[2] of
       // the run-mode frame, facing along axis[0]. spawnAngles and angularVelocity
@@ -325,7 +427,82 @@ export class FxEmitter {
         [out.ax, out.ay, out.az] = toEngine(0, 1, 0);
         [out.bx, out.by, out.bz] = toEngine(0, 0, 1);
       }
+    } else if (this.game === "t5") {
+      const facing = e.flags & FX_FLAG_BILLBOARD_MASK;
+      out.mode =
+        facing === FX_FLAG_USE_WORLD_UP
+          ? DRAW_BILLBOARD_WORLD_UP
+          : facing === FX_FLAG_ALIGN_VIEWPOINT
+            ? DRAW_BILLBOARD_VIEWPOINT
+            : facing
+              ? DRAW_BILLBOARD_VIEWPOINT_UP
+              : DRAW_BILLBOARD;
     }
+  }
+
+  /**
+   * A CLOUD particle as FX_DrawElem_Cloud hands it to the renderer, into `out`;
+   * false when it draws nothing (scale 0, or no points).
+   *
+   * Colour, size and position are a sprite's (`sample`). The cloud turns by its
+   * spawn angles plus angular velocity over its age, through the run-mode frame,
+   * and draws `count` consecutive points from an offset both drawn from key 29.
+   */
+  sampleCloud(p: Particle, out: CloudView): boolean {
+    const e = this.elem;
+    this.sample(p, scratchView);
+    const scale = scratchVis.scale * CLOUD_SCALE;
+    if (scale === 0) {
+      return false;
+    }
+    const [base, amplitude] = e.cloudDensity ?? [1, 0];
+    const u = Math.floor(p.rands[RAND.cloudCount]! * 65536);
+    const count = Math.min(base + ((u * (amplitude + 1)) >> 16), CLOUD_POINTS);
+    if (count < 1) {
+      return false;
+    }
+
+    const ageMs = Math.max(this.t - p.born, 0) * 1000;
+    const [pitch, yaw, roll] = [0, 1, 2].map(
+      (k) => sampleRange(e.spawnAngles[k]!, p.rands[RAND.spawnAngles + k]!) + sampleRange(e.angularVelocity[k]!, p.rands[RAND.angularVelocity + k]!) * ageMs,
+    );
+    const [sp, cp, sy, cy, sr, cr] = [Math.sin(pitch!), Math.cos(pitch!), Math.sin(yaw!), Math.cos(yaw!), Math.sin(roll!), Math.cos(roll!)];
+    const axes = [
+      toEngine(cp * cy, cp * sy, -sp),
+      toEngine(sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, sr * cp),
+      toEngine(cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp),
+    ].map((axis) => (this.inPlacementFrame ? rotate(this.rotation, ...axis) : axis));
+
+    // The streak runs back along the motion, size1 long (endpos = pos - direction).
+    sampleVelocity(e.velSamples, p.life > 0 ? Math.min(ageMs / (p.life * 1000), 1) : 0, p.rands, scratchLocal, scratchWorld);
+    let [vx, vy, vz] = [scratchLocal[0]!, scratchLocal[1]!, scratchLocal[2]!];
+    if (this.inPlacementFrame) {
+      [vx, vy, vz] = rotate(this.rotation, vx, vy, vz);
+    }
+    vx += scratchWorld[0]!;
+    vy += scratchWorld[1]!;
+    vz += scratchWorld[2]!;
+    const len = Math.hypot(vx, vy, vz);
+    const k = len > 1e-9 ? -scratchView.h / len : 0;
+
+    out.x = scratchView.x;
+    out.y = scratchView.y;
+    out.z = scratchView.z;
+    out.axes = axes.flat();
+    out.scale = scale;
+    out.w = scratchView.w;
+    out.h = scratchView.h;
+    out.r = scratchView.r;
+    out.g = scratchView.g;
+    out.b = scratchView.b;
+    out.a = scratchView.a;
+    out.count = count;
+    out.offset = ((CLOUD_POINTS + 1 - count) * u) >> 16;
+    out.gaussian = (e.flags & FX_FLAG_GAUSSIAN_CLOUD) !== 0;
+    out.sx = vx * k;
+    out.sy = vy * k;
+    out.sz = vz * k;
+    return true;
   }
 
   /** FX_GetAtlasUV's frame index. */
@@ -336,6 +513,15 @@ export class FxEmitter {
       return 0;
     }
     const start = atlas.behavior & 3;
+    if (start === 3 && this.game === "t5") {
+      // T5's fixedRange: cycle `indexRange` cells from `index` (FX_GetAtlasUV).
+      const range = Math.max(atlas.indexRange ?? 1, 1);
+      let step = atlas.behavior & 4 ? Math.floor(u * range) : atlas.fps ? Math.floor((Math.floor(ageMs) * atlas.fps) / 1000) : 0;
+      if (atlas.behavior & 8 && step >= atlas.loopCount * range) {
+        step = range - 1;
+      }
+      return (atlas.index + (step % range)) & (count - 1);
+    }
     let frame = start === 0 ? atlas.index : start === 1 ? Math.floor(p.rands[RAND.atlasStart]! * count) : p.sequence & (count - 1);
     if (atlas.behavior & 4) {
       frame += Math.floor(u * count);

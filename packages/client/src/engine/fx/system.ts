@@ -8,8 +8,10 @@
 
 import * as THREE from "three";
 import type { FxBatch } from "./batch.js";
+import { emptyCloudView, type FxCloudBatch } from "./cloud.js";
+import { SceneDepth } from "./depth.js";
 import { emptyView, FX_FLAG_FRUSTUM_CULL, FxEmitter, type EmitterPlacement, type ParticleView } from "./emitter.js";
-import type { FxEffect, FxLibrary, Range } from "./library.js";
+import { RAND, type FxEffect, type FxGame, type FxLibrary, type Range } from "./library.js";
 
 /**
  * FX_FadeFactor: 1 up to `base`, falling to 0 over `amplitude`. Applied only when
@@ -27,7 +29,11 @@ export function fadeFactor(range: Range, distance: number): number {
  * a byte that defaults to 255 -- so an unfaded 255 draws as 253. Occlusion fading
  * is not implemented, so it stands at its default here.
  */
-export function fadeScale(distanceFade: number): number {
+export function fadeScale(distanceFade: number, game: FxGame = "iw5"): number {
+  if (game === "t5") {
+    // T5 rounds the fade to a byte and shifts the product by 8 (t5-fx): an unfaded 255 draws as 254.
+    return Math.floor(distanceFade * 255 + 0.5) / 256;
+  }
   return (Math.floor(distanceFade * 255) * 255) / 65536;
 }
 
@@ -53,6 +59,17 @@ export interface FxPlacement extends EmitterPlacement {
   fx: string;
 }
 
+/** A repeating placement's emitters, which start their next instance together. */
+interface FxLoop {
+  emitters: FxEmitter[];
+  repeat: number;
+  /** Effect seconds at which to next check whether the last instance has finished. */
+  due: number;
+}
+
+/** How often Black Ops' `loopfx` polls `isfxplaying` once the repeat has passed. */
+const LOOP_POLL = 0.25;
+
 /** What a batch is keyed by: one draw call per material and blend. */
 export interface BatchKey {
   material: string;
@@ -64,6 +81,8 @@ export interface FxBuild {
   batches: Map<string, FxBatch>;
   /** Which batch an elem draws into, by `${effect}:${elemIndex}`. */
   batchOf: Map<string, string>;
+  /** A CLOUD elem's draws, keyed by material: a pool of cloud meshes rather than a quad batch. */
+  clouds?: Map<string, FxCloudBatch>;
 }
 
 export class FxSystem {
@@ -74,7 +93,13 @@ export class FxSystem {
   budget = 6000;
 
   private emitters: FxEmitter[] = [];
+  private loops: FxLoop[] = [];
   private batches = new Map<string, FxBatch>();
+  private clouds = new Map<string, FxCloudBatch>();
+  private cloudView = emptyCloudView();
+  private depth: SceneDepth | undefined;
+  /** Soft particles: a second, depth-only draw of the world whenever a feathered sheet is on screen. */
+  soft = true;
   private batchOf = new Map<string, string>();
   private view: ParticleView = emptyView();
   private skipped = new Map<string, number>();
@@ -85,9 +110,10 @@ export class FxSystem {
   }
 
   /** Every element type the runtime draws. Anything else is counted, never substituted. */
-  // CLOUD is not here on purpose: the game draws it with a routine of its own
-  // (and skips it at scale 0), so a billboard would be a plausible wrong result.
-  static readonly DRAWN = new Set(["SPRITE_BILLBOARD", "SPRITE_ORIENTED", "TAIL"]);
+  // CLOUD draws through a routine of its own (cloud.ts), never as a billboard.
+  static readonly DRAWN = new Set(["SPRITE_BILLBOARD", "SPRITE_ORIENTED", "SPRITE_ROTATED", "TAIL", "LINE", "CLOUD"]);
+
+  private game: FxGame = "iw5";
 
   /**
    * Start `placements`, replacing whatever was playing.
@@ -100,8 +126,13 @@ export class FxSystem {
     this.clear();
     this.batches = build.batches;
     this.batchOf = build.batchOf;
+    this.game = library.game;
+    this.clouds = build.clouds ?? new Map();
     for (const batch of this.batches.values()) {
       this.root.add(batch.mesh);
+    }
+    for (const cloud of this.clouds.values()) {
+      this.root.add(cloud.root);
     }
 
     for (const placement of placements) {
@@ -110,7 +141,12 @@ export class FxSystem {
         this.note("unresolved");
         continue;
       }
+      const first = this.emitters.length;
       this.addEmitters(effect, placement, library, 0);
+      const repeat = placement.repeat ?? 0;
+      if (repeat > 0 && this.emitters.length > first) {
+        this.loops.push({ emitters: this.emitters.slice(first), repeat, due: Math.max(placement.delay, 0) + repeat });
+      }
     }
     this.root.updateMatrixWorld(true);
   }
@@ -137,7 +173,12 @@ export class FxSystem {
         this.note(elem.type);
         return;
       }
-      this.emitters.push(new FxEmitter(elem, i, placement));
+      const undrawn = library.materials[elem.visuals.names[0] ?? ""]?.undrawn;
+      if (undrawn) {
+        this.note(undrawn);
+        return;
+      }
+      this.emitters.push(new FxEmitter(elem, i, placement, library.game));
     });
   }
 
@@ -235,25 +276,63 @@ export class FxSystem {
     for (const e of this.emitters) {
       e.step(dt, each, this.canSpawn(e));
     }
+    // clientscripts/mp/_fx.csc's loopfx: wait out the repeat, then poll every
+    // quarter second until the last instance has finished, then play a new one.
+    // Instances never overlap.
+    for (const loop of this.loops) {
+      const t = loop.emitters[0]!.time;
+      while (t >= loop.due) {
+        if (loop.emitters.every((e) => e.done)) {
+          for (const e of loop.emitters) {
+            e.restart(loop.due);
+          }
+          loop.due += loop.repeat;
+        } else {
+          loop.due += LOOP_POLL;
+        }
+      }
+    }
   }
 
   private fill(): void {
     for (const batch of this.batches.values()) {
       batch.begin();
     }
+    for (const cloud of this.clouds.values()) {
+      cloud.begin();
+    }
     const v = this.view;
+    const c = this.cloudView;
     for (const e of this.emitters) {
-      const key = this.batchOf.get(e.elem.visuals.names[0] ?? "");
-      const batch = key ? this.batches.get(key) : undefined;
-      if (!batch) {
-        continue;
-      }
+      const names = e.elem.visuals.names;
       const { fadeInRange, fadeOutRange } = e.elem;
       const fades = fadeInRange[1] !== 0 || fadeOutRange[1] !== 0;
       for (const p of e.particles) {
+        if (!e.isBorn(p)) {
+          continue;
+        }
+        // An elem with several visuals draws one per particle, chosen by its own
+        // random (key 21): a fire's flicker mixes blended and additive sheets.
+        const name = names.length > 1 ? names[Math.min(Math.floor(p.rands[RAND.visual]! * names.length), names.length - 1)] : names[0];
+        if (e.elem.type === "CLOUD") {
+          const cloud = this.clouds.get(name ?? "");
+          if (cloud && e.sampleCloud(p, c)) {
+            const distance = fades ? distanceFade(fadeInRange, fadeOutRange, Math.hypot(c.x - this.eye.x, c.y - this.eye.y, c.z - this.eye.z)) : 1;
+            c.a *= fadeScale(distance, this.game);
+            if (c.a > 0 && c.w > 0) {
+              cloud.push(c);
+            }
+          }
+          continue;
+        }
+        const key = this.batchOf.get(name ?? "");
+        const batch = key ? this.batches.get(key) : undefined;
+        if (!batch) {
+          continue;
+        }
         e.sample(p, v);
         const distance = fades ? distanceFade(fadeInRange, fadeOutRange, Math.hypot(v.x - this.eye.x, v.y - this.eye.y, v.z - this.eye.z)) : 1;
-        v.a *= fadeScale(distance);
+        v.a *= fadeScale(distance, this.game);
         // The game skips a particle whose alpha is at or below fx_alphaThreshold (0).
         if (v.a <= 0 || v.w <= 0) {
           continue;
@@ -264,17 +343,45 @@ export class FxSystem {
     for (const batch of this.batches.values()) {
       batch.end();
     }
+    for (const cloud of this.clouds.values()) {
+      cloud.end();
+    }
+  }
+
+  /**
+   * Render the scene's depth for this frame's feathered sheets, if any are drawn.
+   * Run after `update` and just before the frame, so it sees the final camera.
+   */
+  renderDepth(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+    if (!this.soft) {
+      return;
+    }
+    const feathered = [...this.batches.values()].filter((b) => b.feathered && b.count > 0);
+    if (feathered.length === 0) {
+      return;
+    }
+    this.depth ??= new SceneDepth();
+    this.depth.render(renderer, scene, camera, this.root);
+    for (const batch of feathered) {
+      batch.useDepth(this.depth);
+    }
   }
 
   /** Stop everything and drop the batches. The textures belong to the world's AssetStore. */
   clear(): void {
     this.emitters = [];
+    this.loops = [];
     this.skipped.clear();
     for (const batch of this.batches.values()) {
       this.root.remove(batch.mesh);
       batch.dispose();
     }
+    for (const cloud of this.clouds.values()) {
+      this.root.remove(cloud.root);
+      cloud.dispose();
+    }
     this.batches = new Map();
     this.batchOf = new Map();
+    this.clouds = new Map();
   }
 }

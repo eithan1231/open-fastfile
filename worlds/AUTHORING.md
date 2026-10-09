@@ -806,6 +806,7 @@ definition in the `fx` library says what it looks like; this says where.
 | `at`     | 1–3 numbers                                   | `0 0 0`      |
 | `rotate` | 3 numbers — the effect's orientation          | `0 0 0`      |
 | `delay`  | number — seconds before it starts (see below) | `0`          |
+| `repeat` | number — seconds between plays (see below)    | `0` (once)   |
 | `tag`    | 1–8 strings — shared group handles            | —            |
 
 A group's origin and yaw apply to an effect inside it, as they do to anything
@@ -823,6 +824,13 @@ not play.
 if it had been playing that long — which is what keeps a map's ambient effects
 from visibly winding up as the world loads.
 
+`repeat` plays the effect again and again: once the last play has **finished**
+and at least `repeat` seconds have passed since it started, a new one begins
+(checked every quarter second, so plays never overlap). An effect whose elements
+loop for ever never finishes, so it plays once whatever `repeat` says. This is
+Black Ops' `loopfx`, where the exporter writes the script's one wait as both
+`delay` and `repeat`.
+
 ```
 fx { source: "assets/fx/effects.json" }
 
@@ -833,6 +841,9 @@ group courtyard {
   at: 10 0 -20
   effect { fx: "smoke/hallway_smoke_light", at: 0 0.5 2 }
 }
+
+// A burst of sparks every few seconds, never two at once.
+effect sparks { fx: "maps/mp_maps/fx_mp_elec_spark_burst_lg", at: 3 4 -2, delay: 2.2, repeat: 2.2 }
 ```
 
 Effects are drawn, never collided with, and cast no shadow. Imported maps get

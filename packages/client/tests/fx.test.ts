@@ -5,9 +5,22 @@
 // depended on how time was cut up, every pixel diff on a world with effects
 // would be noise — and the tool stops being useful for anything else in it.
 
+import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { DRAW_ORIENTED, DRAW_TAIL, FxEmitter, emptyView } from "../src/engine/fx/emitter.js";
-import { distanceFade, fadeScale } from "../src/engine/fx/system.js";
+import {
+  DRAW_BILLBOARD,
+  DRAW_BILLBOARD_VIEWPOINT,
+  DRAW_BILLBOARD_VIEWPOINT_UP,
+  DRAW_BILLBOARD_WORLD_UP,
+  DRAW_LINE,
+  DRAW_ORIENTED,
+  DRAW_TAIL,
+  FxEmitter,
+  emptyView,
+} from "../src/engine/fx/emitter.js";
+import { fxMaterial } from "../src/engine/fx/batch.js";
+import { FxSystem, distanceFade, fadeScale } from "../src/engine/fx/system.js";
+import { CLOUD_POINTS, cloudPoints, cloudSlots, emptyCloudView } from "../src/engine/fx/cloud.js";
 import { RAND_COUNT, interval, readFxLibrary, sampleRange, sampleVis, seeded, seedOf, emptyVisualState } from "../src/engine/fx/library.js";
 import type { FxElem, FxVisSample } from "../src/engine/fx/library.js";
 
@@ -524,5 +537,187 @@ describe("the library", () => {
 
   it("defaults a missing materials table rather than failing", () => {
     expect(readFxLibrary({ _version: 4, effects: {} }, "x.json").materials).toEqual({});
+  });
+});
+
+describe("Black Ops (T5) elements", () => {
+  const once = { kind: "oneShot", count: [1, 0] } as const;
+  const sampled = (e: FxElem, game: "iw5" | "t5" = "t5", place = placement, t = 0) => {
+    const emitter = new FxEmitter(e, 0, place, game);
+    emitter.step(t, 1000);
+    const out = emptyView();
+    emitter.sample(emitter.particles[0]!, out);
+    return out;
+  };
+  const round = (vs: number[]) => vs.map((v) => Math.round(v * 1e6) / 1e6 + 0);
+
+  it("lays a rotated sprite on its own spawn angles, through the run frame", () => {
+    // Yaw 90 degrees: CoD left (+Y) turns to -X, and up stays up.
+    const rotated = (flags: number) =>
+      elem({
+        type: "SPRITE_ROTATED",
+        flags,
+        spawn: once,
+        spawnAngles: [
+          [0, 0],
+          [Math.PI / 2, 0],
+          [0, 0],
+        ],
+      });
+    let out = sampled(rotated(0));
+    expect(out.mode).toBe(DRAW_ORIENTED);
+    // CoD (-1, 0, 0) is engine (-1, 0, 0); CoD up is engine +Y.
+    expect(round([out.ax, out.ay, out.az, out.bx, out.by, out.bz])).toEqual([-1, 0, 0, 0, 1, 0]);
+
+    // In the effect's frame, a placement turned 90 degrees about engine Y turns it again.
+    out = sampled(rotated(0x40), "t5", { ...placement, rotation: { x: 0, y: Math.PI / 2, z: 0 } });
+    expect(round([out.ax, out.ay, out.az])).toEqual([0, 0, 1]);
+  });
+
+  it("draws a line ahead of its particle and a tail behind it, both rolling on T5", () => {
+    const moving = {
+      local: flatVel.local,
+      world: { velocity: { base: [0, 1, 0], amplitude: ZERO3 }, totalDelta: { base: ZERO3, amplitude: ZERO3 } },
+    };
+    const streak = (type: string) => elem({ type, spawn: once, flags: 0x02000000, velSamples: [moving, moving], initialRotation: [0.5, 0] });
+    expect(sampled(streak("LINE")).mode).toBe(DRAW_LINE);
+    expect(sampled(streak("TAIL")).mode).toBe(DRAW_TAIL);
+    expect(sampled(streak("TAIL")).rot).toBeCloseTo(0.5);
+    // IW5's tail draw is unread on roll, so it keeps drawing without one.
+    expect(sampled(streak("TAIL"), "iw5").rot).toBe(0);
+  });
+
+  it("faces a billboard by T5's world-up and viewpoint flags, and ignores them on IW5", () => {
+    const facing = (flags: number, game: "iw5" | "t5" = "t5") => sampled(elem({ flags, spawn: once }), game).mode;
+    expect(facing(0)).toBe(DRAW_BILLBOARD);
+    expect(facing(0x80000)).toBe(DRAW_BILLBOARD_WORLD_UP);
+    expect(facing(0x100000)).toBe(DRAW_BILLBOARD_VIEWPOINT);
+    expect(facing(0x180000)).toBe(DRAW_BILLBOARD_VIEWPOINT_UP);
+    expect(facing(0x180000, "iw5")).toBe(DRAW_BILLBOARD);
+  });
+
+  it("carries a trim and pivot to the quad, defaulting to a full, centred one", () => {
+    let out = sampled(elem({ spawn: once }));
+    expect([out.trimTop, out.trimBottom, out.pivotX, out.pivotY]).toEqual([1, 1, 0, 0]);
+    out = sampled(elem({ spawn: once, trim: [0.29, 0.53], pivot: [0, -1] }));
+    expect([out.trimTop, out.trimBottom, out.pivotX, out.pivotY]).toEqual([0.29, 0.53, 0, -1]);
+  });
+
+  it("cycles a fixed range of atlas cells from its index (start mode 3)", () => {
+    const atlas = { behavior: 3, index: 4, fps: 10, loopCount: 0, colIndexBits: 2, rowIndexBits: 2, entryCount: 16, indexRange: 3 };
+    const frameAt = (t: number) => sampled(elem({ atlas, spawn: once, life: [10, 0] }), "t5", placement, t).frame;
+    expect([0, 0.1, 0.2, 0.3].map(frameAt)).toEqual([4, 5, 6, 4]);
+  });
+
+  it("draws an unfaded 255 as 254, rounding its fade to a byte", () => {
+    expect(Math.round(255 * fadeScale(1, "t5"))).toBe(254);
+    expect(fadeScale(0, "t5")).toBe(0);
+  });
+});
+
+describe("timing", () => {
+  it("holds each particle back by its own spawn delay and draws it only after", () => {
+    const e = new FxEmitter(elem({ spawn: { kind: "oneShot", count: [1, 0] }, spawnDelay: [0.5, 0], life: [1, 0] }), 0, placement);
+    e.step(0.25, 1000);
+    expect(e.particles.length).toBe(1);
+    expect(e.isBorn(e.particles[0]!)).toBe(false);
+    e.step(0.5, 1000);
+    expect(e.isBorn(e.particles[0]!)).toBe(true);
+    // It lives its whole second after being born, not after being spawned.
+    e.step(0.6, 1000);
+    expect(e.particles.length).toBe(1);
+    e.step(0.5, 1000);
+    expect(e.done).toBe(true);
+  });
+
+  it("plays a repeating placement again only once the last instance has finished", () => {
+    const camera = new THREE.PerspectiveCamera();
+    const burst = elem({ spawn: { kind: "oneShot", count: [1, 0] }, life: [2, 0] });
+    const library = { game: "t5" as const, effects: { burst: { name: "burst", looping: false, radius: 1, elems: [burst] } }, materials: {} };
+    const sys = new FxSystem();
+    sys.attach([{ ...placement, fx: "burst", repeat: 0.5 }], library, { batches: new Map(), batchOf: new Map() });
+    // The repeat passes at 0.5 s but the particle lives until 2 s: the next starts at
+    // the first quarter-second poll after it dies, never on top of it.
+    const counts: number[] = [];
+    for (let i = 0; i < 180; i++) {
+      sys.update(1 / 60, camera);
+      if (i % 15 === 14) {
+        counts.push(sys.particleCount);
+      }
+    }
+    expect(Math.max(...counts)).toBe(1);
+    expect(counts.filter((n) => n === 0).length).toBeLessThan(3);
+  });
+
+  it("never restarts a placement whose effect loops for ever", () => {
+    const camera = new THREE.PerspectiveCamera();
+    const library = { game: "t5" as const, effects: { snow: { name: "snow", looping: true, radius: 1, elems: [elem({ life: [0.5, 0] })] } }, materials: {} };
+    const sys = new FxSystem();
+    sys.attach([{ ...placement, fx: "snow", repeat: 0.5 }], library, { batches: new Map(), batchOf: new Map() });
+    for (let i = 0; i < 120; i++) {
+      sys.update(1 / 60, camera);
+    }
+    // One instance spawning every 0.1 s with a 0.5 s life: five alive, not ten.
+    expect(sys.particleCount).toBe(5);
+  });
+});
+
+describe("particle clouds", () => {
+  it("scatters the uniform points by an LFSR that visits every slot exactly once", () => {
+    const slots = cloudSlots();
+    expect(slots[0]).toBe(0);
+    expect(new Set(slots).size).toBe(CLOUD_POINTS);
+    expect(Math.max(...slots)).toBe(CLOUD_POINTS - 1);
+  });
+
+  it("fills a cube with one half and a clipped gaussian with the other", () => {
+    const p = cloudPoints();
+    const half = (from: number) => Array.from(p.subarray(from * 3, (from + CLOUD_POINTS) * 3));
+    const uniform = half(0);
+    const gaussian = half(CLOUD_POINTS);
+    expect(Math.min(...uniform)).toBeGreaterThanOrEqual(-1);
+    expect(Math.max(...uniform)).toBeLessThanOrEqual(1);
+    const spread = (xs: number[]) => Math.sqrt(xs.reduce((s, x) => s + x * x, 0) / xs.length);
+    // A uniform cube's RMS is 1/sqrt(3); a quarter-normal's is about 0.25.
+    expect(spread(uniform)).toBeCloseTo(1 / Math.sqrt(3), 1);
+    expect(spread(gaussian)).toBeCloseTo(0.25, 1);
+  });
+
+  it("draws a window of the shared points, scaled in game units, and nothing at scale 0", () => {
+    const cloud = (scale: number, density: [number, number]) =>
+      elem({
+        type: "CLOUD",
+        spawn: { kind: "oneShot", count: [1, 0] },
+        cloudDensity: density,
+        visSamples: [{ base: visState([1, 1, 1, 1], [0.1, 0.1], scale), amplitude: visState([1, 1, 1, 1], [0, 0], 0) }],
+      });
+    const view = emptyCloudView();
+    const e = new FxEmitter(cloud(100, [1024, 0]), 0, placement, "t5");
+    e.step(0, 1000);
+    expect(e.sampleCloud(e.particles[0]!, view)).toBe(true);
+    expect(view.scale).toBeCloseTo(100 * 0.0254);
+    // The whole buffer: every cloud of density 1024 draws the same points.
+    expect([view.offset, view.count]).toEqual([0, 1024]);
+
+    const few = new FxEmitter(cloud(100, [10, 0]), 0, placement, "t5");
+    few.step(0, 1000);
+    few.sampleCloud(few.particles[0]!, view);
+    expect(view.count).toBe(10);
+    expect(view.offset + view.count).toBeLessThanOrEqual(CLOUD_POINTS);
+
+    const flat = new FxEmitter(cloud(0, [1024, 0]), 0, placement, "t5");
+    flat.step(0, 1000);
+    expect(flat.sampleCloud(flat.particles[0]!, view)).toBe(false);
+  });
+});
+
+describe("soft particles", () => {
+  const material = (blendSrc: string, blendDst: string) =>
+    fxMaterial(new THREE.Texture(), { blendOp: "add", blendSrc, blendDst, doubleSided: false, fog: false, featherDepth: 0.5 }, { cols: 1, rows: 1 });
+
+  it("fades an additive blend by its colour, since one/one ignores alpha", () => {
+    expect(material("one", "one").defines.SOFT_RGB).toBeDefined();
+    expect(material("invdestcolor", "one").defines.SOFT_RGB).toBeDefined();
+    expect(material("srcalpha", "invsrcalpha").defines.SOFT_RGB).toBeUndefined();
   });
 });

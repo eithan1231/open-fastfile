@@ -82,6 +82,7 @@ def export_map(
     effects_only=False,
     sounds_only=False,
     sound_export_only=False,
+    effects_export_only=False,
     climbing_only=False,
     collision_only=False,
     nav_only=False,
@@ -111,6 +112,8 @@ def export_map(
     `sound_export_only` runs stage 13 alone from a fresh dump: the aliases of the
     map and its companion zones, `assets/sounds/` and `sound.world`, leaving every
     other file as it is bar the one include line in `world.world`.
+    `effects_export_only` does the same for stage 12: the effect definitions,
+    their materials and images, `assets/fx/` and `fx.world`.
 
     `climbing_only` rewrites `mantle.world` and `ladder.world` from a fresh
     clipmap dump (plus the GfxWorld and entities, to place brush models), and
@@ -186,6 +189,11 @@ def export_map(
         return
     if sound_export_only:
         export_sound_only(map_name, ff, out, backend, work, search, companion_zones(zone, common))
+        if not keep_work:
+            shutil.rmtree(work, ignore_errors=True)
+        return
+    if effects_export_only:
+        export_effects_only(map_name, ff, out, backend, work, companion_zones(zone, common), search)
         if not keep_work:
             shutil.rmtree(work, ignore_errors=True)
         return
@@ -390,7 +398,7 @@ def export_map(
     print("[12/13] exporting world effects")
     has_fx = False
     if backend.provides(*EFFECTS_DUMPS):
-        has_fx = export_effects(map_name, out, work, img_dir, states)
+        has_fx = export_effects(map_name, out, work, img_dir, states, search)
     else:
         print(f"      {_skipped(backend, EFFECTS_DUMPS)}")
 
@@ -934,7 +942,7 @@ def _load_zone_images(backend, map_name, zone_dir, work):
     return out
 
 
-def export_effects(map_name, out, work, img_dir, states):
+def export_effects(map_name, out, work, img_dir, states, search=None):
     """`assets/fx/`, and the `fx.world` that names what plays where.
 
     The placements were parsed into `export_metadata.json` by the metadata stage;
@@ -946,14 +954,14 @@ def export_effects(map_name, out, work, img_dir, states):
         print("      no metadata; nothing to place")
         return False
     data = read_json(meta_path)
-    return _write_effects(map_name, out, os.path.join(work, "fx", "fx"), data, img_dir, states)
+    return _write_effects(map_name, out, os.path.join(work, "fx", "fx"), data, img_dir, states, search)
 
 
-def _write_effects(map_name, out, fx_root, data, img_dir=None, states=None):
+def _write_effects(map_name, out, fx_root, data, img_dir=None, states=None, search=None):
     """The effects stage once the definitions are dumped: closure, textures and `fx.world`."""
     fx_data = data.get("fx") or {}
     aliases = fx_data.get("effects", {})
-    placed = {p.get("fxid") for p in fx_data.get("placements", []) if p.get("create") == "createOneshotEffect"}
+    placed = {p.get("fxid") for p in fx_data.get("placements", []) if p.get("create") in worldfile.EFFECT_CREATES}
     wanted = {aliases[f] for f in placed if f in aliases}
     if not wanted:
         print("      the map places no effects")
@@ -964,7 +972,10 @@ def _write_effects(map_name, out, fx_root, data, img_dir=None, states=None):
 
     assets_fx = os.path.join(out, "assets", "fx")
     mat_root = os.path.join(os.path.dirname(os.path.dirname(fx_root)), "mat", "materials")
-    effects, missing, images, counts = fxmod.export_fx(fx_root, wanted, assets_fx, mat_root if os.path.isdir(mat_root) else None)
+    wind = fxmod.global_wind(data)
+    effects, missing, images, counts = fxmod.export_fx(
+        fx_root, wanted, assets_fx, mat_root if os.path.isdir(mat_root) else None, wind
+    )
     children = len(effects) - len(wanted)
     print(f"      {len(effects)} effect(s) from {len(wanted)} placed ({children} pulled in as children)")
     if missing:
@@ -982,7 +993,7 @@ def _write_effects(map_name, out, fx_root, data, img_dir=None, states=None):
         # brightness, so JPEG ringing would be added straight into the frame.
         wanted_tex = set(images.values())
         tex_out = os.path.join(assets_fx, "textures")
-        ok, miss, failed = convert_textures(img_dir, wanted_tex, tex_out, lossless=wanted_tex)
+        ok, miss, failed = convert_textures(img_dir, wanted_tex, tex_out, lossless=wanted_tex, search=search)
         print(f"      {ok} texture(s) converted, {len(miss)} missing, {failed} failed")
 
     path, n_effects, n_places, skipped, unknown = worldfile.write_fx_world(out, map_name, data, set(effects), counts)
@@ -1093,6 +1104,18 @@ def export_sound_only(map_name, ff, out, backend, work, search, companions):
         backend.dump(ff, snd, kind)
     if export_sound(map_name, out, work, search):
         worldfile.ensure_include(out, "sound.world")
+
+
+def export_effects_only(map_name, ff, out, backend, work, companions, search=None):
+    """Stage 12 from a fresh dump: the companions' effects, materials and images, then the map's (so its own win)."""
+    backends.require(backend, "--effects-export-only", *EFFECTS_DUMPS, "material", "image")
+    for _name, common_ff in companions:
+        for sub, kind in (("fx", "fx"), ("mat", "material"), ("img", "image")):
+            backend.dump(common_ff, os.path.join(work, sub), kind)
+    for sub, kind in (("fx", "fx"), ("mat", "material"), ("img", "image")):
+        backend.dump(ff, os.path.join(work, sub), kind)
+    if export_effects(map_name, out, work, os.path.join(work, "img"), None, search):
+        worldfile.ensure_include(out, "fx.world")
 
 
 def rewrite_sound(map_name, out):
@@ -1271,6 +1294,12 @@ def add_arguments(ap):
         "aliases; every other file is left as it is",
     )
     ap.add_argument(
+        "--effects-export-only",
+        action="store_true",
+        help="only re-export assets/fx/ and fx.world from a fresh dump of the map's and its companions' "
+        "effects, materials and images; every other file is left as it is",
+    )
+    ap.add_argument(
         "--effects-only",
         action="store_true",
         help="only rewrite fx.world from the committed export_metadata.json and the assets/fx/effects.json "
@@ -1337,6 +1366,7 @@ def main(args):
             effects_only=args.effects_only,
             sounds_only=args.sounds_only,
             sound_export_only=args.sound_export_only,
+            effects_export_only=args.effects_export_only,
             climbing_only=args.climbing_only,
             collision_only=args.collision_only,
             nav_only=args.nav_only,
@@ -1383,6 +1413,7 @@ def main(args):
                 gameplay_only=args.gameplay_only,
                 sounds_only=args.sounds_only,
                 sound_export_only=args.sound_export_only,
+                effects_export_only=args.effects_export_only,
                 effects_only=args.effects_only,
                 climbing_only=args.climbing_only,
                 collision_only=args.collision_only,

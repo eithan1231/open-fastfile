@@ -5,17 +5,13 @@ The registry has IW5's shape (scripts/cod/iw5/dumpers/__init__.py): `DUMPERS`,
 read T5's records as they are (a model's surfaces on the model, a bone's `offset`,
 version-19 clips); the rest are T5's own modules, each saying what differs.
 
-**Effects are not written yet**: writing them is new output and a decision of
-its own (docs/cod/games.md). `fx` is a partial kind with no fields: a dump
-writes the zone listing and nothing else, and stage 12 skips.
-
 **Sound is one asset.** A T5 zone's `soundbank` holds the aliases and their audio
 together, so `sound` writes both halves and `loadedsound` writes nothing at all
 (`NOTHING_AT_ALL`, which the backend returns on before it walks or lists anything).
 """
 
 from ...iw5.dumpers import Context, mapents, xanim, xmodel
-from . import clipmap, gfxworld, image, material, pathdata, rawfile, sound, weapon
+from . import clipmap, fx, gfxworld, image, material, pathdata, rawfile, sound, weapon
 
 __all__ = ["COMPLETE", "Context", "DUMPERS", "NOTHING_AT_ALL", "PARTS"]
 
@@ -36,9 +32,9 @@ DUMPERS = {
     "weapon": weapon.write,
     "sound": sound.write,
     "loadedsound": nothing,
-    "fx": nothing,
+    "fx": fx.write,
     "pathdata": pathdata.write,
 }
-PARTS = {"fx": frozenset()}  # kind -> the top-level fields a partial writer writes
+PARTS = {}  # kind -> the top-level fields a partial writer writes
 COMPLETE = set(DUMPERS) - set(PARTS)
 NOTHING_AT_ALL = frozenset({"loadedsound"})

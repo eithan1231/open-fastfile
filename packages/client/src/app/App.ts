@@ -254,6 +254,7 @@ export class App {
     // the frozen-matrix rules that apply to everything in it.
     this.audio.attachTo(this.viewer.camera);
     this.viewer.setOverlay((renderer) => this.viewmodel.render(renderer));
+    this.viewer.setBeforeRender((renderer, scene, camera) => this.fx.renderDepth(renderer, scene, camera));
     // The moment this client last drew other players at, so the server can judge a
     // shot against what the shooter actually saw rather than against the present.
     // Peers first; with none, the actors, which are drawn at the same moment.
@@ -518,6 +519,11 @@ export class App {
     // to a fixed point in fixed steps also makes the frame identical run to run,
     // which is what keeps `pnpm shots` diffs meaningful for every world.
     if (arrival.kind === "pose" && arrival.hold) {
+      // The camera first: mounting leaves it at the dollhouse's framing until the
+      // next frame, and a frustum-gated elem judged from there spawns nothing.
+      if (this.mode === "walk") {
+        this.firstPerson.snapCamera();
+      }
       this.fx.seekTo(POSE_TIME, this.viewer.camera);
     }
     if (arrival.kind === "pose" && arrival.hold) {

@@ -196,6 +196,12 @@ export interface ResolvedEffect {
    * from visibly winding up as a world loads.
    */
   delay: number;
+  /**
+   * Seconds, or 0 for a placement that plays once. A repeating effect starts a new
+   * instance once the last has finished and at least this long has passed since it
+   * started, polling every quarter second (Black Ops' `loopfx`, clientscripts/mp/_fx.csc).
+   */
+  repeat: number;
 }
 
 /**

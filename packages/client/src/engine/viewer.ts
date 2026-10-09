@@ -25,6 +25,7 @@ export class Viewer {
   private frameCallbacks: Array<(dt: number, elapsed: number) => void> = [];
   /** Drawn after the world, into the same framebuffer (engine/viewmodel.ts). */
   private overlay: ((renderer: THREE.WebGLRenderer) => void) | undefined;
+  private beforeRender: ((renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => void) | undefined;
   private lastTime = performance.now();
   private rafId = 0;
   private quality: QualityLevel = loadQualityLevel();
@@ -92,6 +93,7 @@ export class Viewer {
 
       this.profiler.beginGpu(); // asynchronous: never stalls waiting for the result
       this.renderer.info.reset();
+      this.beforeRender?.(this.renderer, this.scene, this.camera);
       this.renderer.render(this.scene, this.camera);
       this.overlay?.(this.renderer);
       this.profiler.endGpu();
@@ -104,6 +106,11 @@ export class Viewer {
 
   stop(): void {
     cancelAnimationFrame(this.rafId);
+  }
+
+  /** A pass that must see the frame's final camera, run just before the scene renders (the effects' depth). */
+  setBeforeRender(pass: ((renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => void) | undefined): void {
+    this.beforeRender = pass;
   }
 
   setOverlay(render: ((renderer: THREE.WebGLRenderer) => void) | undefined): void {

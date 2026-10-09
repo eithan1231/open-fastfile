@@ -2242,9 +2242,48 @@ same conversion as prop angles (`props.engine_euler`).
 
 - the scene-depth half of zfeather soft particles (needs a depth texture);
 - lighting by `lightingFrac`, and occlusion fading;
-- clouds, sparks, models, lights, decals, sounds, trails;
+- sparks, models, lights, decals, sounds, trails, and heat distortion (T5 clouds are drawn, without their outdoor mask);
 - run mode `0xc0` builds its frame at the offset point; the runtime uses the
   placement's axes for it.
+
+### Black Ops (T5)
+
+Read from Black Ops' own code: the symbolised Xbox 360 MP client, the retail
+`BlackOpsMP.exe` and the dedicated server's PDB; how, the function map and what
+is open are in [reverse/t5-fx](../../reverse/t5-fx/README.md). Everything above
+holds for T5 except:
+
+- **Types** are renumbered from index 2 and add `SPRITE_ROTATED` and `LINE`.
+- **Seed:** `(sequence*0x128 + effectSeed + msecBegin) % 479`, with no per-elem term;
+  508 table entries; key 29 is a cloud's count.
+- **Rotated sprite:** its own `spawnAngles` (keys 12–14, no angular velocity) as a
+  Quake axis, through the run frame, drawn as an oriented sprite on axis[1]/axis[2].
+- **Line:** a tail centred `size[1]` ahead of the particle instead of behind. Tails
+  and lines roll like any sprite.
+- **Billboard facing**, flags `0x180000`: `0x80000` keeps the world's up, `0x100000`
+  faces the eye, both do both.
+- **Trim and pivot:** the quad's top and bottom edges are `topWidth`/`bottomWidth`
+  of full, each in [0, 1], with UVs pulled in to match; with flag `0x200000` the
+  centre moves by `pivot[0]·A' + pivot[1]·B'`.
+- **Atlas:** `entryCountAndIndexRange` is cells (low 9 bits) and an index range;
+  start mode 3 cycles that range from `index`.
+- **Wind:** with `maxWindStrength`, `w = clamp(|wind| / maxWindStrength, 0, 1)` moves
+  life and spawn interval toward their max-wind values. `windInfluence` is unread.
+- **Final alpha** is `(a · round(fade·255 + 0.5)) >> 8`: an unfaded 255 draws as 254.
+- **Cloud:** each particle is one rigid cloud of `count` screen-aligned quads out of a
+  shared buffer of 2 × 1024 points (a jittered grid scattered by a 10-bit LFSR, then
+  a clipped quarter-normal), from offset `((1025 − count)·u) >> 16`, both from key 29.
+  A point lands at `pos + scale·(axes·p)`, `scale` in game units, the axes the spawn
+  angles plus angular velocity over the particle's age. Quads are `size0` by `size1`
+  (half a sprite's span), streaked along the motion only with non-uniform size; no
+  atlas, roll, fog or feather. `particle_cloud_outdoor` also hides a flake under a
+  roof, from a height map the runtime does not have.
+- **Shaders:** `effect_zfeather` is IW5's blend. `effect_add` writes `rgb·a`;
+  `effect_zfeather_add` writes `rgb·a·(0.25R + 0.5G + 0.25B)`, with additive sets
+  fading to black in fog. `_falloff` scales alpha by and tints toward
+  `f = sat(dot(view, N)²·falloffParms.z + falloffParms.w)`; `_eyeoffset` pulls the
+  vertex `eyeOffsetParms.x` toward the eye along its ray. Particles add into the
+  gamma-encoded frame with no exposure, as the engine's canvas blend does.
 
 ### Where these came from
 

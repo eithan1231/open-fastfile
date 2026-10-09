@@ -56,6 +56,12 @@ describe("an effect placement", () => {
     expect(resolveOk(`effect e { fx: "a/b", at: 0 0 0 }`).effects[0]!.delay).toBe(0);
   });
 
+  it("repeats only when asked, and never at a negative interval", () => {
+    expect(resolveOk(`effect e { fx: "a/b", at: 0 0 0 }`).effects[0]!.repeat).toBe(0);
+    expect(resolveOk(`effect e { fx: "a/b", at: 0 0 0, delay: 1.5, repeat: 1.5 }`).effects[0]!.repeat).toBe(1.5);
+    expect(resolveOk(`effect e { fx: "a/b", at: 0 0 0, repeat: -2 }`).effects[0]!.repeat).toBe(0);
+  });
+
   it("needs an effect to play", () => {
     expect(codes(`effect e { at: 0 0 0 }`)).toContain("missing-property");
   });

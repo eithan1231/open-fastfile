@@ -19,6 +19,7 @@ docs/cod/reference.md):
   over their 3 s life, ceiling ash falls 12.7 m over 10 s.
 """
 
+import math
 import os
 
 from .files import read_json, write_json
@@ -28,7 +29,7 @@ from .units import UNITS_PER_M
 # The types the runtime draws today. Anything else is exported (the definition is
 # cheap and complete) but counted, so a missing element is a number in the log
 # rather than an absence nobody notices.
-DRAWN_TYPES = ("SPRITE_BILLBOARD", "SPRITE_ORIENTED", "TAIL", "RUNNER")
+DRAWN_TYPES = ("SPRITE_BILLBOARD", "SPRITE_ORIENTED", "SPRITE_ROTATED", "TAIL", "LINE", "CLOUD", "RUNNER")
 
 # A looping elem spawns for ever rather than a finite number of times.
 SPAWN_FOREVER = 2147483647
@@ -168,13 +169,50 @@ def load_dump(fx_root):
     return defs
 
 
-def _convert_elem(elem):
-    life = elem["lifeSpanMsec"]
+def global_wind(data):
+    """The level's global wind speed in units/s from its scripts' dvars, or 0 where it has none (T5 only)."""
+    for script in (data.get("scripts") or {}).values():
+        dvars = script.get("dvars") or {}
+        if "wind_global_vector" in dvars and int(dvars.get("enable_global_wind", 0)):
+            return math.hypot(*(float(v) for v in str(dvars["wind_global_vector"]).split()))
+    return 0.0
+
+
+def _wind_weight(elem, wind):
+    """How far a T5 elem's life and spawn interval move toward their max-wind values (FX_SpawnElem, t5-fx).
+
+    The weight is fixed when the effect spawns, and a world's wind does not change,
+    so it is baked here rather than carried to the client.
+    """
+    strongest = elem.get("maxWindStrength") or 0
+    return min(max(wind / strongest, 0.0), 1.0) if strongest else 0.0
+
+
+def _windy(r, toward, w):
+    """`lerp(base + amp*r, toward, w)` is still a range: ((1-w)base + w*toward, (1-w)amp)."""
+    return {"base": (1 - w) * r["base"] + w * toward, "amplitude": (1 - w) * r["amplitude"]}
+
+
+def _atlas(atlas):
+    """IW5's atlas as is; T5's packs the cell count (low 9 bits) and an index range (the rest) in one u16."""
+    if "entryCountAndIndexRange" not in atlas:
+        return atlas
+    packed = atlas["entryCountAndIndexRange"]
+    out = {k: v for k, v in atlas.items() if k != "entryCountAndIndexRange"}
+    return {**out, "entryCount": packed & 0x1FF, "indexRange": packed >> 9}
+
+
+def _convert_elem(elem, wind=0.0):
+    w = _wind_weight(elem, wind)
+    life = _windy(elem["lifeSpanMsec"], elem["lifespanAtMaxWind"], w) if w else elem["lifeSpanMsec"]
     spawn = dict(elem["spawn"])
     if spawn.get("kind") == "looping":
+        interval = spawn["intervalMsec"]
+        if w:
+            interval = int((1 - w) * interval + w * elem["spawnIntervalAtMaxWind"])
         spawn = {
             "kind": "looping",
-            "interval": spawn["intervalMsec"] / 1000.0,
+            "interval": interval / 1000.0,
             "count": None if spawn["count"] == SPAWN_FOREVER else spawn["count"],
         }
     else:
@@ -203,17 +241,39 @@ def _convert_elem(elem):
         "fadeOutRange": _range(elem["fadeOutRange"], 1 / UNITS_PER_M),
         "spawnFrustumCullRadius": elem["spawnFrustumCullRadius"] / UNITS_PER_M,
         "lightingFrac": elem["lightingFrac"] / 255.0,
-        "atlas": elem["atlas"],
+        "atlas": _atlas(elem["atlas"]),
         "sortOrder": elem["sortOrder"],
         "visuals": {"kind": elem["visuals"].get("kind"), "names": visual_names(elem)},
         "velSamples": [{"local": _vel_frame(s["local"]), "world": _vel_frame(s["world"])} for s in elem["velSamples"]],
         "visSamples": [{"base": _vis_state(s["base"]), "amplitude": _vis_state(s["amplitude"])} for s in elem["visSamples"]],
         "effectOnDeath": ref(elem["effectOnDeath"]) if elem.get("effectOnDeath") else None,
         "effectEmitted": ref(elem["effectEmitted"]) if elem.get("effectEmitted") else None,
-        "randomSeed": elem["randomSeed"],
+        # T5 seeds from the effect alone (t5-fx): no per-elem term.
+        "randomSeed": elem.get("randomSeed", 0),
         # Which velocity frames and forces apply, and whether size[1] is used.
         "flags": elem["flags"] & 0xFFFFFFFF,
+        **_quad_shape(elem),
     }
+
+
+def _quad_shape(elem):
+    """T5's trapezoid trim and pivot, written only where they change the quad.
+
+    `trim` is (top, bottom), each clamped to [0, 1] as FX_GenSpriteVerts clamps it;
+    `pivot` moves the centre by (pivot0 * A', pivot1 * B'), and only with flag 0x200000.
+    """
+    out = {}
+    union = elem.get("union") or {}
+    if union.get("kind") == "cloudDensityRange":
+        # How many of the 1024 shared points one cloud draws (t5-fx, CLOUD).
+        out["cloudDensity"] = [union["base"], union["amplitude"]]
+    if union.get("kind") == "billboard":
+        trim = [min(max(union["topWidth"], 0.0), 1.0), min(max(union["bottomWidth"], 0.0), 1.0)]
+        if trim != [1.0, 1.0]:
+            out["trim"] = trim
+    if elem["flags"] & 0x200000 and any(elem.get("billboardPivot") or ()):
+        out["pivot"] = list(elem["billboardPivot"])
+    return out
 
 
 def _bounds_radius(effect):
@@ -238,14 +298,14 @@ def _bounds_radius(effect):
     return worst / UNITS_PER_M
 
 
-def convert(effect):
-    """One dumped effect in engine units."""
+def convert(effect, wind=0.0):
+    """One dumped effect in engine units, under a world's global wind (units/s)."""
     looping = effect["elemCounts"]["looping"] > 0
     return {
         "name": effect["name"],
         "looping": looping,
         "radius": _bounds_radius(effect),
-        "elems": [_convert_elem(e) for e in effect["elems"]],
+        "elems": [_convert_elem(e, wind) for e in effect["elems"]],
     }
 
 
@@ -276,7 +336,8 @@ def material_states(mat_root, materials, game_key):
         if not image:
             continue
         techset = state["techniqueSet"]
-        feather = next((c["literal"][1] for c in data.get("constants", []) if c.get("name") == "featherParms"), None)
+        constants = {c.get("name"): c["literal"] for c in data.get("constants", []) if "literal" in c}
+        feather = constants["featherParms"][1] if "featherParms" in constants else None
         out[name] = {
             "texture": image + ".png",
             # None means the material replaces what is under it; for a particle
@@ -297,12 +358,48 @@ def material_states(mat_root, materials, game_key):
             # zfeather's featherParms = (1/depth, depth); the depth softens a sprite
             # where it meets geometry and fades it as it nears the camera.
             "featherDepth": feather / UNITS_PER_M if feather else None,
+            **(_shader(techset, constants) if game_key == "t5" else {}),
         }
     return out
 
 
-def export_fx(fx_root, wanted, out_dir, mat_root=None):
-    """Write `<out_dir>/effects.json` for `wanted` and everything it reaches.
+def _shader(techset, constants):
+    """What a T5 particle technique set does beyond IW5's zfeather blend (t5-fx, [shader]).
+
+    - `output`: `straight` colour and alpha (the blended sets); `alpha`, colour times
+      alpha (`effect_add`); `luma`, colour times alpha times its own luminance
+      (`effect_zfeather_add`). The last two are drawn one/one by their materials.
+    - `fogFade`: an additive set fades to black in fog instead of toward its colour.
+    - `falloff`: fades and tints a sprite by how squarely it faces the eye.
+    - `eyeOffset`: metres the sprite is pulled toward the eye, keeping its size on screen.
+    """
+    if techset.startswith("distortion"):
+        # Refracts the frame behind it, which needs a copy of the scene: not drawn.
+        return {"undrawn": "distortion"}
+    if techset.startswith("particle_cloud"):
+        # A cloud has no fog, no feather and no luminance term: `tex * colour`,
+        # times its own alpha in the additive set. `_outdoor` also hides flakes under
+        # a roof, from a height map the runtime does not have.
+        return {"output": "alpha" if "_add" in techset else "straight", "fogFade": False, "fog": False}
+    add = "_add" in techset and techset.startswith("effect")
+    out = {
+        "output": ("luma" if "zfeather" in techset else "alpha") if add else "straight",
+        "fogFade": add,
+    }
+    if "falloff" in techset and "falloffParms" in constants:
+        out["falloff"] = {
+            "scale": constants["falloffParms"][2],
+            "bias": constants["falloffParms"][3],
+            "begin": constants.get("falloffBeginColor", [1, 1, 1, 1]),
+            "end": constants.get("falloffEndColor", [1, 1, 1, 1]),
+        }
+    if "eyeoffset" in techset and "eyeOffsetParms" in constants:
+        out["eyeOffset"] = constants["eyeOffsetParms"][0] / UNITS_PER_M
+    return out
+
+
+def export_fx(fx_root, wanted, out_dir, mat_root=None, wind=0.0):
+    """Write `<out_dir>/effects.json` for `wanted` and everything it reaches, under a global wind (units/s).
 
     Returns (effects written, missing names, {material: image}, type counts).
     """
@@ -311,7 +408,7 @@ def export_fx(fx_root, wanted, out_dir, mat_root=None):
 
     effects, materials, counts = {}, set(), {}
     for name in sorted(names):
-        effect = convert(defs[name])
+        effect = convert(defs[name], wind)
         effects[name] = effect
         for elem, raw in zip(effect["elems"], defs[name]["elems"], strict=True):
             counts[elem["type"]] = counts.get(elem["type"], 0) + 1
@@ -324,7 +421,8 @@ def export_fx(fx_root, wanted, out_dir, mat_root=None):
     images = {m: info["texture"][:-4] for m, info in table.items()}
 
     os.makedirs(out_dir, exist_ok=True)
-    write_json(os.path.join(out_dir, "effects.json"), {"_version": 4, "effects": effects, "materials": table})
+    library = {"_version": 4, "game": game_key, "effects": effects, "materials": table}
+    write_json(os.path.join(out_dir, "effects.json"), library)
     return effects, missing, images, counts
 
 

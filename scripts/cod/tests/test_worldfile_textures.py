@@ -1,11 +1,12 @@
 import json
 import struct
+import zipfile
 
 import pytest
 from PIL import Image
 
 from scripts.cod.materials import material_images
-from scripts.cod.textures import decode_iwi, export_loadscreen, export_minimap
+from scripts.cod.textures import convert_textures, decode_iwi, export_loadscreen, export_minimap
 from scripts.cod.worldfile import Overrides, _hex, parse_vision, world_category
 
 
@@ -141,3 +142,16 @@ def test_an_aw_loading_screen_is_the_one_its_load_zone_holds(tmp_path):
     # The exact name still wins when there are several.
     Image.new("RGB", (16, 9)).save(dump / "loadscreen_mp_lab2.dds")
     assert export_loadscreen(str(empty), "mp_lab2", str(assets), str(tmp_path / "load"))[1] == "loadscreen_mp_lab2.dds"
+
+
+def test_an_image_the_dump_lacks_is_read_from_the_iwd_search_path(tmp_path):
+    """A zone can name an image by reference only (BO1's fxt_smk_puff); its pixels are in an .iwd."""
+    dump, iwds, out = tmp_path / "img", tmp_path / "main", tmp_path / "out"
+    dump.mkdir(), iwds.mkdir()
+    with zipfile.ZipFile(iwds / "iw_04.iwd", "w") as z:
+        z.writestr("images/fxt_puff.iwi", iwi(8, 1, 1, 1, bytes([30, 20, 10, 128])))
+
+    assert convert_textures(str(dump), {"fxt_puff", "gone"}, str(out))[1] == ["fxt_puff", "gone"]
+    ok, missing, failed = convert_textures(str(dump), {"fxt_puff", "gone"}, str(out), search=str(iwds))
+    assert (ok, missing, failed) == (1, ["gone"], 0)
+    assert Image.open(out / "fxt_puff.png").getpixel((0, 0)) == (10, 20, 30, 128)
