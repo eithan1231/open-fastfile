@@ -11,7 +11,7 @@ import type { FxBatch } from "./batch.js";
 import { emptyCloudView, type FxCloudBatch } from "./cloud.js";
 import type { RenderPass } from "../render/pipeline.js";
 import { emptyView, FX_FLAG_FRUSTUM_CULL, FxEmitter, type EmitterPlacement, type ParticleView } from "./emitter.js";
-import { RAND, type FxEffect, type FxGame, type FxLibrary, type Range } from "./library.js";
+import { RAND, type FxEffect, type FxFadeQuantise, type FxLibrary, type Range } from "./library.js";
 
 /**
  * FX_FadeFactor: 1 up to `base`, falling to 0 over `amplitude`. Applied only when
@@ -25,13 +25,12 @@ export function fadeFactor(range: Range, distance: number): number {
 }
 
 /**
- * The game's final alpha is `(distanceFade * occlusionFade * a) >> 16`, each fade
- * a byte that defaults to 255 -- so an unfaded 255 draws as 253. Occlusion fading
- * is not implemented, so it stands at its default here.
+ * The distance fade as the alpha multiplier the game draws with (`FxFadeQuantise`).
+ * `floor` is `(distanceFade * occlusionFade * a) >> 16` with occlusion at its
+ * default 255, since occlusion fading is not implemented.
  */
-export function fadeScale(distanceFade: number, game: FxGame = "iw5"): number {
-  if (game === "t5") {
-    // T5 rounds the fade to a byte and shifts the product by 8 (t5-fx): an unfaded 255 draws as 254.
+export function fadeScale(distanceFade: number, quantise: FxFadeQuantise = "floor"): number {
+  if (quantise === "round") {
     return Math.floor(distanceFade * 255 + 0.5) / 256;
   }
   return (Math.floor(distanceFade * 255) * 255) / 65536;
@@ -116,7 +115,7 @@ export class FxSystem {
   // CLOUD draws through a routine of its own (cloud.ts), never as a billboard.
   static readonly DRAWN = new Set(["SPRITE_BILLBOARD", "SPRITE_ORIENTED", "SPRITE_ROTATED", "TAIL", "LINE", "CLOUD"]);
 
-  private game: FxGame = "iw5";
+  private fadeQuantise: FxFadeQuantise = "floor";
 
   /**
    * Start `placements`, replacing whatever was playing.
@@ -129,7 +128,7 @@ export class FxSystem {
     this.clear();
     this.batches = build.batches;
     this.batchOf = build.batchOf;
-    this.game = library.game;
+    this.fadeQuantise = library.fadeQuantise;
     this.clouds = build.clouds ?? new Map();
     for (const batch of this.batches.values()) {
       this.root.add(batch.mesh);
@@ -181,7 +180,7 @@ export class FxSystem {
         this.note(undrawn);
         return;
       }
-      this.emitters.push(new FxEmitter(elem, i, placement, library.game));
+      this.emitters.push(new FxEmitter(elem, i, placement));
     });
   }
 
@@ -321,7 +320,7 @@ export class FxSystem {
           const cloud = this.clouds.get(name ?? "");
           if (cloud && e.sampleCloud(p, c)) {
             const distance = fades ? distanceFade(fadeInRange, fadeOutRange, Math.hypot(c.x - this.eye.x, c.y - this.eye.y, c.z - this.eye.z)) : 1;
-            c.a *= fadeScale(distance, this.game);
+            c.a *= fadeScale(distance, this.fadeQuantise);
             if (c.a > 0 && c.w > 0) {
               cloud.push(c);
             }
@@ -335,7 +334,7 @@ export class FxSystem {
         }
         e.sample(p, v);
         const distance = fades ? distanceFade(fadeInRange, fadeOutRange, Math.hypot(v.x - this.eye.x, v.y - this.eye.y, v.z - this.eye.z)) : 1;
-        v.a *= fadeScale(distance, this.game);
+        v.a *= fadeScale(distance, this.fadeQuantise);
         // The game skips a particle whose alpha is at or below fx_alphaThreshold (0).
         if (v.a <= 0 || v.w <= 0) {
           continue;

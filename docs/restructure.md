@@ -71,17 +71,19 @@ is left for stage 4, which owns the list it needs:
 
 ### 2. The game boundary
 
-- **Effects** hold all five runtime game branches today (`FxGame`: fade rounding,
-  tail roll, billboard facing, atlas range). Each becomes a property of the
-  element or library — `facing: world-up | viewpoint | viewpoint-up`, `rolls`,
-  `fadeQuantise` — written by the exporter, and filled in for already-exported
-  libraries by one adapter in `fx/library.ts`. The emitter and system lose
-  `game`.
+- **Effects** — done in stage 3. The four runtime branches on the library's game
+  (fade rounding, tail roll, billboard facing, atlas range) are the element and
+  library properties `facing`, `rolls`, `atlas.ranged` and `fadeQuantise`.
+  `scripts/cod/fx.py` writes them (library version 5); `readFxLibrary` derives
+  them for a version-4 library, the one place in the engine that reads a game.
+  A lint rule bans comparing a game key in `engine/` and `scene/`; audio's
+  comparisons of one bank's game with another's are namespaces and untouched.
 - **Layer blending** already works this way: general modes (`blend`, `multiply`,
   `add`, `test`) the exporter writes. Another game's blending maps onto these or
   adds a general mode; it never becomes a per-game path.
-- **The grade** is already general data. Black Ops' filmic curve becomes a general
-  `curve` in the grade block.
+- **The grade** is already general data. Nothing imports a game's own tone curve
+  yet; when one is, it arrives as a general `curve` in the grade block rather
+  than a per-game path. Not built ahead of a world that needs it.
 - **Lights** are general (`range`, `cone`); the Black Ops translation lives in
   `scripts/cod/lights.py`. The falloff shape currently taken from T5 and applied
   to every game becomes a light property if a second shape is ever needed.
@@ -204,7 +206,11 @@ compared with the stage before.
    tone mapping, so high-contrast silhouettes differ by a pixel; glass, blended
    in linear light now, is slightly clearer.
 
-3. **Game boundary.** Effects adapter and exporter properties, lint rule.
+3. **Game boundary** — done. Effects read properties, not a game (§2); the
+   exporter writes them and one adapter reads the libraries already on disk;
+   the lint rule holds `engine/` and `scene/` to it. Pixel-identical on all
+   three worlds; frame rate and load unchanged within noise (dome, the noisiest
+   at over 200 fps, measured 194–236 across three runs).
 4. **Client app layer.** The table in §3, with the app-layer defects.
 5. **Game server.** §4, with its defects.
 6. **Shared.** §5.

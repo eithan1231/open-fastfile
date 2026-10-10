@@ -2337,6 +2337,10 @@ holds for T5 except:
   vertex `eyeOffsetParms.x` toward the eye along its ray. Particles add into the
   gamma-encoded frame with no exposure, as the engine's canvas blend does.
 
+The exporter writes the roll, facing, fixed-range atlas and fade rounding as the
+element and library properties `rolls`, `facing`, `atlas.ranged` and
+`fadeQuantise` ([effects.md](effects.md)); the runtime reads those, never the game.
+
 ### Where these came from
 
 Every address above is a named function in the RE project; the full map, with

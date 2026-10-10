@@ -111,6 +111,9 @@ const apiImports = [...textOnlyImports("@3d/api", "serves world text and files")
  */
 const toolImports = textOnlyImports("The repo-root tooling (scripts/*.ts)", "reads world text through @3d/api");
 
+/** A `GameKey` (shared/dsl/resolved.ts) as an esquery regex: the games imported, and the ones near them. */
+const GAME_KEY = "/^(iw[3-9]|t[4-9]|s[12]|h[12])$/";
+
 export default tseslint.config(
   {
     ignores: ["**/dist/**", "**/node_modules/**", "worlds/**", "**/*.world", ".venv/**", ".cache/**", ".work/**", ".claude/worktrees/**"],
@@ -381,6 +384,23 @@ export default tseslint.config(
       "no-restricted-imports": [
         "error",
         { patterns: [{ group: ["**/ui/*", "**/app/*"], message: "engine/, scene/, input/ and net/ may not import the UI or the app layer." }] },
+      ],
+    },
+  },
+
+  {
+    // The engine does not know which game a world came from (docs/restructure.md,
+    // rule 3). A game key may name a namespace — a sound bank, a catalogue folder —
+    // but never decide behaviour: the exporter writes what a game means as general
+    // data, or one load-time adapter per subsystem translates data already on disk.
+    files: ["packages/client/src/engine/**/*.ts", "packages/client/src/scene/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...[`BinaryExpression[operator=/^[!=]==?$/] > Literal[value=${GAME_KEY}]`, `SwitchCase > Literal.test[value=${GAME_KEY}]`].map((selector) => ({
+          selector,
+          message: "Branch on a property the exporter writes (or one adapter derives), not on the game a world came from.",
+        })),
       ],
     },
   },

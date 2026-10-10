@@ -421,9 +421,35 @@ def export_fx(fx_root, wanted, out_dir, mat_root=None, wind=0.0):
     images = {m: info["texture"][:-4] for m, info in table.items()}
 
     os.makedirs(out_dir, exist_ok=True)
-    library = {"_version": 4, "game": game_key, "effects": effects, "materials": table}
+    library = {"_version": 5, "fadeQuantise": conventions(effects, game_key), "effects": effects, "materials": table}
     write_json(os.path.join(out_dir, "effects.json"), library)
     return effects, missing, images, counts
+
+
+# FxElemDef's billboard bits as T5 reads them (FX_DrawElem_BillboardSprite).
+T5_FACING = {0x80000: "world-up", 0x100000: "viewpoint", 0x180000: "viewpoint-up"}
+
+
+def conventions(effects, game_key):
+    """Write where the games draw differently as engine properties, in place; returns the fade rounding.
+
+    The runtime never reads a game (docs/restructure.md, rule 3). T5 faces a
+    billboard by its flags, rolls a tail like a sprite, reads atlas start mode 3
+    as a fixed range of cells, and rounds a fade to a byte where IW5 floors it
+    (t5-fx). `readFxLibrary` does the same for a version-4 library.
+    """
+    if game_key != "t5":
+        return "floor"
+    for effect in effects.values():
+        for elem in effect["elems"]:
+            facing = T5_FACING.get(elem["flags"] & 0x180000)
+            if facing:
+                elem["facing"] = facing
+            if elem["type"] in ("TAIL", "LINE"):
+                elem["rolls"] = True
+            if elem["atlas"]["behavior"] & 3 == 3:
+                elem["atlas"]["ranged"] = True
+    return "round"
 
 
 def undrawn(counts):

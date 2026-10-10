@@ -22,7 +22,7 @@ import { fxMaterial } from "../src/engine/fx/batch.js";
 import { FxSystem, distanceFade, fadeScale } from "../src/engine/fx/system.js";
 import { CLOUD_POINTS, cloudPoints, cloudSlots, emptyCloudView } from "../src/engine/fx/cloud.js";
 import { RAND_COUNT, interval, readFxLibrary, sampleRange, sampleVis, seeded, seedOf, emptyVisualState } from "../src/engine/fx/library.js";
-import type { FxElem, FxVisSample } from "../src/engine/fx/library.js";
+import type { FxElem, FxFacing, FxVisSample } from "../src/engine/fx/library.js";
 
 function visState(color: number[], size: number[], scale = 1) {
   return { color, rotationDelta: 0, rotationTotal: 0, size, scale };
@@ -533,17 +533,48 @@ describe("the library", () => {
     // read as v2 it would draw every sheet additive and saturate to white.
     expect(() => readFxLibrary({ _version: 3, effects: {}, materials: {} }, "x.json")).toThrow(/version 3/);
     expect(readFxLibrary({ _version: 4, effects: {}, materials: {} }, "x.json").effects).toEqual({});
+    expect(readFxLibrary({ _version: 5, effects: {}, materials: {} }, "x.json").effects).toEqual({});
   });
 
   it("defaults a missing materials table rather than failing", () => {
-    expect(readFxLibrary({ _version: 4, effects: {} }, "x.json").materials).toEqual({});
+    expect(readFxLibrary({ _version: 5, effects: {} }, "x.json").materials).toEqual({});
+  });
+
+  // Version 4 named its game; the engine reads only what that meant.
+  const v4 = (game: string | undefined, elems: FxElem[]) =>
+    readFxLibrary({ _version: 4, game, effects: { e: { name: "e", looping: false, radius: 1, elems } }, materials: {} }, "x.json");
+  const ranged = { behavior: 3, index: 0, fps: 0, loopCount: 0, colIndexBits: 0, rowIndexBits: 0, entryCount: 4 };
+
+  it("turns a version-4 Black Ops library into facing, roll, ranged atlases and rounded fades", () => {
+    const library = v4("t5", [elem({ flags: 0x80000 }), elem({ flags: 0x180000 }), elem({ type: "TAIL" }), elem({ atlas: { ...ranged } })]);
+    const [up, both, tail, atlas] = library.effects.e!.elems;
+    expect([up!.facing, both!.facing, tail!.facing]).toEqual(["world-up", "viewpoint-up", undefined]);
+    expect([up!.rolls, tail!.rolls]).toEqual([undefined, true]);
+    expect(atlas!.atlas.ranged).toBe(true);
+    expect(library.fadeQuantise).toBe("round");
+  });
+
+  it("leaves a version-4 library with no game as MW3 drew it", () => {
+    const library = v4(undefined, [elem({ flags: 0x180000 }), elem({ type: "TAIL", atlas: { ...ranged } })]);
+    const [sprite, tail] = library.effects.e!.elems;
+    expect([sprite!.facing, tail!.rolls, tail!.atlas.ranged]).toEqual([undefined, undefined, undefined]);
+    expect(library.fadeQuantise).toBe("floor");
+  });
+
+  it("reads a version-5 library's properties as written, whatever its flags", () => {
+    const library = readFxLibrary(
+      { _version: 5, fadeQuantise: "round", effects: { e: { name: "e", looping: false, radius: 1, elems: [elem({ flags: 0x180000 })] } }, materials: {} },
+      "x.json",
+    );
+    expect(library.effects.e!.elems[0]!.facing).toBeUndefined();
+    expect(library.fadeQuantise).toBe("round");
   });
 });
 
 describe("Black Ops (T5) elements", () => {
   const once = { kind: "oneShot", count: [1, 0] } as const;
-  const sampled = (e: FxElem, game: "iw5" | "t5" = "t5", place = placement, t = 0) => {
-    const emitter = new FxEmitter(e, 0, place, game);
+  const sampled = (e: FxElem, place = placement, t = 0) => {
+    const emitter = new FxEmitter(e, 0, place);
     emitter.step(t, 1000);
     const out = emptyView();
     emitter.sample(emitter.particles[0]!, out);
@@ -570,30 +601,29 @@ describe("Black Ops (T5) elements", () => {
     expect(round([out.ax, out.ay, out.az, out.bx, out.by, out.bz])).toEqual([-1, 0, 0, 0, 1, 0]);
 
     // In the effect's frame, a placement turned 90 degrees about engine Y turns it again.
-    out = sampled(rotated(0x40), "t5", { ...placement, rotation: { x: 0, y: Math.PI / 2, z: 0 } });
+    out = sampled(rotated(0x40), { ...placement, rotation: { x: 0, y: Math.PI / 2, z: 0 } });
     expect(round([out.ax, out.ay, out.az])).toEqual([0, 0, 1]);
   });
 
-  it("draws a line ahead of its particle and a tail behind it, both rolling on T5", () => {
+  it("draws a line ahead of its particle and a tail behind it, rolling only when told to", () => {
     const moving = {
       local: flatVel.local,
       world: { velocity: { base: [0, 1, 0], amplitude: ZERO3 }, totalDelta: { base: ZERO3, amplitude: ZERO3 } },
     };
-    const streak = (type: string) => elem({ type, spawn: once, flags: 0x02000000, velSamples: [moving, moving], initialRotation: [0.5, 0] });
+    const streak = (type: string, rolls?: boolean) =>
+      elem({ type, spawn: once, flags: 0x02000000, velSamples: [moving, moving], initialRotation: [0.5, 0], rolls });
     expect(sampled(streak("LINE")).mode).toBe(DRAW_LINE);
     expect(sampled(streak("TAIL")).mode).toBe(DRAW_TAIL);
-    expect(sampled(streak("TAIL")).rot).toBeCloseTo(0.5);
-    // IW5's tail draw is unread on roll, so it keeps drawing without one.
-    expect(sampled(streak("TAIL"), "iw5").rot).toBe(0);
+    expect(sampled(streak("TAIL", true)).rot).toBeCloseTo(0.5);
+    expect(sampled(streak("TAIL")).rot).toBe(0);
   });
 
-  it("faces a billboard by T5's world-up and viewpoint flags, and ignores them on IW5", () => {
-    const facing = (flags: number, game: "iw5" | "t5" = "t5") => sampled(elem({ flags, spawn: once }), game).mode;
-    expect(facing(0)).toBe(DRAW_BILLBOARD);
-    expect(facing(0x80000)).toBe(DRAW_BILLBOARD_WORLD_UP);
-    expect(facing(0x100000)).toBe(DRAW_BILLBOARD_VIEWPOINT);
-    expect(facing(0x180000)).toBe(DRAW_BILLBOARD_VIEWPOINT_UP);
-    expect(facing(0x180000, "iw5")).toBe(DRAW_BILLBOARD);
+  it("faces a billboard by its facing, and by the view plane without one", () => {
+    const facing = (facing?: FxFacing) => sampled(elem({ facing, spawn: once })).mode;
+    expect(facing()).toBe(DRAW_BILLBOARD);
+    expect(facing("world-up")).toBe(DRAW_BILLBOARD_WORLD_UP);
+    expect(facing("viewpoint")).toBe(DRAW_BILLBOARD_VIEWPOINT);
+    expect(facing("viewpoint-up")).toBe(DRAW_BILLBOARD_VIEWPOINT_UP);
   });
 
   it("carries a trim and pivot to the quad, defaulting to a full, centred one", () => {
@@ -604,14 +634,14 @@ describe("Black Ops (T5) elements", () => {
   });
 
   it("cycles a fixed range of atlas cells from its index (start mode 3)", () => {
-    const atlas = { behavior: 3, index: 4, fps: 10, loopCount: 0, colIndexBits: 2, rowIndexBits: 2, entryCount: 16, indexRange: 3 };
-    const frameAt = (t: number) => sampled(elem({ atlas, spawn: once, life: [10, 0] }), "t5", placement, t).frame;
+    const atlas = { behavior: 3, index: 4, fps: 10, loopCount: 0, colIndexBits: 2, rowIndexBits: 2, entryCount: 16, indexRange: 3, ranged: true };
+    const frameAt = (t: number) => sampled(elem({ atlas, spawn: once, life: [10, 0] }), placement, t).frame;
     expect([0, 0.1, 0.2, 0.3].map(frameAt)).toEqual([4, 5, 6, 4]);
   });
 
   it("draws an unfaded 255 as 254, rounding its fade to a byte", () => {
-    expect(Math.round(255 * fadeScale(1, "t5"))).toBe(254);
-    expect(fadeScale(0, "t5")).toBe(0);
+    expect(Math.round(255 * fadeScale(1, "round"))).toBe(254);
+    expect(fadeScale(0, "round")).toBe(0);
   });
 });
 
@@ -633,7 +663,7 @@ describe("timing", () => {
   it("plays a repeating placement again only once the last instance has finished", () => {
     const camera = new THREE.PerspectiveCamera();
     const burst = elem({ spawn: { kind: "oneShot", count: [1, 0] }, life: [2, 0] });
-    const library = { game: "t5" as const, effects: { burst: { name: "burst", looping: false, radius: 1, elems: [burst] } }, materials: {} };
+    const library = { fadeQuantise: "round" as const, effects: { burst: { name: "burst", looping: false, radius: 1, elems: [burst] } }, materials: {} };
     const sys = new FxSystem();
     sys.attach([{ ...placement, fx: "burst", repeat: 0.5 }], library, { batches: new Map(), batchOf: new Map() });
     // The repeat passes at 0.5 s but the particle lives until 2 s: the next starts at
@@ -651,7 +681,11 @@ describe("timing", () => {
 
   it("never restarts a placement whose effect loops for ever", () => {
     const camera = new THREE.PerspectiveCamera();
-    const library = { game: "t5" as const, effects: { snow: { name: "snow", looping: true, radius: 1, elems: [elem({ life: [0.5, 0] })] } }, materials: {} };
+    const library = {
+      fadeQuantise: "round" as const,
+      effects: { snow: { name: "snow", looping: true, radius: 1, elems: [elem({ life: [0.5, 0] })] } },
+      materials: {},
+    };
     const sys = new FxSystem();
     sys.attach([{ ...placement, fx: "snow", repeat: 0.5 }], library, { batches: new Map(), batchOf: new Map() });
     for (let i = 0; i < 120; i++) {
@@ -692,20 +726,20 @@ describe("particle clouds", () => {
         visSamples: [{ base: visState([1, 1, 1, 1], [0.1, 0.1], scale), amplitude: visState([1, 1, 1, 1], [0, 0], 0) }],
       });
     const view = emptyCloudView();
-    const e = new FxEmitter(cloud(100, [1024, 0]), 0, placement, "t5");
+    const e = new FxEmitter(cloud(100, [1024, 0]), 0, placement);
     e.step(0, 1000);
     expect(e.sampleCloud(e.particles[0]!, view)).toBe(true);
     expect(view.scale).toBeCloseTo(100 * 0.0254);
     // The whole buffer: every cloud of density 1024 draws the same points.
     expect([view.offset, view.count]).toEqual([0, 1024]);
 
-    const few = new FxEmitter(cloud(100, [10, 0]), 0, placement, "t5");
+    const few = new FxEmitter(cloud(100, [10, 0]), 0, placement);
     few.step(0, 1000);
     few.sampleCloud(few.particles[0]!, view);
     expect(view.count).toBe(10);
     expect(view.offset + view.count).toBeLessThanOrEqual(CLOUD_POINTS);
 
-    const flat = new FxEmitter(cloud(0, [1024, 0]), 0, placement, "t5");
+    const flat = new FxEmitter(cloud(0, [1024, 0]), 0, placement);
     flat.step(0, 1000);
     expect(flat.sampleCloud(flat.particles[0]!, view)).toBe(false);
   });

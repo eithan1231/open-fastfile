@@ -305,7 +305,8 @@ def test_effects_json_round_trips(tmp_path):
     assert counts == {"SPRITE_BILLBOARD": 1}
 
     written = json.loads((tmp_path / "out" / "effects.json").read_text())
-    assert written["_version"] == 4 and "weather/storm" in written["effects"]
+    assert written["_version"] == 5 and "weather/storm" in written["effects"]
+    assert written["fadeQuantise"] == "floor" and "game" not in written
     entry = written["materials"]["gfx_a"]
     assert entry["texture"] == "sand_sheet.png"
     # With no drawn state in the dump, the factors default to a straight alpha
@@ -383,6 +384,25 @@ def test_a_t5_atlas_unpacks_its_cell_count_and_index_range():
     t5 = {"behavior": 3, "index": 4, "fps": 0, "loopCount": 0, "colIndexBits": 2, "rowIndexBits": 2}
     out = fx._convert_elem(elem(atlas={**t5, "entryCountAndIndexRange": (3 << 9) | 16}))["atlas"]
     assert out["entryCount"] == 16 and out["indexRange"] == 3 and "entryCountAndIndexRange" not in out
+
+
+def test_t5_conventions_are_written_as_engine_properties():
+    atlas = {"behavior": 3, "index": 0, "fps": 0, "loopCount": 0, "colIndexBits": 0, "rowIndexBits": 0, "entryCount": 4}
+    effects = {
+        "e": {
+            "elems": [
+                {"type": "SPRITE_BILLBOARD", "flags": 0x180000, "atlas": dict(atlas)},
+                {"type": "TAIL", "flags": 0, "atlas": {**atlas, "behavior": 0}},
+            ]
+        }
+    }
+    assert fx.conventions(effects, "iw5") == "floor"
+    assert "facing" not in effects["e"]["elems"][0] and "ranged" not in effects["e"]["elems"][0]["atlas"]
+
+    assert fx.conventions(effects, "t5") == "round"
+    sprite, tail = effects["e"]["elems"]
+    assert sprite["facing"] == "viewpoint-up" and sprite["atlas"]["ranged"] is True and "rolls" not in sprite
+    assert tail["rolls"] is True and "facing" not in tail and "ranged" not in tail["atlas"]
 
 
 def test_trim_and_pivot_are_written_only_where_they_change_the_quad():

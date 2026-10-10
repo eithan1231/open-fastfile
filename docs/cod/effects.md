@@ -59,7 +59,7 @@ Stage 12 of `python3 -m scripts.cod export <map>` (`export.py`
    (`fxt_smk_puff` on russianbase), is read from the `.iwd` search path instead.
    `featherParms` becomes the runtime's soft-particle depth: a sheet fades out
    where it meets the scene behind it.
-6. **Write** `assets/fx/effects.json` (the library; `_version` 4) and
+6. **Write** `assets/fx/effects.json` (the library; `_version` 5) and
    `assets/fx/textures/`, then `fx.world`: one `fx { source: … }` and one
    `effect` per placement, with placement angles through `props.engine_euler`
    like any prop. `world.world` gets `include "fx.world"`.
@@ -73,9 +73,14 @@ world as it is (a full re-export would undo the props harvest).
 wind and packed atlas; the converter bakes the level's global wind
 (`wind_global_vector` in the fx script's dvars) into each elem's life and spawn
 interval, unpacks the atlas, and reads each technique set's shader parameters
-(`output`, `fogFade`, `falloff`, `eyeOffset`). The library records its `game`, and
-the runtime follows that game's conventions where the two differ
-([reference.md](reference.md#black-ops-t5)).
+(`output`, `fogFade`, `falloff`, `eyeOffset`). Where T5 draws differently from
+IW5 the converter writes what it does, not which game it is
+(`fx.conventions`): a billboard's `facing` from its flags, `rolls` on a tail,
+`ranged` on an atlas whose start mode 3 is a fixed range, and the library's
+`fadeQuantise` ([reference.md](reference.md#black-ops-t5)). The runtime never
+reads a game. A version-4 library, which named its `game` instead, is translated
+on load by `readFxLibrary`, so worlds exported before version 5 need no
+re-export.
 
 `--effects-only` rewrites `fx.world` alone from the committed metadata and the
 library already on disk, with no game files. It is byte-identical to what the

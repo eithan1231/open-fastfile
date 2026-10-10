@@ -39,8 +39,10 @@ export interface FxAtlas {
   colIndexBits: number;
   rowIndexBits: number;
   entryCount: number;
-  /** T5 only: how many cells start mode 3 (`fixedRange`) cycles through from `index`. */
+  /** How many cells a `ranged` atlas cycles through from `index`. */
   indexRange?: number;
+  /** Start mode 3 cycles `indexRange` cells from `index` rather than counting from the particle's sequence. */
+  ranged?: boolean;
 }
 
 export type FxSpawn =
@@ -114,6 +116,10 @@ export interface FxElem {
   randomSeed: number;
   /** Raw FxElemDef flags; see FX_FLAG_* in emitter.ts. */
   flags: number;
+  /** How a plain sprite faces the camera. Absent: square to the view, rolling with it. */
+  facing?: FxFacing;
+  /** A tail or line keeps its sprite roll about its velocity. Absent: it draws unrolled. */
+  rolls?: boolean;
   /** T5: the quad's (top, bottom) width as a fraction of full, a trapezoid. Absent means (1, 1). */
   trim?: readonly [number, number];
   /** T5: the centre moved by `pivot[0]` half-widths along A and `pivot[1]` half-heights along B. */
@@ -167,16 +173,24 @@ export interface FxMaterial {
   undrawn?: string;
 }
 
-/** Whose conventions the library follows, where the games differ (docs/cod/reference.md#effects-fx). */
-export type FxGame = "iw5" | "t5";
+/** A billboard that keeps the world's up, turns to the eye's position rather than the view plane, or both. */
+export type FxFacing = "world-up" | "viewpoint" | "viewpoint-up";
+
+/**
+ * How a particle's distance fade becomes a byte before it scales alpha:
+ * `floor`, `(floor(f * 255) * 255) >> 16`, so an unfaded 255 draws as 253;
+ * `round`, `round(f * 255) >> 8`, which draws it as 254.
+ */
+export type FxFadeQuantise = "floor" | "round";
 
 export interface FxLibrary {
-  game: FxGame;
+  fadeQuantise: FxFadeQuantise;
   effects: Record<string, FxEffect>;
   materials: Record<string, FxMaterial>;
 }
 
-const LIBRARY_VERSION = 4;
+/** Version 4 named its game instead of these properties; `fromGame` reads it. */
+const LIBRARY_VERSIONS = [4, 5];
 
 /**
  * Parse `effects.json`, refusing a version this build does not know.
@@ -186,12 +200,55 @@ const LIBRARY_VERSION = 4;
  * rendering bug rather than a stale asset.
  */
 export function readFxLibrary(data: unknown, source: string): FxLibrary {
-  const d = data as { _version?: number; game?: FxGame; effects?: Record<string, FxEffect>; materials?: Record<string, FxMaterial> };
-  if (d?._version !== LIBRARY_VERSION) {
-    throw new Error(`${source}: fx library version ${String(d?._version)}, expected ${LIBRARY_VERSION}; re-export the world`);
+  const d = data as {
+    _version?: number;
+    game?: string;
+    fadeQuantise?: FxFadeQuantise;
+    effects?: Record<string, FxEffect>;
+    materials?: Record<string, FxMaterial>;
+  };
+  if (!LIBRARY_VERSIONS.includes(d?._version as number)) {
+    throw new Error(`${source}: fx library version ${String(d?._version)}, expected one of ${LIBRARY_VERSIONS.join(", ")}; re-export the world`);
   }
-  // Libraries written before T5 carry no game: they are all MW3's.
-  return { game: d.game ?? "iw5", effects: d.effects ?? {}, materials: d.materials ?? {} };
+  const library: FxLibrary = { fadeQuantise: d.fadeQuantise ?? "floor", effects: d.effects ?? {}, materials: d.materials ?? {} };
+  if (d._version === 4) {
+    fromGame(library, d.game);
+  }
+  return library;
+}
+
+/**
+ * FxElemDef's billboard bits as T5 reads them (s_allFlagDefs,
+ * FX_DrawElem_BillboardSprite): 0x80000 keeps the world's up, 0x100000 faces the
+ * eye rather than the view plane, both do both. IW5 does not read them.
+ */
+const T5_FACING: Record<number, FxFacing> = { 0x80000: "world-up", 0x100000: "viewpoint", 0x180000: "viewpoint-up" };
+
+/**
+ * The one place an effect's game is read: a version-4 library named it, and the
+ * engine wants what it meant. `scripts/cod/fx.py` writes these properties itself
+ * from version 5. Libraries with no game are all MW3's, which needs none of them.
+ */
+function fromGame(library: FxLibrary, game: string | undefined): void {
+  // eslint-disable-next-line no-restricted-syntax -- this adapter is the boundary the rule points to.
+  if (game !== "t5") {
+    return;
+  }
+  library.fadeQuantise = "round";
+  for (const effect of Object.values(library.effects)) {
+    for (const elem of effect.elems) {
+      const facing = T5_FACING[elem.flags & 0x180000];
+      if (facing) {
+        elem.facing = facing;
+      }
+      if (elem.type === "TAIL" || elem.type === "LINE") {
+        elem.rolls = true;
+      }
+      if ((elem.atlas.behavior & 3) === 3) {
+        elem.atlas.ranged = true;
+      }
+    }
+  }
 }
 
 /**

@@ -8,7 +8,7 @@
 import { unitsToMetres } from "@3d/shared/sim/units.js";
 import type { CloudView } from "./cloud.js";
 import { CLOUD_POINTS } from "./cloud.js";
-import type { FxElem, FxGame, FxVisualState } from "./library.js";
+import type { FxElem, FxFacing, FxVisualState } from "./library.js";
 import { RAND, RAND_COUNT, emptyVisualState, sampleRange, sampleTravel, sampleVelocity, sampleVis, seeded, seedOf } from "./library.js";
 
 /*
@@ -29,15 +29,6 @@ export const FX_FLAG_LOCAL_VELOCITY = 0x01000000;
 export const FX_FLAG_WORLD_VELOCITY = 0x02000000;
 export const FX_FLAG_GRAVITY = 0x04000000;
 export const FX_FLAG_NONUNIFORM_SIZE = 0x10000000;
-/**
- * T5's billboard facing (s_allFlagDefs, FX_DrawElem_BillboardSprite): 0x80000
- * keeps the quad upright about the world's up, 0x100000 faces the eye rather
- * than the view plane, and both together do both. Unread on IW5.
- */
-export const FX_FLAG_BILLBOARD_MASK = 0x180000;
-export const FX_FLAG_USE_WORLD_UP = 0x80000;
-export const FX_FLAG_ALIGN_VIEWPOINT = 0x100000;
-
 /** `gravity` is a multiple of 800 units/s^2 (FX_IntegrateWithGravity), here in m/s^2. */
 /**
  * FX_IntegrateWithGravity has no flag test of its own: FX_UpdateElemPosition
@@ -53,10 +44,15 @@ export const DRAW_ORIENTED = 1;
 export const DRAW_TAIL = 2;
 /** A tail mirrored about its particle: it leads rather than trails (T5's LINE). */
 export const DRAW_LINE = 3;
-/** Billboards that keep the world's up, face the eye, or both (FX_FLAG_BILLBOARD_MASK). */
+/** Billboards that keep the world's up, face the eye, or both (`FxElem.facing`). */
 export const DRAW_BILLBOARD_WORLD_UP = 4;
 export const DRAW_BILLBOARD_VIEWPOINT = 5;
 export const DRAW_BILLBOARD_VIEWPOINT_UP = 6;
+const FACING_MODES: Record<FxFacing, number> = {
+  "world-up": DRAW_BILLBOARD_WORLD_UP,
+  viewpoint: DRAW_BILLBOARD_VIEWPOINT,
+  "viewpoint-up": DRAW_BILLBOARD_VIEWPOINT_UP,
+};
 
 type Vec = [number, number, number];
 
@@ -180,7 +176,6 @@ export class FxEmitter {
     readonly elem: FxElem,
     readonly elemIndex: number,
     readonly placement: EmitterPlacement,
-    readonly game: FxGame = "iw5",
   ) {
     // A negative delay means the map wants this already running; `seekTo` replays it.
     this.nextSpawn = Math.max(0, placement.delay);
@@ -389,8 +384,7 @@ export class FxEmitter {
       vy += scratchWorld[1]! - (g * age) / 1000;
       vz += scratchWorld[2]!;
       const len = Math.hypot(vx, vy, vz);
-      // T5's tails roll like any sprite (FX_GenSpriteVerts); IW5's draw is unread on that point.
-      if (this.game === "iw5") {
+      if (!e.rolls) {
         out.rot = 0;
       }
       if (len > 1e-9) {
@@ -427,16 +421,8 @@ export class FxEmitter {
         [out.ax, out.ay, out.az] = toEngine(0, 1, 0);
         [out.bx, out.by, out.bz] = toEngine(0, 0, 1);
       }
-    } else if (this.game === "t5") {
-      const facing = e.flags & FX_FLAG_BILLBOARD_MASK;
-      out.mode =
-        facing === FX_FLAG_USE_WORLD_UP
-          ? DRAW_BILLBOARD_WORLD_UP
-          : facing === FX_FLAG_ALIGN_VIEWPOINT
-            ? DRAW_BILLBOARD_VIEWPOINT
-            : facing
-              ? DRAW_BILLBOARD_VIEWPOINT_UP
-              : DRAW_BILLBOARD;
+    } else if (e.facing) {
+      out.mode = FACING_MODES[e.facing];
     }
   }
 
@@ -513,8 +499,8 @@ export class FxEmitter {
       return 0;
     }
     const start = atlas.behavior & 3;
-    if (start === 3 && this.game === "t5") {
-      // T5's fixedRange: cycle `indexRange` cells from `index` (FX_GetAtlasUV).
+    if (start === 3 && atlas.ranged) {
+      // fixedRange: cycle `indexRange` cells from `index` (FX_GetAtlasUV).
       const range = Math.max(atlas.indexRange ?? 1, 1);
       let step = atlas.behavior & 4 ? Math.floor(u * range) : atlas.fps ? Math.floor((Math.floor(ageMs) * atlas.fps) / 1000) : 0;
       if (atlas.behavior & 8 && step >= atlas.loopCount * range) {
