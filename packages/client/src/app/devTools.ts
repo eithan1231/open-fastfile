@@ -125,21 +125,7 @@ export class DevTools {
   private statsAccum = STATS_INTERVAL;
 
   constructor(private readonly deps: Deps) {
-    const canvas = deps.viewer.renderer.domElement;
-    canvas.addEventListener("mousemove", (e) => {
-      if (deps.mode() !== "walk") {
-        this.setCursor(e);
-      }
-    });
-    canvas.addEventListener("pointerdown", (e) => {
-      this.pressedAt = { x: e.clientX, y: e.clientY };
-    });
-    canvas.addEventListener("pointerup", (e) => this.onPointerUp(e));
-  }
-
-  /** Add the debug overlays to a freshly cleared scene. */
-  attach(scene: THREE.Scene): void {
-    scene.add(
+    deps.viewer.roots.keep(
       this.scenePicker.overlay,
       this.colliderView.object,
       this.colliderView.fullObject,
@@ -153,6 +139,16 @@ export class DevTools {
       this.navView.nodeObject,
       this.navView.linkObject,
     );
+    const canvas = deps.viewer.renderer.domElement;
+    canvas.addEventListener("mousemove", (e) => {
+      if (deps.mode() !== "walk") {
+        this.setCursor(e);
+      }
+    });
+    canvas.addEventListener("pointerdown", (e) => {
+      this.pressedAt = { x: e.clientX, y: e.clientY };
+    });
+    canvas.addEventListener("pointerup", (e) => this.onPointerUp(e));
   }
 
   /** Before the scene is disposed: the highlight borrows its geometry. */
@@ -756,7 +752,7 @@ export class DevTools {
       primary.push(`${traces} shot trace${traces === 1 ? "" : "s"}`);
       primary.push(divergence === null ? "no server trace" : `client/server apart by ${divergence.toFixed(3)} m`);
     }
-    const secondary = [viewer.profiler.format(), `${this.nodes} nodes`];
+    const secondary = [viewer.profiler.format(), `passes ${viewer.pipeline.format()}`, `${this.nodes} nodes`];
     const weapon = this.deps.viewmodel();
     if (weapon) {
       secondary.push(weapon);

@@ -20,23 +20,11 @@ export const AMBIENT_SCALE = 18;
  */
 export const LIGHTMAP_SCALE = AMBIENT_SCALE;
 
-/** The share of a ranged light's reach over which it fades out: a CoD primary light's `falloffdistance` over its radius, typically. */
-export const RANGE_FADE = 0.25;
-
-// three's cutoff window, (1 - (d/r)^4)^2, is already a third down at 80% of the
-// range, so a ceiling light whose range just reaches the floor lit nothing. A
-// ranged light (the only kind built with decay 0) instead keeps its strength
-// and smoothsteps to nothing over the last RANGE_FADE, as T5's spot shader does.
-const WINDOW = "distanceFalloff *= pow2( saturate( 1.0 - pow4( lightDistance / cutoffDistance ) ) );";
-const RANGED = `distanceFalloff *= decayExponent == 0.0
-			? 1.0 - smoothstep( cutoffDistance * ${(1 - RANGE_FADE).toFixed(2)}, cutoffDistance, lightDistance )
-			: pow2( saturate( 1.0 - pow4( lightDistance / cutoffDistance ) ) );`;
-if (!THREE.ShaderChunk.lights_pars_begin.includes(WINDOW)) {
-  throw new Error("three's lights_pars_begin changed: ranged lights would fall off with its window");
-}
-THREE.ShaderChunk.lights_pars_begin = THREE.ShaderChunk.lights_pars_begin.replace(WINDOW, RANGED);
-
-/** Point and spot: `range:` as three's (distance, decay). Unset, it falls off with distance squared for ever. */
+/**
+ * Point and spot: `range:` as three's (distance, decay). Unset, it falls off with
+ * distance squared for ever; set, decay 0 selects the engine's ranged falloff
+ * (engine/render/chunks.ts).
+ */
 function reach(light: ResolvedLight): [distance: number, decay: number] {
   return light.range === undefined ? [0, 2] : [light.range, 0];
 }

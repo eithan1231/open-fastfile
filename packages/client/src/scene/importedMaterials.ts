@@ -4,6 +4,7 @@
 // rule is in docs/engine/rendering.md#imported-materials.
 
 import * as THREE from "three";
+import { addPatch } from "../engine/render/patches.js";
 
 type Materials = THREE.Material | THREE.Material[];
 
@@ -88,15 +89,19 @@ export function blendedMaterialFor(source: THREE.Material, mode: string): THREE.
   mat.name = src.name;
   mat.userData = { ...src.userData }; // a copy: the picker writes tags per material
 
+  // A new material, so it carries none of the source's patches (layers, wind).
   const toward = mode === "multiply" ? "vec3( 1.0 )" : "vec3( 0.0 )";
-  mat.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <opaque_fragment>",
-      `#include <opaque_fragment>
+  addPatch(mat, {
+    name: "decal-fade",
+    key: `decal-fade-${mode}`,
+    apply: (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <opaque_fragment>",
+        `#include <opaque_fragment>
        gl_FragColor.rgb = mix( ${toward}, gl_FragColor.rgb, gl_FragColor.a );`,
-    );
-  };
-  mat.customProgramCacheKey = () => `decal-fade-${mode}`;
+      );
+    },
+  });
 
   switch (mode) {
     case "multiply":

@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { buildLight } from "../src/scene/lights.js";
+import { installChunks } from "../src/engine/render/chunks.js";
 import type { ResolvedLight } from "@3d/shared/dsl/resolved.js";
 
 function light(over: Partial<ResolvedLight> = {}): ResolvedLight {
@@ -77,6 +78,8 @@ describe("buildLight — cone and range", () => {
     const point = buildLight(light({ type: "point" })) as THREE.PointLight;
     expect([point.distance, point.decay]).toEqual([0, 2]);
     // ... and three's own window, which fades from the start, is replaced for it.
+    installChunks();
+    installChunks(); // idempotent
     expect(THREE.ShaderChunk.lights_pars_begin).toContain("1.0 - smoothstep( cutoffDistance * 0.75, cutoffDistance, lightDistance )");
   });
 });

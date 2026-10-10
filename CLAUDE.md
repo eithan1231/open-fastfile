@@ -96,6 +96,7 @@ and the process dies on its first resolve. Each package's
 | **`packages/client/`**         | **`@3d/client` — the browser game.** `index.html` and `vite.config.ts` live here                                              |
 | `client/src/scene/`            | `ResolvedWorld` → three.js objects: models, characters, viewmodel, baking, instancing                                         |
 | `client/src/engine/`           | Renderer, controls, shadows, grade, quality, picking, debug views, viewmodel, particle effects (`fx/`), sound (`audio/`)      |
+| `client/src/engine/render/`    | How a frame is drawn: its passes, what the scene holds, shader patches and chunks, the prewarm                                |
 | `client/src/input/`            | Keyboard, mouse and pointer lock → named actions (`bindings.ts`)                                                              |
 | `client/src/net/`              | The match: finding a game server, the data channel, the other players as characters (or capsules)                             |
 | `client/src/net/actors.ts`     | The actors, drawn beside the scene like corpses and interpolated like peers: a posed rig, or the kind's capsule               |

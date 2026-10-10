@@ -881,7 +881,7 @@ function tintOf(ctx: ResolveContext, node: ObjectNode, key: string): Vec3 {
  * Read one of a `grade`'s desaturation amounts, warning outside 0..4.
  *
  * 0 leaves colour untouched and 1 is fully grey; the scale runs to 4 in the
- * source these values come from, though engine/grade.ts holds at 1
+ * source these values come from, though engine/render/grade.ts holds at 1
  * (see its comment). Outside 0..4 is a units mistake rather than a strong
  * grade.
  */

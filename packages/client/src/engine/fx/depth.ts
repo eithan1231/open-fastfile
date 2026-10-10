@@ -72,6 +72,24 @@ export class SceneDepth {
     shadows.needsUpdate = needsUpdate;
   }
 
+  /**
+   * Compile the programs `render` uses (its target's variant of every scene
+   * material), then draw once: a driver finishes a program on its first draw
+   * with a given target, which cost a quarter of a second on the first frame
+   * with a feathered sheet.
+   */
+  async prewarm(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, hide: THREE.Object3D): Promise<void> {
+    // compileAsync picks every program synchronously and only then waits for the
+    // driver, so the target is put back before the wait: a hot reload loads with
+    // the loop running, and its frames must not draw into this.
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.target);
+    const ready = renderer.compileAsync(scene, camera);
+    renderer.setRenderTarget(previous);
+    await ready;
+    this.render(renderer, scene, camera, hide);
+  }
+
   dispose(): void {
     this.target.depthTexture?.dispose();
     this.target.dispose();

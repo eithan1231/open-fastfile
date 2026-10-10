@@ -364,7 +364,7 @@ export interface ResolvedLight {
 /**
  * Colour grading: a tint per luminance zone plus a pull toward grey, in the
  * shape of a CoD `.vision` film tweak. Tints are linear multipliers (1 is
- * neutral) applied after tone mapping, as authored (engine/grade.ts).
+ * neutral) applied after tone mapping, as authored (engine/render/grade.ts).
  */
 export interface ResolvedGrade {
   /** Multiplier for the brightest zone. */

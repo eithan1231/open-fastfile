@@ -5,6 +5,9 @@
 // weights the motion, as the `_FLAG_WEIGHT` attribute (scripts/cod/pack.py).
 
 import * as THREE from "three";
+import { addPatch, hasPatch } from "../engine/render/patches.js";
+
+const FLAG_WIND = "flag-wind";
 
 /** Seconds of shader time, advanced by engine/animator.ts. One per AssetStore, shared by every flag material in it. */
 export interface ShaderClock {
@@ -53,16 +56,17 @@ const FLAG_VERTEX = /* glsl */ `
 export function applyFlagMaterial(material: THREE.Material, params: FlagParams, clock: ShaderClock): void {
   const flagParams = { value: new THREE.Vector2(params.speed, params.offset) };
 
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.flagTime = clock;
-    shader.uniforms.flagParams = flagParams;
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float _flag_weight;\nuniform float flagTime;\nuniform vec2 flagParams;")
-      .replace("#include <begin_vertex>", `#include <begin_vertex>\n${FLAG_VERTEX}`);
-  };
-
-  material.customProgramCacheKey = () => "flag-wind";
-  material.userData.flagWind = true;
+  addPatch(material, {
+    name: FLAG_WIND,
+    key: FLAG_WIND,
+    apply: (shader) => {
+      shader.uniforms.flagTime = clock;
+      shader.uniforms.flagParams = flagParams;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nattribute float _flag_weight;\nuniform float flagTime;\nuniform vec2 flagParams;")
+        .replace("#include <begin_vertex>", `#include <begin_vertex>\n${FLAG_VERTEX}`);
+    },
+  });
 }
 
 /**
@@ -80,7 +84,7 @@ export function applyFlagWind(root: THREE.Object3D, clock: ShaderClock): number 
 
     for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
       const params = flagParamsOf(material);
-      if (!params || material.userData.flagWind) {
+      if (!params || hasPatch(material, FLAG_WIND)) {
         continue;
       }
 

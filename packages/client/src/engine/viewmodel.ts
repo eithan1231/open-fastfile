@@ -12,6 +12,7 @@ import { releaseRig } from "@3d/shared/rig/release.js";
 import type { WeaponController, WeaponEvent } from "@3d/shared/sim/weapon.js";
 import { scaleFov } from "./viewer.js";
 import { WeaponMotion, type MotionFrame, type MotionPose } from "./weaponMotion.js";
+import type { RenderPass } from "./render/pipeline.js";
 
 /** The game's default `cg_fov`, which its viewmodels are posed for: horizontal degrees at 4:3. */
 export const COD_FOV = 65;
@@ -135,6 +136,13 @@ class Scope {
       map.offset.set((1 - aspect) / 2, 0);
     }
     renderer.render(this.scene, this.camera);
+  }
+
+  /** Compile the quad's program, once there is a picture to draw. */
+  async prewarm(renderer: THREE.WebGLRenderer): Promise<void> {
+    if (this.ready) {
+      await renderer.compileAsync(this.scene, this.camera);
+    }
   }
 }
 
@@ -323,12 +331,23 @@ export class Viewmodel {
   }
 
   /**
-   * Draw over what the world pass left in the framebuffer: its colour stays, its
-   * depth goes. Scoped, the picture is drawn *instead of* the hands and the gun,
-   * multiplied onto the frame the world pass left — the scope's tube is black in
-   * the image, so multiplying is what makes it a tube.
+   * The pipeline's "viewmodel" pass. Draws over what the world pass left in the
+   * framebuffer: its colour stays, its depth goes. Scoped, the picture is drawn
+   * *instead of* the hands and the gun, multiplied onto the frame the world pass
+   * left — the scope's tube is black in the image, so multiplying is what makes
+   * it a tube.
    */
-  render(renderer: THREE.WebGLRenderer): void {
+  readonly pass: RenderPass = {
+    render: ({ renderer }) => this.render(renderer),
+    prewarm: async ({ renderer }) => {
+      if (this.rig) {
+        await renderer.compileAsync(this.scene, this.camera);
+        await this.scope.prewarm(renderer);
+      }
+    },
+  };
+
+  private render(renderer: THREE.WebGLRenderer): void {
     if (!this.rig || !this.visible) {
       return;
     }

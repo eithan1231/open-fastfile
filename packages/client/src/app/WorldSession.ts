@@ -197,7 +197,7 @@ export class WorldSession {
    * runs, and may return a promise to yield (so a loading screen can paint).
    */
   async mount(world: ResolvedWorld, arrival: Arrival, onStep?: (step: string, index: number, count: number) => void | Promise<void>): Promise<void> {
-    const { viewer, animator, fx, audio, collision, live, corpses, firstPerson, dollhouse, shadowFit, viewmodel, remotes, actors, dev } = this.engine;
+    const { viewer, animator, fx, audio, collision, live, corpses, firstPerson, dollhouse, shadowFit, remotes, actors, dev } = this.engine;
     const { player } = firstPerson;
 
     // Each step depends on the ones above it; the comment says on what.
@@ -219,12 +219,8 @@ export class WorldSession {
           this.built = m.built;
           this.resolved = m.world;
           this.indexed = indexWorld(m.world);
-          viewer.scene.clear(); // also drops background and fog, set below for every world
-          viewer.scene.add(m.built.root);
-          dev.attach(viewer.scene);
           const sky = m.world.sky ? new THREE.Color(m.world.sky) : null;
-          viewer.scene.background = sky;
-          viewer.scene.fog = sky ? new THREE.FogExp2(sky, 3 / (m.world.visibility ?? 300)) : null;
+          viewer.roots.setWorld(m.built.root, { background: sky, fog: sky ? new THREE.FogExp2(sky, 3 / (m.world.visibility ?? 300)) : null });
           // Who is in this world is a gametype's answer now, not the world's.
           // Everything it names lives in the shared catalogue, so nothing here is
           // relative to the map — which is what lets a body be worn anywhere.
@@ -418,7 +414,6 @@ export class WorldSession {
           if (!this.showHeld({ ready: !first })) {
             return;
           }
-          await viewer.renderer.compileAsync(viewmodel.scene, viewmodel.camera);
           console.info(`[viewmodel] ${carried} in ${m.cast.hands.file}`);
         },
       ],
@@ -491,12 +486,14 @@ export class WorldSession {
           viewer.applyQuality(m.built.root, m.texelSize);
         },
       ],
-      // An optimisation only, so a failure must not stop the world coming up.
+      // Last, once everything a frame draws is in the scene: every pass's programs
+      // (engine/render/pipeline.ts). An optimisation only, so a failure must not
+      // stop the world coming up.
       [
         "compile shaders",
         async () => {
           try {
-            await viewer.renderer.compileAsync(viewer.scene, viewer.camera);
+            await viewer.prewarm();
           } catch (e) {
             console.warn("Shader prewarm failed; continuing without it", e);
           }
@@ -561,7 +558,7 @@ export class WorldSession {
     this.indexed = undefined;
     this.presence = undefined;
     this.assets.dispose();
-    this.engine.viewer.scene.clear();
+    this.engine.viewer.roots.setWorld(undefined);
   }
 
   /** Let go of the built scene and everything attached to it. The highlight borrows its geometry, so it lets go first. */

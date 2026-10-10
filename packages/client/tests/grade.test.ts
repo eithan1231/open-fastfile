@@ -2,7 +2,7 @@
 //
 // Tints are absolute multipliers on a 0..2 scale where 1 is neutral, and they
 // reach the shader exactly as authored — no rescaling. These pin that down,
-// because an earlier version of engine/grade.ts *did* rescale them (dividing
+// because an earlier version of engine/render/grade.ts *did* rescale them (dividing
 // by the midtone's luminance, to hold off highlight clipping) and that quietly
 // changed what every authored number meant for a 0.03 gain in clipping
 // headroom.
@@ -13,7 +13,7 @@ import { parseWorldFile } from "@3d/shared/dsl/parser.js";
 import { resolveWorld } from "@3d/shared/dsl/resolve.js";
 import type { ResolvedGrade } from "@3d/shared/dsl/resolved.js";
 import { hasErrors } from "@3d/shared/dsl/diagnostics.js";
-import { gradeGlsl, applyGrade } from "../src/engine/grade.js";
+import { gradeGlsl, applyGrade } from "../src/engine/render/grade.js";
 
 function resolve(source: string) {
   const { ast, diagnostics: parseDiags } = parseWorldFile(source);

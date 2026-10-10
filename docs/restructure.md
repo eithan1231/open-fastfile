@@ -60,42 +60,23 @@ These are what the stages establish, and what review holds new work to.
 
 ### 1. Rendering — `client/src/engine/render/`
 
-**Frame pipeline.** `Viewer`'s loop becomes two named lists:
+The mechanisms are in place ([the frame](engine/rendering.md#the-frame)):
+named passes, scene roots, the patch composer, chunks installed by the viewer,
+and the prewarm. What remains is stage 2's:
 
-- **update** — the per-frame systems in order (animator, controls, effects,
-  remotes, actors, viewmodel pose, presenters, audio listener, shadow fit). Today
-  this order lives inside `App.frame` and depends on comments; effects currently
-  run _before_ the camera moves and are judged against last frame's camera.
-- **passes** — `shadows → world → effects → viewmodel → output`. Each pass declares
-  what it reads and writes. `world` renders into an offscreen, multisampled target
-  that keeps its depth; `effects` reads that depth for the soft fade instead of
-  rendering the scene itself; `output` applies tone mapping and the grade once, to
-  the finished frame.
+- **The world pass keeps its depth.** It renders into an offscreen, multisampled
+  target that keeps its depth; the effects read that depth for the soft fade
+  instead of the `effects depth` pass drawing the scene again; an `output` pass
+  applies tone mapping and the grade once, to the finished frame, in place of
+  the grade chunk. This also retires the save-and-restore in `fx/depth.ts` and
+  the `autoClear` juggling in `Viewmodel.render`.
+- **The per-frame update becomes a named list** as the passes are (animator,
+  controls, effects, remotes, actors, viewmodel pose, presenters, audio
+  listener, shadow fit). Today this order lives inside `App.frame` and depends
+  on comments; effects run _before_ the camera moves and are judged against last
+  frame's camera. Done with the app layer (stage 4), which owns that list.
 
-This replaces `setBeforeRender`, `setOverlay`, the save-and-restore in
-`fx/depth.ts`, the `autoClear` juggling in `Viewmodel.render` and the
-`info.autoReset` bookkeeping.
-
-**Scene roots.** One owner of what is in the scene: the world root, the side
-roots (remotes, effects, audio, corpses, actors) and the dev overlays register
-once and survive a world change. Today `WorldSession` clears the scene and `App`
-re-adds five roots only after the mount finishes, so they are missing during it,
-missing for good if it throws, and invisible to the prewarm.
-
-**Shader patches.** One composer. A feature registers a named patch; a material
-carries a list of them, and its program cache key is built from the list, so
-patches compose. This replaces the four direct `onBeforeCompile` assignments
-(layers, flag wind, decal fade, bind-pose depth), which overwrite each other —
-layers and flag wind on one material lose the layers today, and a blend
-replacement drops both. The two global chunk rewrites (grade, ranged-light
-falloff) move into the renderer: the grade into the `output` pass, the falloff
-installed once at start-up.
-
-**Prewarm.** Owned by the pipeline: draw one full frame offscreen behind the
-loading screen, every pass included. It then covers shadow programs, the effects,
-the viewmodel, the scope and anything added later, without anyone remembering to.
-
-**Risks to check in that stage:** a multisampled target's depth must resolve to a
+**Risks to check in stage 2:** a multisampled target's depth must resolve to a
 texture (three r169 supports it; to be proven on our GPU path); the sky is
 `scene.background`, which three never tone-maps, so an `output` pass would grade
 it unless it is drawn after; the effects' materials stop including tone mapping
@@ -174,17 +155,17 @@ games and the shot-trace diagnostic move out.
 Checked against the code. Each is fixed in the stage that moves its code, with a
 test.
 
-| Defect                                                                                                                | Where                               | Status                   |
-| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------ |
-| A dropped match connection is never cleared, so a reload never rejoins and input is sent into a dead channel          | `App.ts` 697–709                    | confirmed                |
-| Lag-compensation counters count once per candidate player, not per shot, so `/healthz` grows with roster size         | `match.ts` 2344, 2187               | confirmed                |
-| A world entered before the weapon catalogue loads keeps an empty registry for the session, hot reloads included       | `App.ts` 400, `WorldSession`        | by reading               |
-| Layers and flag wind on one material: the second overwrites the first; a blend replacement drops both                 | `layers.ts`, `flag.ts`, `assets.ts` | by reading; latent today |
-| A grade change on hot reload keeps old shader programs; page-lifetime materials can carry a grade into the next world | `grade.ts`                          | by reading               |
-| `SceneDepth` is never disposed                                                                                        | `fx/system.ts`                      | confirmed                |
-| Effects judged against last frame's camera                                                                            | `App.frame` order                   | confirmed                |
-| A runtime quality change misses the viewmodel's shadow filter and anisotropy                                          | `quality.ts`                        | by reading               |
-| Leaving a match fires no trigger-leave or script hook                                                                 | `match.ts` 906                      | by reading               |
+| Defect                                                                                                                | Where                        | Status                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| A dropped match connection is never cleared, so a reload never rejoins and input is sent into a dead channel          | `App.ts` 697–709             | confirmed                                                                                                   |
+| Lag-compensation counters count once per candidate player, not per shot, so `/healthz` grows with roster size         | `match.ts` 2344, 2187        | confirmed                                                                                                   |
+| A world entered before the weapon catalogue loads keeps an empty registry for the session, hot reloads included       | `App.ts` 400, `WorldSession` | by reading                                                                                                  |
+| Layers and flag wind on one material: the second overwrote the first                                                  | `layers.ts`, `flag.ts`       | **fixed in stage 1** (patch composer, with a test); a blend replacement deliberately starts with no patches |
+| A grade change on hot reload keeps old shader programs; page-lifetime materials can carry a grade into the next world | `grade.ts`                   | by reading                                                                                                  |
+| `SceneDepth` is never disposed                                                                                        | `fx/system.ts`               | confirmed                                                                                                   |
+| Effects judged against last frame's camera                                                                            | `App.frame` order            | confirmed                                                                                                   |
+| A runtime quality change misses the viewmodel's shadow filter and anisotropy                                          | `quality.ts`                 | by reading                                                                                                  |
+| Leaving a match fires no trigger-leave or script hook                                                                 | `match.ts` 906               | by reading                                                                                                  |
 
 Checked and **not** a defect: "a seated player gets no snapshots" — seated
 players are members, so the game still sends.
@@ -210,10 +191,18 @@ compared with the stage before.
    Every world stalls after load, not only theater: the prewarm misses programs
    on all of them.
 
-1. **Rendering structure.** Scene roots, the frame pipeline with the passes as
-   they are today, the patch composer, the pipeline-owned prewarm, per-pass
-   timings. Neutral: same pixels, same frame rate, except that the first-frame
-   stall goes, since the prewarm now covers the depth pass.
+1. **Rendering structure** — done. Pixel-identical on all three worlds; frame
+   rate unchanged within run-to-run noise (theater varies by about ±1.5 fps).
+
+   | World           | Stall         | Late programs | Load        |
+   | --------------- | ------------- | ------------- | ----------- |
+   | theater-bo1     | 1478 → 171 ms | 49 → 0        | 8.6 → 8.4 s |
+   | russianbase-bo1 | 1002 → 69 ms  | 45 → 0        | 5.7 → 6.8 s |
+   | dome-mw3        | 521 → 35 ms   | 30 → 0        | 4.5 → 5.2 s |
+
+   The prewarm now does a first frame's work at load, so loading takes up to a
+   second longer and the first frames of play do none of it.
+
 2. **Rendering fix.** The world pass keeps its depth, effects read it, the grade
    moves to `output`. Changes pixels slightly; you review screenshots. Expected:
    theater with effects near 70 fps.

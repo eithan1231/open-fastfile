@@ -3,6 +3,43 @@
 Why the renderer is set up the way it is. Code comments point here for the
 long version.
 
+## The frame
+
+`engine/render/` owns how a frame is drawn, and a rendering feature plugs into
+one of its four mechanisms rather than into the viewer's loop or `App`.
+
+- **Passes** (`pipeline.ts`). A frame is the named passes in `PASSES`, in that
+  order: `effects depth`, `world` (the shadow map renders inside it, when
+  invalidated), `viewmodel`. A feature fills its slot with
+  `viewer.pipeline.use(name, pass)`; a new kind of pass is a new name in the
+  list, which is where its order is decided. Each pass is timed under its name
+  (the dev stats' `passes` line), CPU submission only.
+- **The scene's contents** (`roots.ts`). `viewer.roots` is the only thing that
+  adds to or removes from the world scene: `setWorld` swaps a built world and
+  its sky, `keep` adds a root that lives beside every world for the page
+  (effects, peers, corpses, actors, sound, the debug overlays).
+- **Shader patches** (`patches.ts`). A per-material change to a three shader is
+  a named `ShaderPatch` added with `addPatch`. A material runs its patches in
+  order and keys its program on all of theirs, so two features compose; never
+  assign `onBeforeCompile` or `customProgramCacheKey` directly, since the second
+  assignment silently drops the first. A material built from another (a clone, a
+  blend replacement) starts with none.
+- **Chunks** (`chunks.ts`, `grade.ts`). Changes to three's own chunks reach every
+  program, so they are installed once by the `Viewer` before any material
+  compiles — never on import. The ranged-light falloff is one; the grade is the
+  other, set per world.
+
+**The prewarm.** The last load step, `viewer.prewarm()`, does a first frame's
+work behind the loading screen: each pass compiles its own programs for its own
+render target (three keys a program by target, so a pass into a texture needs
+variants the canvas does not), then a frame as play would draw it, then one with
+culling off and the shadow map invalidated — every object drawn once into the
+view and every shadow map, so casters' depth programs compile and every texture
+uploads — and then it waits on a GPU fence for all of that to finish. A pass
+whose programs it cannot reach that way says how in its own `prewarm`. Whether
+it worked is `pnpm perf`'s `late programs` and `stall`
+([debugging](debugging.md#performance)).
+
 ## Imported materials
 
 An imported map's materials arrive as glTF, which can only say OPAQUE, MASK or
@@ -65,7 +102,7 @@ every placement shares one and instancing can still pool them.
 extension draws up to three more textures over its base colour in one pass,
 each weighted per vertex (`scene/layers.ts`). A GLTFLoader plugin resolves the
 textures after the root, because the loader clones a material per vertex-colour
-variant and a clone has no `onBeforeCompile`. The layers mix right after
+variant and a clone carries none of its source's [shader patches](#the-frame). The layers mix right after
 `map_fragment`, so the vertex colour, the lightmap and fog apply to the result
 once, as in the game's shader. The textures live in a `WeakMap` rather than
 `userData`, which `Material.copy` deep-copies through JSON. Each mode and where
@@ -127,7 +164,7 @@ is the switch to per-frame fitting once something animates.
 
 A world's `grade` (a CoD `.vision` film tweak for imported maps) is compiled
 into three's tone-mapping stage by overriding `CustomToneMapping`'s GLSL
-(`engine/grade.ts`). A post-process pass would cost a full-screen resolve each
+(`engine/render/grade.ts`). A post-process pass would cost a full-screen resolve each
 frame and lose MSAA. The override is global to the page, and the grade is part
 of every shader, so it must be set before materials compile. Its `gamma` is the
 last step, after tone mapping and the tints and before three's sRGB encode, so
@@ -185,7 +222,8 @@ the main pass deforms; shadows keep the rest pose, as above.
 The first-person hands and weapon (`engine/viewmodel.ts`; the data behind them
 is in [docs/cod/reference.md](../cod/reference.md#viewmodels)). They are drawn
 in a **pass of their own**: a separate scene and camera, rendered after the
-world into the same framebuffer with only the depth cleared (`Viewer.setOverlay`).
+world into the same framebuffer with only the depth cleared (the `viewmodel`
+[pass](#the-frame)).
 
 - **It cannot clip into walls**: nothing of the world is in its depth buffer.
 - **The static world never sees it.** It is in no built scene, so frozen
@@ -433,9 +471,8 @@ established from `iw5mp.exe`, is in
 [docs/cod/reference.md](../cod/reference.md#effects-fx) and
 [docs/cod/effects.md](../cod/effects.md); this section is how the engine hosts it.
 
-- **Beside the world, never in it.** `FxSystem` owns a root that `App` adds to
-  the scene next to the remote players' (re-added on every load, since building
-  a world clears the scene). Particles are written in **world space**, so that
+- **Beside the world, never in it.** `FxSystem` owns a root the viewer's
+  [scene roots](#the-frame) keep beside every world, next to the remote players'. Particles are written in **world space**, so that
   root and its meshes never move and need no matrix update — effects sidestep
   the frozen-matrix rules below rather than opting out of them.
 - **Simulated on the CPU.** The game's element logic is branchy (per-particle
@@ -450,10 +487,13 @@ established from `iw5mp.exe`, is in
   `exposure:` it would come out several times too dark. The shader still uses the
   standard prefix, for the output colour-space conversion and fog.
 - **Blending is the material's own**, factor for factor, with straight alpha,
-  and `keepAlpha` so a sheet never punches through the page. The near-camera
-  half of the game's soft-particle fade is in; the scene-depth half needs a depth
-  texture the engine does not have, so sheets still cut a hard line where they
-  meet geometry.
+  and `keepAlpha` so a sheet never punches through the page. Both halves of the
+  game's soft-particle fade are in: near the camera, and where a sheet meets
+  geometry. The second reads the scene's depth, which the `effects depth`
+  [pass](#the-frame) (`fx/depth.ts`) renders into a half-resolution texture on
+  any frame a feathered sheet is drawn — by drawing the whole scene again with
+  its real materials, which roughly doubles a frame's cost wherever a map has
+  smoke.
 - **Deterministic.** Every random comes from a generator seeded by the placement,
   element and particle, never `Math.random`. A held screenshot pose calls
   `seekTo(POSE_TIME)`: a replay from zero in fixed steps, so the shot is the same
@@ -541,16 +581,15 @@ unchanged. Both points come from reading r169's source; neither has been run.
 the vertex colour, which is the albedo (`color_vertex`), so it would scale the
 sun as well. The value has to enter as irradiance, the way
 `lights_fragment_maps` adds a lightmap texel. That means an attribute of our
-own, or `instanceColor` re-routed, plus an `onBeforeCompile` patch. The real
+own, or `instanceColor` re-routed, plus a [shader patch](#the-frame). The real
 gaps are:
 
 - **The DSL has no property for it.** `ResolvedObject` and `models.ts` would
   carry the value to `instancing.ts`.
 - **A single placement is not instanced** (`MIN_INSTANCES`), so it needs the
   value some other way. A batch of one is the simplest fix.
-- **The patch has to compose with the others.** `flag.ts` already holds the one
-  `onBeforeCompile` slot on flag materials, and blend replacements are unlit
-  decals, which must be skipped.
+- **Blend replacements must be skipped.** They are unlit decals. The patch
+  composes with flag wind and layers through `engine/render/patches.ts`.
 - **The `fill` ambient would count twice.** A three `AmbientLight` reaches every
   material, so props that carry their own light need it excluded.
 

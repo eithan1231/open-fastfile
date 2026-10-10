@@ -4,6 +4,7 @@
 // docs/engine/rendering.md#animated-props.
 
 import * as THREE from "three";
+import { addPatch } from "../engine/render/patches.js";
 
 /** One placement to animate: its cloned rig and the clip it loops. */
 export interface AnimatedPlacement {
@@ -23,10 +24,13 @@ const BOUNDS_SAMPLES = 16;
  */
 export function bindPoseDepthMaterial(): THREE.MeshDepthMaterial {
   const material = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-  material.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace("#include <skinbase_vertex>", "").replace("#include <skinning_vertex>", "");
-  };
-  material.customProgramCacheKey = () => "bind-pose-depth";
+  addPatch(material, {
+    name: "bind-pose-depth",
+    key: "bind-pose-depth",
+    apply: (shader) => {
+      shader.vertexShader = shader.vertexShader.replace("#include <skinbase_vertex>", "").replace("#include <skinning_vertex>", "");
+    },
+  });
   return material;
 }
 

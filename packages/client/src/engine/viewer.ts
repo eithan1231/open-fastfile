@@ -1,10 +1,15 @@
-// Renderer, camera, scene container and the render loop. World content is
-// added by the caller (app/WorldSession.ts); input lives in engine/controls/.
+// Renderer, camera, scene container and the render loop. What a frame draws is
+// render/pipeline.ts's passes; what the scene holds is render/roots.ts's. World
+// content is added by the caller (app/WorldSession.ts); input lives in
+// engine/controls/.
 
 import * as THREE from "three";
 import { applyQuality, loadQualityLevel, saveQualityLevel, QUALITY, type QualityLevel, type QualitySettings, type QualityState } from "./quality.js";
 import { Profiler } from "./profiler.js";
-import { applyGrade } from "./grade.js";
+import { applyGrade } from "./render/grade.js";
+import { installChunks } from "./render/chunks.js";
+import { FramePipeline, type PassContext } from "./render/pipeline.js";
+import { SceneRoots } from "./render/roots.js";
 import type { ResolvedGrade } from "@3d/shared/dsl/resolved.js";
 
 /** Vertical field of view, degrees. */
@@ -22,10 +27,13 @@ export class Viewer {
   /** Frame-time breakdown. Always on: a handful of timestamps per frame. */
   readonly profiler: Profiler;
 
+  /** The frame's passes; features fill their slot with `pipeline.use`. */
+  readonly pipeline = new FramePipeline();
+  /** The only thing that adds to or removes from `scene`. */
+  readonly roots: SceneRoots;
+
   private frameCallbacks: Array<(dt: number, elapsed: number) => void> = [];
-  /** Drawn after the world, into the same framebuffer (engine/viewmodel.ts). */
-  private overlay: ((renderer: THREE.WebGLRenderer) => void) | undefined;
-  private beforeRender: ((renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => void) | undefined;
+  private readonly frame: PassContext;
   private lastTime = performance.now();
   private rafId = 0;
   private quality: QualityLevel = loadQualityLevel();
@@ -39,6 +47,8 @@ export class Viewer {
     // Not logarithmicDepthBuffer: it writes gl_FragDepth per fragment, which
     // outlines every MSAA silhouette, and cannot separate coplanar surfaces
     // anyway. The near plane below keeps depth precision instead.
+    // Before any material compiles: the chunks are baked into every program.
+    installChunks();
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.shadowMap.enabled = true;
     // A built world never moves, so neither per-frame walk of the scene graph
@@ -50,7 +60,7 @@ export class Viewer {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // Two render calls a frame (the world, then the overlay); counted together, reset in the loop.
+    // A render call per pass; counted together, reset in the loop.
     this.renderer.info.autoReset = false;
     container.appendChild(this.renderer.domElement);
     this.profiler = new Profiler(this.renderer);
@@ -58,6 +68,15 @@ export class Viewer {
     // Near 0.1 keeps the ratio to the farthest far plane (~600 m) inside a 24-bit depth buffer.
     this.camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 200);
     this.camera.position.set(0, 1.7, 3);
+
+    this.roots = new SceneRoots(this.scene);
+    this.frame = { renderer: this.renderer, scene: this.scene, camera: this.camera };
+    this.pipeline.use("world", {
+      render: ({ renderer, scene, camera }) => renderer.render(scene, camera),
+      prewarm: async ({ renderer, scene, camera }) => {
+        await renderer.compileAsync(scene, camera);
+      },
+    });
 
     this.resize();
     window.addEventListener("resize", this.resize);
@@ -93,9 +112,7 @@ export class Viewer {
 
       this.profiler.beginGpu(); // asynchronous: never stalls waiting for the result
       this.renderer.info.reset();
-      this.beforeRender?.(this.renderer, this.scene, this.camera);
-      this.renderer.render(this.scene, this.camera);
-      this.overlay?.(this.renderer);
+      this.pipeline.render(this.frame);
       this.profiler.endGpu();
       this.profiler.sample(tCallbacks - tStart, performance.now() - tCallbacks, frameMs);
 
@@ -108,13 +125,9 @@ export class Viewer {
     cancelAnimationFrame(this.rafId);
   }
 
-  /** A pass that must see the frame's final camera, run just before the scene renders (the effects' depth). */
-  setBeforeRender(pass: ((renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => void) | undefined): void {
-    this.beforeRender = pass;
-  }
-
-  setOverlay(render: ((renderer: THREE.WebGLRenderer) => void) | undefined): void {
-    this.overlay = render;
+  /** Compile every pass's programs and draw one frame, so the first frames of play compile nothing. */
+  prewarm(): Promise<void> {
+    return this.pipeline.prewarm(this.frame);
   }
 
   /** Narrow the view by `zoom` on tan(fov / 2), 1 for none: aiming down the sights. */

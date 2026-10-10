@@ -10,6 +10,7 @@ import * as THREE from "three";
 import type { FxBatch } from "./batch.js";
 import { emptyCloudView, type FxCloudBatch } from "./cloud.js";
 import { SceneDepth } from "./depth.js";
+import type { RenderPass } from "../render/pipeline.js";
 import { emptyView, FX_FLAG_FRUSTUM_CULL, FxEmitter, type EmitterPlacement, type ParticleView } from "./emitter.js";
 import { RAND, type FxEffect, type FxGame, type FxLibrary, type Range } from "./library.js";
 
@@ -349,23 +350,33 @@ export class FxSystem {
   }
 
   /**
-   * Render the scene's depth for this frame's feathered sheets, if any are drawn.
-   * Run after `update` and just before the frame, so it sees the final camera.
+   * The pipeline's "effects depth" pass: the scene's depth for this frame's
+   * feathered sheets, if any are drawn. A pass, so it runs after `update` and
+   * sees the frame's final camera.
    */
-  renderDepth(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
-    if (!this.soft) {
-      return;
-    }
-    const feathered = [...this.batches.values()].filter((b) => b.feathered && b.count > 0);
-    if (feathered.length === 0) {
-      return;
-    }
-    this.depth ??= new SceneDepth();
-    this.depth.render(renderer, scene, camera, this.root);
-    for (const batch of feathered) {
-      batch.useDepth(this.depth);
-    }
-  }
+  readonly depthPass: RenderPass = {
+    render: ({ renderer, scene, camera }) => {
+      if (!this.soft) {
+        return;
+      }
+      const feathered = [...this.batches.values()].filter((b) => b.feathered && b.count > 0);
+      if (feathered.length === 0) {
+        return;
+      }
+      this.depth ??= new SceneDepth();
+      this.depth.render(renderer, scene, camera, this.root);
+      for (const batch of feathered) {
+        batch.useDepth(this.depth);
+      }
+    },
+    // Whenever the world has a feathered sheet at all: none may be alive yet at load.
+    prewarm: async ({ renderer, scene, camera }) => {
+      if (this.soft && [...this.batches.values()].some((b) => b.feathered)) {
+        this.depth ??= new SceneDepth();
+        await this.depth.prewarm(renderer, scene, camera, this.root);
+      }
+    },
+  };
 
   /** Stop everything and drop the batches. The textures belong to the world's AssetStore. */
   clear(): void {

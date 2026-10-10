@@ -6,6 +6,7 @@
 
 import * as THREE from "three";
 import type { GLTFLoaderPlugin, GLTFParser } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { addPatch } from "../engine/render/patches.js";
 
 export const LAYERS_EXTENSION = "COD_material_layers";
 
@@ -50,22 +51,23 @@ export function applyLayers(material: THREE.Material, layers: MaterialLayer[]): 
   const uniforms = layers.map((layer) => ({ value: layer.map }));
   const each = (line: (layer: MaterialLayer, k: number) => string) => layers.map(line).join("\n");
 
-  material.onBeforeCompile = (shader) => {
-    uniforms.forEach((uniform, k) => (shader.uniforms[`layerMap${k}`] = uniform));
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", `#include <common>\n${each((layer, k) => `attribute vec3 ${layer.attribute};\nvarying vec3 vLayer${k};`)}`)
-      .replace("#include <uv_vertex>", `#include <uv_vertex>\n${each((layer, k) => `vLayer${k} = ${layer.attribute};`)}`);
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\n${each((_, k) => `uniform sampler2D layerMap${k};\nvarying vec3 vLayer${k};`)}`)
-      .replace(
-        "#include <map_fragment>",
-        `#include <map_fragment>\n${each((layer, k) => `{ vec4 c = texture2D( layerMap${k}, vLayer${k}.xy ); float w = vLayer${k}.z; ${MODE_GLSL[layer.mode]} }`)}`,
-      );
-  };
-
   const key = `layers:${layers.map((layer) => `${layer.mode}@${layer.attribute}`).join(",")}`;
-  material.customProgramCacheKey = () => key;
-  material.needsUpdate = true;
+  addPatch(material, {
+    name: "layers",
+    key,
+    apply: (shader) => {
+      uniforms.forEach((uniform, k) => (shader.uniforms[`layerMap${k}`] = uniform));
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", `#include <common>\n${each((layer, k) => `attribute vec3 ${layer.attribute};\nvarying vec3 vLayer${k};`)}`)
+        .replace("#include <uv_vertex>", `#include <uv_vertex>\n${each((layer, k) => `vLayer${k} = ${layer.attribute};`)}`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\n${each((_, k) => `uniform sampler2D layerMap${k};\nvarying vec3 vLayer${k};`)}`)
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>\n${each((layer, k) => `{ vec4 c = texture2D( layerMap${k}, vLayer${k}.xy ); float w = vLayer${k}.z; ${MODE_GLSL[layer.mode]} }`)}`,
+        );
+    },
+  });
 }
 
 /**

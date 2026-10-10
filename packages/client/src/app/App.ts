@@ -253,8 +253,10 @@ export class App {
     // The listener rides the camera, which is outside the scene and so outside
     // the frozen-matrix rules that apply to everything in it.
     this.audio.attachTo(this.viewer.camera);
-    this.viewer.setOverlay((renderer) => this.viewmodel.render(renderer));
-    this.viewer.setBeforeRender((renderer, scene, camera) => this.fx.renderDepth(renderer, scene, camera));
+    // Beside the world rather than inside it, because the world root's matrices are frozen.
+    this.viewer.roots.keep(this.remotes.root, this.fx.root, this.audio.root, this.corpses.root, this.actors.root);
+    this.viewer.pipeline.use("effects depth", this.fx.depthPass);
+    this.viewer.pipeline.use("viewmodel", this.viewmodel.pass);
     // The moment this client last drew other players at, so the server can judge a
     // shot against what the shooter actually saw rather than against the present.
     // Peers first; with none, the actors, which are drawn at the same moment.
@@ -539,14 +541,6 @@ export class App {
       this.ui.prompt.value = this.awaitingSpawn ? "joining" : "play";
     } // over the world, which runs behind it
     this.ui.screen.value = "world";
-    // Beside the world rather than inside it, because the world root's matrices
-    // are frozen — and re-added on every load, because building a world calls
-    // `scene.clear()`, which takes every child with it including this one.
-    this.viewer.scene.add(this.remotes.root);
-    this.viewer.scene.add(this.fx.root);
-    this.viewer.scene.add(this.audio.root);
-    this.viewer.scene.add(this.corpses.root);
-    this.viewer.scene.add(this.actors.root);
     this.viewer.start();
     this.setMode(arrival.kind === "keep" ? this.mode : "walk");
     // A hot reload rebuilds the scene, not the match: dropping the channel and
