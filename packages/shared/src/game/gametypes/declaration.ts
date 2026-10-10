@@ -44,7 +44,7 @@ export interface GametypeDecl {
    * `spawnPoints`. Undefined takes any spawn the map offers.
    *
    * This is the largest piece of already-exported data nothing reads yet: every
-   * imported map declares its spawns per mode and per side, and `Match.spawnFor`
+   * imported map declares its spawns per mode and per side, and `Spawns.place`
    * asks for neither.
    */
   readonly spawnMode?: string;

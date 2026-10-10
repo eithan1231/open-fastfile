@@ -26,7 +26,7 @@ import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.
 import type { WeaponData, WeaponState } from "@3d/shared/sim/weapon.js";
 import type { WeaponDef } from "@3d/shared/sim/weaponDef.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 
 const TICK_RATE = 60;
 const DT = 1 / TICK_RATE;

@@ -36,7 +36,7 @@ import type { WeaponDef } from "@3d/shared/sim/weaponDef.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
 import type { BodyView, LoadedBody } from "../src/bodies.js";
 import { encodePacket, MessageType } from "@3d/shared/net/packet.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 
 const TICK_RATE = 60;
 const DT = 1 / TICK_RATE;
@@ -45,7 +45,7 @@ const MAP = "dome-mw3";
 const ARMED = "iw5/test_mp";
 
 /**
- * `SHOT_RANGE` as match.ts fixes it: the games' own 8192-unit `bulletRange`.
+ * A bullet's range as match/shots.ts takes it: the games' own 8192-unit `bulletRange`.
  *
  * Repeated rather than exported, because a hit's `distance` is a fraction of it
  * and this file wants to ask for a distance in metres.

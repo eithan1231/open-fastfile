@@ -24,7 +24,7 @@ import { weaponDef } from "@3d/shared/testing/weaponDef.js";
 import * as THREE from "three";
 import { SEGMENT_BONES } from "@3d/shared/sim/ragdollBones.js";
 import type { BodyView, LoadedBody } from "../src/bodies.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 
 const TICK_RATE = 60;
 const DT = 1 / TICK_RATE;

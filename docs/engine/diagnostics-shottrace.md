@@ -43,7 +43,7 @@ information:
 **The client's.** `packages/client/src/engine/shotTraceView.ts`.
 
 - A shot is detected by watching `WeaponData.fired` advance across a frame,
-  exactly as `Match.fireShots` detects one. Not by subscribing to
+  exactly as `Shots.fire` detects one. Not by subscribing to
   `WeaponController`'s `shot` event: `Player.equip`/`equipById`/`restore` each
   replace the controller, so a subscription is dropped in silence on every weapon
   change and every correction. A controller that is not the one being watched
@@ -71,7 +71,7 @@ the same thing. On a frame that spent two or more ticks, the second round is
 traced from the angles the _last_ tick left — a fraction of a degree, and it
 shows up as a small client-side wobble rather than as a server disagreement.
 
-**The server's.** `packages/game-server/src/net/server.ts`, gated on
+**The server's.** `packages/game-server/src/shotTrace.ts`, gated on
 `SHOT_TRACE`. `Match.shotsThisTick` already holds everything wanted —
 `FiredShot { shooter, ordinal, from, direction, result }` — so this only maps it
 onto a message and addresses it to whoever fired.
@@ -135,7 +135,7 @@ landed on top of it, so this is a hand edit, not a revert.
 | `packages/client/src/app/dev/devTools.ts` | the `shotTraces` toggle in `bind`; `serverShotTrace`.                                                                                                                                                           |
 | `packages/client/src/app/match.ts`        | `onShotTrace:` in the `Connection` events.                                                                                                                                                                      |
 | `packages/client/src/input/bindings.ts`   | `"shotTraces"` in the `Action` union; the `shotTraces` entry in `DEFAULT_BINDINGS`. `G` goes back to being free.                                                                                                |
-| `packages/game-server/src/net/server.ts`  | the two imports; the `if (config.shotTrace)` in `tick`; `sendShotTraces`; the exported `shotTracePacket`.                                                                                                       |
+| `packages/game-server/src/shotTrace.ts`   | the whole file; its import and the `if (config.shotTrace)` in `tick.ts`; `NetServer.sendTo` if nothing else uses it.                                                                                            |
 | `packages/game-server/src/config.ts`      | the `shotTrace` field.                                                                                                                                                                                          |
 | `docs/engine/debugging.md`                | the `Shot traces (temporary)` section under its `<!-- SHOTTRACE -->` marker.                                                                                                                                    |
 | `.env.example`                            | the commented-out `SHOT_TRACE` block.                                                                                                                                                                           |
@@ -145,7 +145,7 @@ landed on top of it, so this is a hand edit, not a revert.
 - `packages/client/tests/connection.test.ts`: `onShotTrace: vi.fn()` in the
   `Connection` events, or it stops typechecking.
 - `packages/client/src/engine/audio/weapons.ts`: two doc comments that name
-  `ShotTraceView`; reword them to name `Match.fireShots` alone.
+  `ShotTraceView`; reword them to name `Shots.fire` alone.
 
 **The type byte.** Delete `shotTrace: 6` and leave every later entry
 (`chooseClass: 7`, `classChosen: 8`, …) at its number, with a one-line comment

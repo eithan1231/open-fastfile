@@ -25,7 +25,7 @@ import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import { createMovement, EYE_HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
 import { lerpMovement } from "@3d/shared/sim/interpolate.js";
 import { TICK_RATE } from "@3d/shared/net/messages/fields.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 import { PlayerHistory } from "../src/history.js";
 
 const DT = 1 / TICK_RATE;

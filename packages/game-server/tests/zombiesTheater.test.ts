@@ -32,7 +32,7 @@ import type { WorldSource } from "@3d/shared/worlds/source.js";
 import { indexWorld } from "@3d/shared/worlds/worldIndex.js";
 import { NO_BODIES } from "../src/bodies.js";
 import { buildServerCollision } from "../src/collision.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 import { zombiePistols } from "./zombiePistols.js";
 
 const SLUG = "theater-bo1";

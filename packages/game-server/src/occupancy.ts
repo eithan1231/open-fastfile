@@ -66,7 +66,7 @@ export class Occupancy {
     return { left: was.filter((i) => !now.includes(i)), entered: now.filter((i) => !was.includes(i)) };
   }
 
-  /** Forget a player who has left the match. No `triggerLeave`: there is nobody left to have left. */
+  /** Forget a player who has left the match, after `update(id, null)` has said what they left. */
   remove(id: PlayerId): void {
     this.inside.delete(id);
   }

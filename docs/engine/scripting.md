@@ -6,7 +6,7 @@ built versus declared.
 
 One script decides who a player is, and two places ask it:
 `client/src/app/WorldSession.ts` when a world is mounted, and
-`game-server/src/match.ts` when a player joins. That was the whole of it for one
+`game-server/src/match/match.ts` when a player joins. That was the whole of it for one
 pass, and deliberately so: moving the decision out of the world files without
 changing the answer is what let the two `.world` files be deleted with nothing to
 see.
@@ -62,14 +62,14 @@ consequences:
 - **a peer's body was picked by hashing their player id** against whatever the
   current map happened to carry, because there were no teams to pick by;
 - **the server's default weapon was whatever the map named**
-  (`game-server/src/match.ts`), so what a player carried was a property of the
+  (`game-server/src/match/`), so what a player carried was a property of the
   scenery.
 
 None of that survives teams and killing, which is the direction. And the data for
 it is already exported and already ignored: 9,463 `spawn` nodes across 42 worlds
 carry `mode:` and `team:` — dome alone has 219 over 7 modes — and
 `spawnPoints(world, { mode, team, start })` in `sim/worldRules.ts` was written to
-consume them. `Match.spawnFor` asks for neither.
+consume them. `Spawns.place` asks for neither.
 
 So the catalogue holds the people (`docs/cod/pipeline.md#the-shared-asset-catalogue`)
 and a gametype chooses among them.
@@ -229,30 +229,31 @@ Declared, not built.
 
 ## What is built
 
-| Hook                  | State                                                                                                                                                                                                                                     |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `client.cast`         | **Built.** `castFor` — the bodies a side may wear, the clips, the hands, the default weapon                                                                                                                                               |
-| `server.init`         | **Built.** Once per match, as the match is built and before any other hook of that script: its return is `ctx.memory` on every server hook after                                                                                          |
-| `server.playerSpawn`  | **Built**, and a deliberate no-op: the default gametype names no `spawnMode` and assigns no team, so `spawnPoints` widens to the `{ start: true }` `Match.spawnFor` already asks for. The capability is wired; the behaviour is unchanged |
-| `server.combatRules`  | **Built.** Asked once at match start, merged over `DEFAULT_COMBAT_RULES`, and sent to every client in `joined`                                                                                                                            |
-| `server.playerDamage` | **Built.** `Callback_PlayerDamage`: the last word before health moves, and where a hit is refused or re-priced                                                                                                                            |
-| `server.playerDeath`  | **Built.** `Callback_PlayerKilled`, fired once on the tick health reached zero, with who did it and the cause                                                                                                                             |
-| `server.classRules`   | **Built.** Asked once at match start, merged over `DEFAULT_CLASS_RULES`; `customClasses` reaches every client in `joined`                                                                                                                 |
-| `server.classChoice`  | **Built.** The last word on every class a player asks for, first choices included                                                                                                                                                         |
-| `server.tick`         | **Built.** Once per tick, after health and before the physics step, and skipped while nobody is playing. A gametype's own clock                                                                                                           |
-| `server.matchStart`   | **Built.** Once, on the match's first step, whether or not anybody is there yet. Where a gametype adds its bots                                                                                                                           |
-| `server.playerJoin`   | **Built.** A player or a bot is in the roster and on a side, and not yet spawned: a side set here is the side spawned on                                                                                                                  |
-| `server.botObjective` | **Built.** Asked each time a bot thinks: an answer replaces its objective. For a script that would rather look than remember                                                                                                              |
-| `server.actorDamage`  | **Built.** The last word before an actor's health moves, as `playerDamage` is a player's                                                                                                                                                  |
-| `server.actorDeath`   | **Built.** Fired once, on the tick an actor's health reached zero, with who did it, the cause and where                                                                                                                                   |
-| `server.publish`      | **Built.** An `Announcement` into the snapshot tail, to everybody, repeated for `ANNOUNCE_REPEAT_SECONDS`                                                                                                                                 |
-| `client.event`        | **Built.** Called in every browser for every announcement, with the side resolved back to a name and `say` to answer with                                                                                                                 |
-| `server.triggerEnter` | **Built.** A living player's feet entered a trigger this tick; once per entry, after health and before `tick`                                                                                                                             |
-| `server.triggerLeave` | **Built.** Their feet left it, or they died                                                                                                                                                                                               |
-| `server.interact`     | **Built.** The use key's rising edge, with the thing the server found in that player's focus                                                                                                                                              |
-| `usable`              | **Built.** On the script itself, not a half: both ends ask it whether a thing can be used now and whether it must be looked at                                                                                                            |
-| `client.prompt`       | **Built.** What the prompt says while a thing is in this browser's focus; `{key}` becomes the bound key                                                                                                                                   |
-| everything else       | **Declared.** Each member names what would build it                                                                                                                                                                                       |
+| Hook                  | State                                                                                                                                                                                                                                   |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client.cast`         | **Built.** `castFor` — the bodies a side may wear, the clips, the hands, the default weapon                                                                                                                                             |
+| `server.init`         | **Built.** Once per match, as the match is built and before any other hook of that script: its return is `ctx.memory` on every server hook after                                                                                        |
+| `server.playerSpawn`  | **Built**, and a deliberate no-op: the default gametype names no `spawnMode` and assigns no team, so `spawnPoints` widens to the `{ start: true }` `Spawns.place` already asks for. The capability is wired; the behaviour is unchanged |
+| `server.combatRules`  | **Built.** Asked once at match start, merged over `DEFAULT_COMBAT_RULES`, and sent to every client in `joined`                                                                                                                          |
+| `server.playerDamage` | **Built.** `Callback_PlayerDamage`: the last word before health moves, and where a hit is refused or re-priced                                                                                                                          |
+| `server.playerDeath`  | **Built.** `Callback_PlayerKilled`, fired once on the tick health reached zero, with who did it and the cause                                                                                                                           |
+| `server.classRules`   | **Built.** Asked once at match start, merged over `DEFAULT_CLASS_RULES`; `customClasses` reaches every client in `joined`                                                                                                               |
+| `server.classChoice`  | **Built.** The last word on every class a player asks for, first choices included                                                                                                                                                       |
+| `server.tick`         | **Built.** Once per tick, after health and before the physics step, and skipped while nobody is playing. A gametype's own clock                                                                                                         |
+| `server.matchStart`   | **Built.** Once, on the match's first step, whether or not anybody is there yet. Where a gametype adds its bots                                                                                                                         |
+| `server.playerJoin`   | **Built.** A player or a bot is in the roster and on a side, and not yet spawned: a side set here is the side spawned on                                                                                                                |
+| `server.playerLeave`  | **Built.** A player or a bot is leaving the match: after a `triggerLeave` for everything they were in, and while `ctx.player(id)` still answers. Where a script lets go of what it keeps per player                                     |
+| `server.botObjective` | **Built.** Asked each time a bot thinks: an answer replaces its objective. For a script that would rather look than remember                                                                                                            |
+| `server.actorDamage`  | **Built.** The last word before an actor's health moves, as `playerDamage` is a player's                                                                                                                                                |
+| `server.actorDeath`   | **Built.** Fired once, on the tick an actor's health reached zero, with who did it, the cause and where                                                                                                                                 |
+| `server.publish`      | **Built.** An `Announcement` into the snapshot tail, to everybody, repeated for `ANNOUNCE_REPEAT_SECONDS`                                                                                                                               |
+| `client.event`        | **Built.** Called in every browser for every announcement, with the side resolved back to a name and `say` to answer with                                                                                                               |
+| `server.triggerEnter` | **Built.** A living player's feet entered a trigger this tick; once per entry, after health and before `tick`                                                                                                                           |
+| `server.triggerLeave` | **Built.** Their feet left it, they died, or they left the match                                                                                                                                                                        |
+| `server.interact`     | **Built.** The use key's rising edge, with the thing the server found in that player's focus                                                                                                                                            |
+| `usable`              | **Built.** On the script itself, not a half: both ends ask it whether a thing can be used now and whether it must be looked at                                                                                                          |
+| `client.prompt`       | **Built.** What the prompt says while a thing is in this browser's focus; `{key}` becomes the bound key                                                                                                                                 |
+| everything else       | **Declared.** Each member names what would build it                                                                                                                                                                                     |
 
 What is still declared after that: `receive`/`send` (nothing sends), and
 `ClientContext.request` (the reliable `command` message it rides on is specified
@@ -321,7 +322,9 @@ re-anchors it. A clock that has to survive its own players keeps state instead
 other hook of that script, and whatever it returns is handed back as
 **`ctx.memory`** — the same object, on every server hook of that script, for the
 life of the match. Two matches on one game server get one each. A script with no
-`init` sees `memory` undefined. `defineScript<S>` keeps the state's type inside
+`init` sees `memory` undefined. The context itself is one object per script for
+the life of the match too, and reads the match live: `ctx.now` and `ctx.players`
+on a context kept from an earlier hook are today's. `defineScript<S>` keeps the state's type inside
 the script, so its hooks are typed against `ServerContext<S>` while the script
 table holds plain `Script`s.
 
@@ -564,7 +567,8 @@ player's feet against the triggers its mode admits once a tick
 (`game-server/src/occupancy.ts`, over `inside` in `game/volumes.ts`), after
 health and before `tick`, and tells every script what changed: `triggerLeave`
 then `triggerEnter`, player by player in roster order. A player who dies leaves
-everything they were in; one who leaves the match is simply gone, with no hook.
+everything they were in, and so does one who leaves the match: a `triggerLeave`
+for each, then `playerLeave`, while `ctx.player(id)` still answers.
 `ctx.zonesOf(id)` is the tags of the triggers they are in — an area is every
 trigger sharing a tag — and `ctx.occupants(tag)` who is in any trigger carrying
 one. Actors have no occupancy: nothing has asked where one is.

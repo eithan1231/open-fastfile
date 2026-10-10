@@ -120,7 +120,7 @@ the mistake that reads as "this gun has no recoil":
   brings it home. This is the recoil a player fights, and it is the one a shot's
   direction is bent by — `aimAngles(intent, viewKick)` in `sim/recoil.ts` is the
   single definition of it, read by `FirstPersonControls.placeCamera` on one end
-  and by `Match.fireShots` on the other.
+  and by `Shots.fire` on the other.
 
 ### Trace, then kick
 
@@ -128,7 +128,7 @@ A bullet is away before the weapon has recoiled, so a round fired on a step is
 traced along the view kick as it stood **before** that step's own impulse — which
 is also the aim the player last saw drawn. It has to be said out loud because
 `Player.step` runs the state machine and `stepRecoil` in one call: by the time
-`Match.fireShots` sees `fired` advance, the kick already carries the impulse of
+`Shots.fire` sees `fired` advance, the kick already carries the impulse of
 the very round it is about to trace. `Match.step` copies the kick before stepping
 and hands that copy down. Left as it was, a scoped L96's first round left over
 four degrees above its own crosshair — nearly four metres at fifty, on a rifle
@@ -140,7 +140,7 @@ Only the bullet is held to the older aim. The client's `ShotTraceView` traces
 along the kick as of the previous frame, for the same reason and with the same
 answer ([diagnostics-shottrace.md](diagnostics-shottrace.md)).
 
-A step fires at most one round today, but `Match.fireShots` takes the shot
+A step fires at most one round today, but `Shots.fire` takes the shot
 counter's difference rather than asking whether it moved, and traces every round
 in it along that one pre-step aim: they left within a step of each other, and it
 is the last aim their shooter saw. Masked rather than subtracted, because `fired`
@@ -338,7 +338,7 @@ end.
 
 ## What the server does with it
 
-`@3d/game-server`'s `match.ts` replays the same inputs through the same
+`@3d/game-server`'s `match/` replays the same inputs through the same
 `stepMovement` against the same collision, and compares its answer to the state
 the client claimed alongside each input. It corrects nothing yet; it measures.
 The rest, including the two known reasons the two ends disagree today, is in

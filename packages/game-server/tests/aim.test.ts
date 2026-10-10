@@ -4,7 +4,7 @@
 // traced along the aim as it stood *before* that step's own view-kick impulse —
 // which is also the aim the player last saw drawn. `Player.step` adds the impulse
 // inside the very step that fires the round (`stepRecoil`, sim/weapon.ts), so
-// `Match.step` captures the kick before stepping and hands that to `fireShots`.
+// `Match.step` captures the kick before stepping and hands that to `Shots.fire`.
 //
 // The weapon is Modern Warfare 3's L96A1, its own numbers copied in rather than
 // read out of `worlds/catalog` — the catalogue is gitignored, and this claim is
@@ -25,7 +25,8 @@ import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { aimAngles, aimDirection, type ViewKick } from "@3d/shared/sim/recoil.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
-import { Match, type FiredShot } from "../src/match.js";
+import { Match } from "../src/match/match.js";
+import type { FiredShot } from "../src/match/shots.js";
 
 const TICK_RATE = 60;
 const DT = 1 / TICK_RATE;

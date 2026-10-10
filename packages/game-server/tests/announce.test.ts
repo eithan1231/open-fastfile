@@ -21,7 +21,7 @@ import { idleInput } from "@3d/shared/sim/input.js";
 import { createMovement } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 
 const TICK_RATE = 60;
 const DT = 1 / TICK_RATE;

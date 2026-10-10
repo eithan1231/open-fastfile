@@ -22,7 +22,7 @@ import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { presenceFor } from "@3d/shared/worlds/presence.js";
 import { NO_BODIES } from "../src/bodies.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 
 const TICK_RATE = 60;
 
@@ -75,12 +75,14 @@ function collision(): CollisionWorld {
 interface Heard {
   entered: string[];
   left: string[];
+  /** Who left the match, and whether a hook could still look them up as it heard so. */
+  gone: { id: string; known: boolean; zones: readonly string[] }[];
   used: { thing: UsableThing; player: string }[];
 }
 
 /** A match with one script that records what it hears, and whatever else a test gives it. */
 function match(extra: Partial<Script> & { server?: Script["server"] } = {}): { m: Match; heard: Heard; ctx: () => ServerContext } {
-  const heard: Heard = { entered: [], left: [], used: [] };
+  const heard: Heard = { entered: [], left: [], gone: [], used: [] };
   let context: ServerContext | undefined;
   const recorder: Script = {
     id: "recorder",
@@ -89,6 +91,7 @@ function match(extra: Partial<Script> & { server?: Script["server"] } = {}): { m
       matchStart: (ctx) => (context = ctx),
       triggerEnter: (_ctx, t, id) => heard.entered.push(`${id}:${t.tags[0]}`),
       triggerLeave: (_ctx, t, id) => heard.left.push(`${id}:${t.tags[0]}`),
+      playerLeave: (ctx, id) => heard.gone.push({ id, known: ctx.player(id) !== undefined, zones: ctx.zonesOf(id) }),
       interact: (ctx, thing, player) => {
         heard.used.push({ thing, player });
         extra.server?.interact?.(ctx, thing, player);
@@ -171,14 +174,26 @@ describe("occupancy", () => {
     expect(ctx().occupants("start_zone")).toEqual([]);
   });
 
-  it("forgets a player who leaves the match, without a leaving to hear", () => {
+  it("takes a player who leaves the match out of what they were in, then says they left", () => {
     const { m, heard, ctx } = match();
     m.join("a");
     settle(m);
     m.leave("a");
+    // A script counting who is in a zone hears the leaving it would otherwise
+    // wait for for the rest of the match.
+    expect(heard.left).toEqual(["a:start_zone"]);
+    // Still in the roster as the hook is asked, and already out of every zone.
+    expect(heard.gone).toEqual([{ id: "a", known: true, zones: [] }]);
+    expect(m.has("a")).toBe(false);
     m.step();
-    expect(heard.left).toEqual([]);
+    expect(heard.left).toEqual(["a:start_zone"]);
     expect(ctx().occupants("start_zone")).toEqual([]);
+  });
+
+  it("says nothing of somebody who was never in the match", () => {
+    const { m, heard } = match();
+    m.leave("nobody");
+    expect(heard.gone).toEqual([]);
   });
 });
 

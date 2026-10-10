@@ -17,7 +17,7 @@ import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import { createMovement, EYE_HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
 import { Player } from "@3d/shared/sim/player.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 import { decodePacket, encodePacket, MessageType } from "@3d/shared/net/packet.js";
 
 const TICK_RATE = 60;

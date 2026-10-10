@@ -26,7 +26,7 @@ import { movementRules } from "@3d/shared/sim/worldRules.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { basePresence, presenceFor } from "@3d/shared/worlds/presence.js";
 import { NO_BODIES } from "../src/bodies.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 
 const TICK_RATE = 60;
 

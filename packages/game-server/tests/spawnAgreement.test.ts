@@ -100,7 +100,7 @@ describe("a corpse, described once and built twice", () => {
 
     const posed = poseFromRig(body.rig)!;
     expect(posed).toBeDefined();
-    // Both halves of a round, exactly as `Match.announceCorpse` builds them: the
+    // Both halves of a round, exactly as `Damage.announceCorpse` builds them: the
     // body knock folded into the velocity, and the local knock left as an impulse.
     const along = { x: 0.6, y: 0.2, z: -0.77 };
     const carry = bodyKnock(34);

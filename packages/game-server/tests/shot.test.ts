@@ -30,7 +30,8 @@ import { hashString } from "@3d/shared/game/random.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import type { Api } from "../src/api.js";
 import { Bodies, type LoadedBody } from "../src/bodies.js";
-import { Match, type PlayerShot, type ShotResult } from "../src/match.js";
+import { Match } from "../src/match/match.js";
+import type { PlayerShot, ShotResult } from "../src/match/shots.js";
 import type { Weapons } from "../src/weapons.js";
 import { DEFAULT_SURFACE } from "@3d/shared/sim/surfaces.js";
 

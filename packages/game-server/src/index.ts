@@ -9,7 +9,7 @@
 //
 // What it does with the simulation, for now, is watch. Clients simulate
 // themselves and are believed; this process re-simulates their inputs and
-// reports how far the two have drifted apart. See match.ts.
+// reports how far the two have drifted apart. See match/match.ts.
 //
 // Nothing here reads the disk. The worlds and their collision
 // meshes all arrive from @3d/api over HTTP, which is what lets these be deployed

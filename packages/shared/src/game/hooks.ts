@@ -3,8 +3,8 @@
 // Every hook is optional, so a script answers only the questions it has an
 // opinion about — the way a node type declares only the properties it takes. The
 // implemented ones are `init` (a script's own state, made once per match),
-// `cast` (what a player wears and holds), `matchStart`
-// and `playerJoin` (a match beginning, and somebody arriving), `playerSpawn`
+// `cast` (what a player wears and holds), `matchStart`, `playerJoin` and
+// `playerLeave` (a match beginning, and somebody arriving and going), `playerSpawn`
 // (which spawns a gametype wants), the three combat hooks (the numbers, the hit
 // and the kill), the two class hooks (the rules, and each request), `tick` (a
 // gametype's own clock), `botObjective` (what a bot is for), `event` (what it
@@ -97,6 +97,13 @@ export interface ServerHooks<S = unknown> {
    */
   playerJoin?(ctx: ServerContext<S>, id: PlayerId): void;
   /**
+   * Somebody — a player or a bot — is leaving the match: after a `triggerLeave`
+   * for everything they were in, and while they are still in the roster, so
+   * `ctx.player(id)` still answers. Built. Whatever a script keeps per player is
+   * let go of here.
+   */
+  playerLeave?(ctx: ServerContext<S>, id: PlayerId): void;
+  /**
    * The spawns this gametype wants for this player, as a query for
    * `spawnPoints(world, query)` — which already widens a query the map cannot
    * satisfy, so a gametype may ask for a mode and side a map never anticipated.
@@ -158,10 +165,10 @@ export interface ServerHooks<S = unknown> {
    * Occupancy is every trigger's, `use` or not, measured once a tick after
    * movement and health and before `tick` — so a script's clock already sees
    * who is where (`ctx.zonesOf`, `ctx.occupants`). A player who dies leaves
-   * everything they were in; one who leaves the match is simply gone.
+   * everything they were in, and so does one who leaves the match.
    */
   triggerEnter?(ctx: ServerContext<S>, trigger: ResolvedTrigger, id: PlayerId): void;
-  /** Their feet left it: stepped out, or died. Built, as `triggerEnter`. */
+  /** Their feet left it: stepped out, died, or left the match. Built, as `triggerEnter`. */
   triggerLeave?(ctx: ServerContext<S>, trigger: ResolvedTrigger, id: PlayerId): void;
   /**
    * A player pressed the use key, and this is what they had in focus

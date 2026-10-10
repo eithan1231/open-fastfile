@@ -7,9 +7,10 @@
 // the transport underneath does not need channel names, and both ends share one
 // encode/decode instead of a name-to-handler table each.
 //
-// No game logic here: this turns datagrams into Match calls and Match state into
-// datagrams, and nothing else. The simulation is in match.ts, which is why it can
-// be tested without opening a socket.
+// No game logic here: this turns datagrams into Match calls and hands packets to
+// the seats they are for, and nothing else. The simulation is in match/, which is
+// why it can be tested without opening a socket, and the tick that steps it and
+// sends the verdict is tick.ts.
 //
 // -- Several games, one socket -----------------------------------------------
 //
@@ -50,12 +51,8 @@ import type { PlayerId } from "@3d/shared/net/messages/fields.js";
 import { inputsOf } from "@3d/shared/net/messages/input.js";
 import type { ClassTiming } from "@3d/shared/game/classes.js";
 import { config } from "../config.js";
-import { Games, type GameInstance } from "../games.js";
+import { Games } from "../games.js";
 import { Weapons } from "../weapons.js";
-// SHOTTRACE (docs/engine/diagnostics-shottrace.md)
-import type { ShotTraceMessage } from "@3d/shared/net/messages/shotTrace.js";
-import { type FiredShot } from "../match.js";
-import { BULLET_RANGE as SHOT_RANGE } from "@3d/shared/sim/weaponDef.js";
 
 /** The `join` this server answers, as the packet decoder hands it over. */
 type JoinMessage = Extract<ReturnType<typeof decodePacket>, { type: typeof MessageType.join }>["message"];
@@ -131,7 +128,14 @@ export class NetServer {
       return;
     }
     console.log(`  - player ${seat.playerId} ${why} game ${seat.gameId} (${game.match.size - 1} left)`);
-    game.match.leave(seat.playerId);
+    // Leaving asks the scripts (`triggerLeave`, `playerLeave`), and this is not
+    // the tick: one that throws ends its match, as it would there, not the socket.
+    try {
+      game.match.leave(seat.playerId);
+    } catch (err) {
+      game.match.fail(err);
+      console.error(`  ! game ${game.id} threw as ${seat.playerId} left, so it is ended:`, err);
+    }
     for (const other of this.inGame(seat.gameId)) {
       send(other.channel, encodePacket(MessageType.leave, { id: seat.playerId }));
     }
@@ -326,89 +330,24 @@ export class NetServer {
   }
 
   /**
-   * Advance every game one tick and send each player in each the verdict.
-   *
-   * Each game in its own try: a script that throws, or `Match.hurt`'s loop guard,
-   * would otherwise throw every tick and starve every game after it in the loop.
-   * The one that threw ends (`Match.fail`), and Housekeeping drops and reports it.
+   * Send each player seated in `gameId` what `packet` makes for them: everyone
+   * seated, spawned or not, since a player choosing a class watches the match
+   * behind the menu.
    */
-  tick(): void {
-    for (const game of this.games.all()) {
-      if (game.match.failed !== undefined) {
-        continue;
-      }
-      try {
-        this.tickGame(game);
-      } catch (err) {
-        game.match.fail(err);
-        console.error(`  ! game ${game.id} threw on its tick, so it is ended:`, err);
-      }
+  sendEach(gameId: string, packet: (playerId: PlayerId) => Uint8Array): void {
+    for (const seat of this.inGame(gameId)) {
+      send(seat.channel, packet(seat.playerId));
     }
   }
 
-  private tickGame(game: GameInstance): void {
-    // Still step an empty game: the tick counter is the clock, and a player
-    // joining mid-game should not see it restart.
-    const { players, actors } = game.match.step();
-    if (players.length === 0 && actors.length === 0) {
-      return;
-    }
-
-    // Everyone seated, spawned or not: a player choosing a class watches the
-    // match behind the menu, with no state of their own in it yet.
-    for (const seat of this.inGame(game.id)) {
-      send(seat.channel, encodePacket(MessageType.snapshot, game.match.snapshotFor(seat.playerId, players)));
-    }
-
-    // SHOTTRACE: off unless SHOT_TRACE is set, and then only to whoever fired.
-    if (config.shotTrace) {
-      this.sendShotTraces(game);
-    }
-  }
-
-  /**
-   * SHOTTRACE: this tick's rounds, each to the player who fired it.
-   *
-   * Addressed rather than broadcast, for the reason a hit marker is: this is one
-   * client's own answer about its own shot, and telling the room where everybody
-   * else's bullets went is a wallhack with a debug flag in front of it.
-   */
-  private sendShotTraces(game: GameInstance): void {
-    const shots = game.match.shotsThisTick;
-    if (shots.length === 0) {
-      return;
-    }
-    const channels = new Map(this.inGame(game.id).map((seat) => [seat.playerId, seat.channel]));
-    for (const shot of shots) {
-      const channel = channels.get(shot.shooter);
-      if (channel) {
-        send(channel, encodePacket(MessageType.shotTrace, shotTracePacket(shot)));
+  /** Send one player in `gameId` one packet, if they are seated. */
+  sendTo(gameId: string, playerId: PlayerId, bytes: Uint8Array): void {
+    for (const seat of this.seats.values()) {
+      if (seat.gameId === gameId && seat.playerId === playerId) {
+        send(seat.channel, bytes);
       }
     }
   }
-}
-
-/**
- * SHOTTRACE: one `FiredShot` as the wire carries it.
- *
- * A free function, and exported, so a test can assert the mapping without a
- * socket — `Match` is drivable on its own and this is the only part of the
- * diagnostic that is not.
- *
- * A round that met nothing reports the weapon's whole range, because the client
- * draws a line and needs a far end; `met: "none"` is what says the far end is
- * open air rather than a surface.
- */
-export function shotTracePacket(shot: FiredShot): ShotTraceMessage {
-  const result = shot.result;
-  return {
-    ordinal: shot.ordinal,
-    from: shot.from,
-    direction: shot.direction,
-    distance: result === null ? SHOT_RANGE : result.distance,
-    met: result === null ? "none" : result.kind,
-    target: result !== null && result.kind === "player" ? result.id : null,
-  };
 }
 
 function send(channel: ServerChannel, bytes: Uint8Array): void {

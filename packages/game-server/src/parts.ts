@@ -7,7 +7,7 @@
 // navigation blockers, and the snapshot's bitset. Each end that steps physics
 // applies its changes at the same point (`SnapshotPresence.since`).
 //
-// Kept out of match.ts so the match only calls three things: the verbs, the
+// Kept out of match/ so the match only calls three things: the verbs, the
 // blockers when its graph appears, and the flush.
 
 import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";

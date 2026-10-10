@@ -110,7 +110,7 @@ export class WeaponAudio {
   /**
    * The view kick as of the previous frame, and where this one is putting it.
    *
-   * **Trace, then kick**, as `Match.fireShots` and `ShotTraceView` both do it: a
+   * **Trace, then kick**, as `Shots.fire` and `ShotTraceView` both do it: a
    * round leaves before its own recoil moves the view, so the impact this end
    * predicts is along the kick that was on the gun when the trigger went. The
    * other way round, a held burst puts its impacts a frame up the wall from

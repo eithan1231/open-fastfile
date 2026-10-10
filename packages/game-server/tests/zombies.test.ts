@@ -29,7 +29,7 @@ import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 import { zombiePistols } from "./zombiePistols.js";
 
 const TICK_RATE = 60;

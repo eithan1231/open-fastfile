@@ -408,7 +408,44 @@ in another game must never be named at it.
 
 ## The match
 
-`src/match.ts` holds one game's players and its tick. It takes no socket and no
+`src/match/` holds one game's players and its tick. `Match` (`match/match.ts`)
+is the composition and the only thing the rest of the server calls; each concern
+is a module beside it, and **a new one is a module and a phase, not a field and
+three calls in `Match`**:
+
+| Module         | What                                                                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------- |
+| `phases.ts`    | The tick, as a named, ordered list. Each phase's comment says what it needs before it; a test pins the order   |
+| `playing.ts`   | What a match is handed to play: the map, the gametype, the catalogue, the bodies, the navigation               |
+| `clock.ts`     | The tick it is on and the rate it runs at: the one "now" every module reads                                    |
+| `roster.ts`    | Who is in it, and what a `Member` is: a simulated player and the parts below that hang off one                 |
+| `inputs.ts`    | One member's `InputQueue`: the seq check, the cap, the ack, the use key's edge, and the drift                  |
+| `drain.ts`     | The drain: each queued input stepped, its shots fired, its drift measured, a use press found                   |
+| `scripts.ts`   | `ScriptHost`: every hook asked through `each` or `first`, each script handed its own context                   |
+| `context.ts`   | What a script or a brain is handed, built once per match and read live                                         |
+| `verbs.ts`     | The verbs of a `ServerContext`, each over the module that carries it out: all a script may change              |
+| `cast.ts`      | Who a player is, as the scripts' `cast` answers: the body a shot is traced against, the default weapon         |
+| `classes.ts`   | A member's class, when a change takes effect, and what scripts say over it. The one place weapons are equipped |
+| `spawns.ts`    | Where a member is put: joining, respawning, and where a script says                                            |
+| `shots.ts`     | The rounds a tick fired: the cone, the trace against the map, players and actors, and what each cost           |
+| `rewind.ts`    | Lag compensation: the moment a shooter was drawing, clamped and counted once per shot                          |
+| `damage.ts`    | The one queue every hit drains through, deaths and the corpses they leave, and the tick of health              |
+| `outbox.ts`    | Events riding the snapshot tail until they expire, and `publish`                                               |
+| `scores.ts`    | Each side's score, each player's points, the gametype's counters                                               |
+| `zones.ts`     | Whose feet are in which trigger, and the `triggerLeave` and `triggerEnter` as it changes                       |
+| `nav.ts`       | The world's graph once baked, this match's blocked links, the planners. Polled once a tick                     |
+| `bots.ts`      | Adding and ordering bots, and writing their input once a tick                                                  |
+| `actorTick.ts` | The actors' phase of the tick, and what each snapshot says about them (`../actors.ts` is the creatures)        |
+| `use.ts`       | What a use press had in focus, and `interact` once the drain is done                                           |
+| `dynamics.ts`  | The physics world a match builds the first time something needs one, stepped once a tick                       |
+
+The tick is `phases.ts`'s list, in this order: `records → nav → start → bots →
+inputs → interactions → fall out → actors → health → occupancy → scripts →
+physics → parts → history → snapshot`. `tick.ts` is what runs it: `GameTick` steps
+every game, each in its own try, and hands `net/server.ts` the packets for each
+seat.
+
+`Match` takes no socket and no
 geckos type — `net/server.ts` is the adapter, and the split is what lets
 `tests/match.test.ts` drive a whole match with no port bound, the same trick the
 api's `App` plays by holding a Hono a test can `request()` without a socket. It needed no changes to host several games at
@@ -455,7 +492,7 @@ What the tick does, per player:
   than the newest it has — `ack` never goes back — and every datagram repeats the
   client's last `REDUNDANT_INPUTS` unacknowledged inputs (`InputPacket.earlier`,
   each with its own `renderTick`, none with a claim), so a lost one costs no input.
-- **A game that throws on its tick ends**, alone: `NetServer.tick` catches it,
+- **A game that throws on its tick ends**, alone: `GameTick.run` catches it,
   `Match.fail` marks it, and Housekeeping drops and reports it as `errored`.
 - Steps with the **client's own `dt`**, clamped to two ticks. Re-simulating the
   step they actually took is the whole point; the wire's 0.25 s ceiling is far
@@ -731,10 +768,9 @@ count in base 36 (`botId`, `isBotId` in `@3d/shared/net/messages/fields.ts`). `#
 is outside the api's player-id alphabet, so a bot can never collide with a
 player. `removeBot(id)` takes one out.
 
-Each tick, before the inputs are drained, `thinkBots` hands each bot's controller
+Each tick, before the inputs are drained, `MatchBots.think` hands each bot's controller
 (`src/bots.ts`) a `BotTurn` — its movement, the match's `NavPlanner`, its
-objective (asking the scripts' `botObjective`), and a `BrainContext` built at most
-once a tick — and queues the input it writes as a client's would arrive: `dt` one
+objective (asking the scripts' `botObjective`), and the match's `BrainContext` — and queues the input it writes as a client's would arrive: `dt` one
 tick, rounded as the wire rounds it, `seq` counting up, and `renderTick` the last
 tick stepped with `renderFrac` 0. That last one matters for its shots: a bot sees
 the world as the previous tick left it, and a `renderTick` of 0 would be clamped

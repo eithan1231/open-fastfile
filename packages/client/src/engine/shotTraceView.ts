@@ -18,7 +18,7 @@
 //
 //   the ray      `aimAngles` then `aimDirection`, off the simulation's own
 //                angles and the weapon's *view* kick as of the previous frame —
-//                the same two calls in the same order as `Match.fireShots`, on
+//                the same two calls in the same order as `Shots.fire`, on
 //                the same kick: a round leaves before its own recoil moves the
 //                view (docs/engine/player.md#trace-then-kick). Built from the raw
 //                view angles instead, it would agree with the server on a resting
@@ -35,7 +35,7 @@
 // event: `Player.equip`/`equipById`/`restore` each replace the controller, so a
 // subscription is dropped in silence on every weapon change and every
 // correction. A controller that is not the one watched resets the watermark
-// rather than reporting a burst, which is what `Match.fireShots` does with the
+// rather than reporting a burst, which is what `Shots.fire` does with the
 // same case.
 
 import * as THREE from "three";
@@ -146,7 +146,7 @@ export class ShotTraceView {
   /**
    * The view kick as of the previous sample, and where this one is putting it.
    *
-   * **Trace, then kick**, as `Match.fireShots` does it: a round leaves before its
+   * **Trace, then kick**, as `Shots.fire` does it: a round leaves before its
    * own recoil moves the view, so it is traced along the kick that was on the gun
    * when the trigger went and not the one this frame's step has just added.
    * Sampled per frame where the server samples per step, so a frame that ran
@@ -247,7 +247,7 @@ export class ShotTraceView {
       this.watched = weapon;
       this.counted = fired;
     }
-    // Wrap-safe, as `Match.fireShots` is: `fired` is a uint16 on both ends.
+    // Wrap-safe, as `Shots.fire` is: `fired` is a uint16 on both ends.
     const count = (fired - this.counted) & 0xffff;
     const before = this.counted;
     this.counted = fired;
@@ -324,7 +324,7 @@ export class ShotTraceView {
     const weaponDef = shooter.weapon?.def;
     // The shooter's intent **plus the view kick they had already taken**, which is
     // what bends a bullet; the gun kick rocks the model and decides nothing
-    // (@3d/shared/sim/recoil.ts). These are the two calls `Match.fireShots` makes,
+    // (@3d/shared/sim/recoil.ts). These are the two calls `Shots.fire` makes,
     // in this order and on the same kick — the one from before this shot's own.
     const feet = movement.feet;
     const from = { x: feet.x, y: feet.y + EYE_HEIGHT, z: feet.z };

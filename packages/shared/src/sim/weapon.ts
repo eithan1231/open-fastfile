@@ -410,7 +410,7 @@ export class WeaponController {
    * Each shot draws from its own ordinal's stream rather than from a counter
    * carried along, so a step that fired more than one round would draw exactly
    * what that many steps firing once each did. The ordinal is the value `fired`
-   * reached on that shot, which is the same number `Match.fireShots` puts on the
+   * reached on that shot, which is the same number `Shots.fire` puts on the
    * round it traces.
    *
    * Run after the state machine, so the shot this step fired has thrown the view

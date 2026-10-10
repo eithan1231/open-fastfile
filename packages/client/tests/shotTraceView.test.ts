@@ -20,7 +20,7 @@
 //
 // One thing about the harness matters: `armed()` hands back **one** weapon object
 // and mutates its `fired`, because the view watches controller identity the way
-// `Match.fireShots` does. A fixture that built a fresh object per frame would
+// `Shots.fire` does. A fixture that built a fresh object per frame would
 // look like a swap every frame and record nothing at all — which is how the first
 // draft of this file passed nothing.
 

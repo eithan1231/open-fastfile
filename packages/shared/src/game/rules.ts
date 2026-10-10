@@ -7,7 +7,7 @@
 // `Callback_PlayerDamage` and `Callback_PlayerKilled` over `_health.gsc`. So a
 // gametype changes what a round costs without touching the thing that decides a
 // round landed, and a match with no script at all still plays by the defaults
-// below, exactly as `spawnFor` and `castFor` degrade to theirs.
+// below, exactly as `Spawns.place` and `castFor` degrade to theirs.
 
 import type { HitLocation } from "../sim/hitLocations.js";
 import { unitsToMetres } from "../sim/units.js";

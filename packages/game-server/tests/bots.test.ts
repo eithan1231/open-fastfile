@@ -34,7 +34,7 @@ import type { Api } from "../src/api.js";
 import { NO_BODIES } from "../src/bodies.js";
 import { config } from "../src/config.js";
 import { Games } from "../src/games.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 import { NavBaker, describeBake } from "../src/nav.js";
 import type { Physics } from "../src/physics.js";
 import type { Weapons } from "../src/weapons.js";

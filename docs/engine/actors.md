@@ -243,7 +243,7 @@ brain is not asked, no swing begins, and one that dies part-way falls where it i
 ## A tick
 
 `Match.step` steps the actors **after the players' inputs and before health**
-(`stepActors`), so a blow that kills starts its victim's countdown on the same
+(the tick's "actors" phase), so a blow that kills starts its victim's countdown on the same
 tick, and a brain sees players where this tick left them. In spawn order:
 
 1. A dead actor is taken out once its `corpse` time is up, and does nothing else.

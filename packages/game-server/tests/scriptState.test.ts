@@ -14,7 +14,7 @@ import { MAX_POINTS } from "@3d/shared/game/matchValues.js";
 import { decodePacket, encodePacket, MessageType } from "@3d/shared/net/packet.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 
 const TICK_RATE = 60;
 

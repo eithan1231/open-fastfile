@@ -87,8 +87,9 @@ and the process dies on its first resolve. Each package's
 | `game-server/src/server.ts`    | `GameServer`: the boot order, and the only thing `index.ts` starts. Every service below it is a tsyringe singleton            |
 | `game-server/src/worlds.ts`    | The maps loaded right now, refcounted by game: loaded on order, unloaded when the last game on one ends                       |
 | `game-server/src/api.ts`       | Its link to the authority: the world source, the api client, the token                                                        |
+| `game-server/src/tick.ts`      | The fixed tick: every game stepped, each in its own try, and every player in each sent the verdict                            |
 | `game-server/src/net/`         | geckos.io (WebRTC data channels), as one raw binary channel over `@3d/shared/net`                                             |
-| `game-server/src/match.ts`     | The players, the fixed tick, and the drift between a client's claim and our replay. No transport, so a test drives it         |
+| `game-server/src/match/`       | One game: `Match` the composition, the tick as a phase list, and a module per concern. No transport, so a test drives it      |
 | `game-server/src/collision.ts` | The BVH, built from a mesh fetched over HTTP rather than read off disk                                                        |
 | `game-server/src/nav.ts`       | `NavBaker`: each loaded world's graph, baked in slices between ticks. Bots stand still until it is done                       |
 | `game-server/src/bots.ts`      | The seam a bot's input comes through: a `BotController` per bot, written once a tick before the drain                         |

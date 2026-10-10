@@ -6,7 +6,7 @@
 // them, which is where the tick's timer fires: a tick waits behind at most one
 // slice, and the bake has whatever the ticks leave. Nothing waits for it. A game
 // on the map is joinable as soon as its collision is built, and its bots stand
-// still until `WorldNav.graph` is there (match.ts, `thinkBots`).
+// still until `WorldNav.graph` is there (match/bots.ts).
 //
 // One bake at a time, oldest first: the first map finishes as soon as it can
 // rather than every map finishing late together.

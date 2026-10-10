@@ -20,8 +20,9 @@ import { createMovement } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
 import type { GameInstance, Games } from "../src/games.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 import { NetServer } from "../src/net/server.js";
+import { GameTick } from "../src/tick.js";
 import type { Weapons } from "../src/weapons.js";
 
 const TICK_RATE = 60;
@@ -78,15 +79,16 @@ function game(id: string, scripts: Script[] = []): GameInstance {
 /** A geckos channel as `NetServer` uses one: a raw handler to feed, and what it was sent. */
 function channel(id: string) {
   let onRaw: (data: unknown) => void = () => {};
+  let onGone: () => void = () => {};
   const sent: Packet[] = [];
   const fake = {
     id,
-    onDisconnect: () => {},
+    onDisconnect: (handler: () => void) => void (onGone = handler),
     onRaw: (handler: (data: unknown) => void) => void (onRaw = handler),
     raw: { emit: (data: ArrayBuffer) => void sent.push(decodePacket(new Uint8Array(data))) },
     close: () => {},
   };
-  return { channel: fake as unknown as ServerChannel, deliver: (bytes: Uint8Array) => onRaw(bytes), sent };
+  return { channel: fake as unknown as ServerChannel, deliver: (bytes: Uint8Array) => onRaw(bytes), disconnect: () => onGone(), sent };
 }
 
 /** A server hosting `hosted`, with one seated player in each. */
@@ -115,7 +117,7 @@ function serve(hosted: GameInstance[]) {
     seat.sent.length = 0;
     return seat;
   });
-  return { net, seats };
+  return { net, seats, tick: new GameTick(games, net) };
 }
 
 const snapshots = (sent: Packet[]) => sent.filter((p) => p.type === MessageType.snapshot).length;
@@ -138,10 +140,10 @@ describe("a game that throws on its tick", () => {
       },
     ]);
     const fine = game("g-fine");
-    const { net, seats } = serve([broken, fine]);
+    const { tick, seats } = serve([broken, fine]);
 
     for (let i = 0; i < 5; i++) {
-      net.tick();
+      tick.run();
     }
 
     expect(broken.match.failed).toBe("a script bug");
@@ -159,6 +161,33 @@ describe("a game that throws on its tick", () => {
   });
 });
 
+describe("a game that throws as somebody leaves", () => {
+  it("ends itself rather than the socket's handler, and the game beside it plays on", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const broken = game("g-broken", [
+      {
+        id: "broken",
+        server: {
+          playerLeave: () => {
+            throw new Error("a script bug");
+          },
+        },
+      },
+    ]);
+    const fine = game("g-fine");
+    const { tick, seats } = serve([broken, fine]);
+
+    expect(() => seats[0]!.disconnect()).not.toThrow();
+    expect(broken.match.failed).toBe("a script bug");
+    expect(String(errors.mock.calls[0]![0])).toContain("g-broken");
+
+    tick.run();
+    expect(fine.match.failed).toBeUndefined();
+    expect(snapshots(seats[1]!.sent)).toBe(1);
+  });
+});
+
 describe("inputs off an unordered, lossy channel", () => {
   const claim = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
   const step = (forward: number): InputStep => ({ dt: roundDt(1 / TICK_RATE), input: { ...idleInput(0, 0), forward }, renderTick: 0, renderFrac: 0 });
@@ -167,7 +196,7 @@ describe("inputs off an unordered, lossy channel", () => {
 
   it("recovers a lost datagram's input from the next one, and applies none twice", () => {
     const hosted = game("g-1");
-    const { net, seats } = serve([hosted]);
+    const { tick, seats } = serve([hosted]);
     const [a, b, c] = [step(1), step(1), step(1)];
 
     seats[0]!.deliver(packet(1, a, []));
@@ -175,7 +204,7 @@ describe("inputs off an unordered, lossy channel", () => {
     seats[0]!.deliver(packet(3, c, [a, b]));
     // And the lost one turns up late, after all.
     seats[0]!.deliver(packet(2, b, [a]));
-    net.tick();
+    tick.run();
 
     const snapshot = seats[0]!.sent.find((p) => p.type === MessageType.snapshot)!.message as SnapshotMessage;
     expect(snapshot.ack).toBe(3);

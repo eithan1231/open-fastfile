@@ -181,7 +181,7 @@ export class WeaponWatcher {
     }
 
     const sounds = def.sounds;
-    // Wrap-safe, as `Match.fireShots` is: `fired` is a uint16 on both ends.
+    // Wrap-safe, as `Shots.fire` is: `fired` is a uint16 on both ends.
     const count = (data.fired - this.fired) & 0xffff;
     const before = this.fired;
     // **Held where it was through a correction**, for `notes`' reason and the

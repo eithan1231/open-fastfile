@@ -3,7 +3,7 @@
 // What a game server holds for each bot and asks once a tick. Everything the
 // match knows that a bot needs arrives in a `BotTurn`; everything the bot decides
 // leaves as the `PlayerInput` it writes. So the server's side is a thin adapter
-// (game-server/src/match.ts, `thinkBots`) and all of a bot's behaviour is here,
+// (game-server/src/match/bots.ts, `MatchBots.think`) and all of a bot's behaviour is here,
 // in tier one, where a test can drive it without a server.
 //
 // **When it thinks.** Every `period` seconds, offset by the bot's index so a

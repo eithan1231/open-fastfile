@@ -16,7 +16,7 @@ import type { PlayerId } from "@3d/shared/net/messages/fields.js";
 import { config } from "./config.js";
 import { admits, gametype } from "@3d/shared/game/gametypes/registry.js";
 import { Bodies, type BodyView } from "./bodies.js";
-import { Match } from "./match.js";
+import { Match } from "./match/match.js";
 import { WorldRegistry } from "./worlds.js";
 import { Weapons } from "./weapons.js";
 import { Physics } from "./physics.js";

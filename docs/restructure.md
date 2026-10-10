@@ -113,20 +113,21 @@ imports) and re-exports the lobby modes rather than computing them.
 
 ### 4. The game server — `game-server/src/match/`
 
-`match.ts` (2,550 lines, about fifteen jobs) becomes a folder, with the tick as a
-phase list:
+Built in stage 5; [docs/server/README.md](server/README.md#the-match) has the
+module table and the tick's phases. `match.ts` (2,550 lines, about fifteen jobs)
+is a folder of 24 modules, the largest `Match` itself at 530 lines of wiring and
+public surface. Where it came out differently from the proposal:
 
-`outbox.expire → scripts.start → bots.think → per member: inputs.take → use → step → combat.fire → drift.record → interactions → fall-out → actors.step → health → occupancy → scripts.tick → physics → parts.flush → history → snapshot`
-
-Extracted in order of ease: `EventOutbox`; `InputQueue` (with drift); `ScriptHost`
-(`first(hook)` / `each(hook)`, replacing eight copies of "first script with an
-opinion wins", and one context per tick instead of several per hit); `Rewinder`
-(lag compensation, target computed once per shot); `MatchNav` (an explicit poll
-in place of a getter that builds planners as a side effect); `Classes`;
-`BotDriver` (sharing its turn code with `Actors`); `Combat` (shots, damage queue,
-health). `Member` (20 fields mixing transport, simulation, classes and bots)
-splits along the same lines. `net/server.ts` keeps transport only: stepping
-games and the shot-trace diagnostic move out.
+- **One context per match, not per tick.** Every field that changes is read
+  live, so a hook costs a call and a context a script keeps is never stale.
+- **`Combat` is two modules**, `Shots` and `Damage`, since each was already the
+  size of a file.
+- **The bots' module is `MatchBots`**: `BotDriver` is already the name of the
+  brain's driver in `@3d/shared`. Its turn code is shared with `Actors` as
+  `thinkOrStand`.
+- **Stepping the games is `GameTick` in `tick.ts`**, beside the loop that calls
+  it, and the shot-trace diagnostic is `shotTrace.ts`. `NetServer` hands packets
+  to seats and does nothing else.
 
 ### 5. Shared
 
@@ -147,14 +148,14 @@ test.
 | Defect                                                                                                          | Where                        | Status                                                                                                                                            |
 | --------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A dropped match connection is never cleared, so a reload never rejoins and input is sent into a dead channel    | `App.ts` 697–709             | **fixed in stage 4** (`MatchController.disconnect`, with a test)                                                                                  |
-| Lag-compensation counters count once per candidate player, not per shot, so `/healthz` grows with roster size   | `match.ts` 2344, 2187        | confirmed                                                                                                                                         |
+| Lag-compensation counters count once per candidate player, not per shot, so `/healthz` grows with roster size   | `match.ts` 2344, 2187        | **fixed in stage 5** (`Rewinder.target`, once per `Shots.trace`, with a test)                                                                     |
 | A world entered before the weapon catalogue loads keeps an empty registry for the session, hot reloads included | `App.ts` 400, `WorldSession` | **fixed in stage 4** (`GameContent`, read at use)                                                                                                 |
 | Layers and flag wind on one material: the second overwrote the first                                            | `layers.ts`, `flag.ts`       | **fixed in stage 1** (patch composer, with a test); a blend replacement deliberately starts with no patches                                       |
 | A grade change on hot reload kept old shader programs                                                           | `grade.ts`                   | **fixed for the world in stage 2** (the output pass is keyed on the grade); the viewmodel's materials can still keep the last grade until rebuilt |
 | `SceneDepth` is never disposed                                                                                  | `fx/system.ts`               | **gone in stage 2**: the depth pass no longer exists                                                                                              |
 | Effects judged against last frame's camera                                                                      | `App.frame` order            | **fixed in stage 4** (the update list, with a test)                                                                                               |
 | A runtime quality change misses the viewmodel's shadow filter and anisotropy                                    | `quality.ts`                 | **fixed in stage 4** (`RenderPass.scene`, `applyQualityTo`, with a test)                                                                          |
-| Leaving a match fires no trigger-leave or script hook                                                           | `match.ts` 906               | by reading                                                                                                                                        |
+| Leaving a match fires no trigger-leave or script hook                                                           | `match.ts` 906               | **fixed in stage 5** (`triggerLeave`, then a new `playerLeave` hook, with a test). It was documented as intended; a script counting a zone leaked |
 
 Checked and **not** a defect: "a seated player gets no snapshots" — seated
 players are members, so the game still sends.
@@ -218,7 +219,11 @@ compared with the stage before.
    match's channel cleared "waiting to be spawned", so a click on the joining
    prompt could start play before a class was chosen; and a session the api
    signed out showed the sign-in screen over a still-running world.
-5. **Game server.** §4, with its defects.
+5. **Game server** — done (§4), with the two server defects below. Behaviour
+   is unchanged apart from those: eleven test suites replayed in the trees
+   before and after — 72,000 ticks, a zombies round on theater among them —
+   produce byte-identical snapshots, per-player snapshots, scores and shots.
+   Nothing the client runs changed, so its numbers are the stage before's.
 6. **Shared.** §5.
 7. **Then features again, placed:** clustered local lights (a fixed light loop,
    lights culled per screen cluster, switching a light is a data write, which is

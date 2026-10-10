@@ -3,7 +3,7 @@
 // It exists to be exactly what the engine does today, so that moving the cast out
 // of the world files changes no behaviour: two sides, every map, every game, and
 // no mode — which makes `spawnPoints(world, { mode: undefined, team: undefined,
-// start: true })` widen to the `{ start: true }` that `Match.spawnFor` already
+// start: true })` widen to the `{ start: true }` that `Spawns.place` already
 // asks for.
 //
 // The sides are named as the maps name them (`worlds/*/gameplay.world`), so the

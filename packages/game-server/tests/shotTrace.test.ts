@@ -30,9 +30,10 @@ import { CATALOG_VERSION, WeaponRegistry, type WeaponEntry } from "@3d/shared/si
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
 import type { BodyView, LoadedBody } from "../src/bodies.js";
 import { config } from "../src/config.js";
-import { Match, type FiredShot } from "../src/match.js";
+import { Match } from "../src/match/match.js";
+import type { FiredShot } from "../src/match/shots.js";
 import { BULLET_RANGE as SHOT_RANGE } from "@3d/shared/sim/weaponDef.js";
-import { shotTracePacket } from "../src/net/server.js";
+import { shotTracePacket } from "../src/shotTrace.js";
 
 const TICK_RATE = 60;
 const DT = 1 / TICK_RATE;

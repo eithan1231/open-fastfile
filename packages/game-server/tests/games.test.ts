@@ -5,7 +5,7 @@
 // and asks nothing else of them, so flat ground and an empty world are enough to
 // stand real games up. What is under test is admission, the end conditions, and
 // the refcount that unloads a map, which is everything this file owns that
-// match.ts does not.
+// match/ does not.
 
 import { DEFAULT_GAMETYPE } from "@3d/shared/game/gametypes/registry.js";
 import "reflect-metadata";

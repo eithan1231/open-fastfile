@@ -2,7 +2,7 @@
 //
 // A plain class `Match` owns, as it owns its members: an actor lives exactly as
 // long as the match that spawned it, so there is nothing here for the container.
-// It is kept out of match.ts because nothing about an actor is a player's —
+// It is kept out of match/ because nothing about an actor is a player's —
 // no input queue, no class, no prediction to correct — and the two meet in only
 // three places, each a call from `Match`: a shot traced at them (`trace`), damage
 // drained through the one queue (`hurt`), and the tick (`step`), which asks
@@ -59,6 +59,7 @@ import { NO_INDEX_16 } from "@3d/shared/nav/format.js";
 import { TRAVERSAL_KINDS } from "@3d/shared/nav/vocab.js";
 import { KILL_PLANE_MARGIN, movementRules, type MovementRules } from "@3d/shared/sim/worldRules.js";
 import type { BodyView, LoadedActorRig } from "./bodies.js";
+import { thinkOrStand } from "./bots.js";
 import { PlayerHistory } from "./history.js";
 
 /** Seconds of the past a shot at an actor may be judged in: the players' rewind, and room to spare. */
@@ -145,7 +146,7 @@ interface Actor {
   readonly history: PlayerHistory;
 }
 
-/** What the tick needs of the match around the actors. `Match.stepActors` builds one. */
+/** What the tick needs of the match around the actors. `Match`'s "actors" phase builds one. */
 export interface ActorHost {
   readonly tick: number;
   readonly dt: number;
@@ -434,13 +435,8 @@ export class Actors {
       context: () => host.context(),
       feetOf: host.feetOf,
     };
-    try {
-      actor.driver.think(turn, input);
-    } catch (err) {
-      // One brain must not take the tick from every game on the process.
+    if (!thinkOrStand(actor.driver, turn, input, `actor ${actor.id}'s brain`)) {
       actor.failed = true;
-      Object.assign(input, idleInput(actor.movement.yaw, actor.movement.pitch));
-      console.warn(`[match] actor ${actor.id}'s brain threw, so it stands still: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -638,7 +634,7 @@ export class Actors {
     return best;
   }
 
-  /** Place, pose, update matrices and trace, in that order — `Match.traceBody`'s for a player. */
+  /** Place, pose, update matrices and trace, in that order — `poseBody`'s for a player. */
   private traceBody(actor: Actor, body: LoadedActorRig, movement: MovementState, from: Vec3, to: Vec3, tick: number): ActorHit | null {
     const root = body.rig.root;
     root.position.set(movement.feet.x, movement.feet.y, movement.feet.z);

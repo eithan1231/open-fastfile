@@ -19,7 +19,7 @@ describe("GAMETYPES", () => {
   it("holds the default, which is the one a world is played with today", () => {
     expect(gametype(DEFAULT_GAMETYPE)?.id).toBe(DEFAULT_GAMETYPE);
     // No `spawnMode`, so `spawnPoints` widens to the `{ start: true }`
-    // `Match.spawnFor` already asks — this changes no behaviour.
+    // `Spawns.place` already asks — this changes no behaviour.
     expect(gametype(DEFAULT_GAMETYPE)?.spawnMode).toBeUndefined();
   });
 

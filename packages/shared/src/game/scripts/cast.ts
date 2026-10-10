@@ -20,7 +20,7 @@ export const castScript: Script = {
      * The spawns this gametype wants.
      *
      * With the default gametype this is `{ start: true }` and nothing else, which
-     * is precisely what `Match.spawnFor` already asks — so wiring this in changes
+     * is precisely what `Spawns.place` already asks — so wiring this in changes
      * no behaviour. A gametype that names a `spawnMode` starts collecting the
      * per-mode, per-side spawns every imported map already carries.
      */

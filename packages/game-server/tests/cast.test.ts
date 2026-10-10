@@ -13,7 +13,8 @@ import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import type { WeaponDef } from "@3d/shared/sim/weaponDef.js";
 import { NO_BODIES } from "../src/bodies.js";
-import { Match, type Playing } from "../src/match.js";
+import { Match } from "../src/match/match.js";
+import type { Playing } from "../src/match/playing.js";
 
 /** Every weapon a test instance can build. One registry, so an index means one thing. */
 function registry(): WeaponRegistry {
@@ -158,7 +159,7 @@ describe("which spawns the gametype asks for", () => {
   /**
    * The behavioural no-op this stage rests on. The default gametype names no
    * `spawnMode` and assigns no team, so the query widens to exactly the
-   * `{ start: true }` `Match.spawnFor` asked for before a gametype existed.
+   * `{ start: true }` `Spawns.place` asked for before a gametype existed.
    */
   it("is start spawns only, exactly as before", () => {
     const w = world("iw5", [

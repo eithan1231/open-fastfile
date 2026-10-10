@@ -36,7 +36,7 @@ import { movementRules } from "@3d/shared/sim/worldRules.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
 import * as THREE from "three";
 import { NO_BODIES, type BodyView, type LoadedActorBody } from "../src/bodies.js";
-import { Match } from "../src/match.js";
+import { Match } from "../src/match/match.js";
 
 const TICK_RATE = 60;
 const DT = 1 / TICK_RATE;
