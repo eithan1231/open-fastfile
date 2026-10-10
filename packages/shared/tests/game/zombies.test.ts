@@ -20,7 +20,7 @@ import {
   zombiesInRound,
   zombiesScript,
   zonesIn,
-} from "../../src/game/scripts/zombies.js";
+} from "../../src/game/scripts/zombies/base.js";
 import { indexWorld } from "../../src/worlds/worldIndex.js";
 
 describe("Black Ops' round numbers", () => {

@@ -30,6 +30,7 @@ import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
 import { Match } from "../src/match.js";
+import { zombiePistols } from "./zombiePistols.js";
 
 const TICK_RATE = 60;
 const MAP = "theater-bo1";
@@ -135,7 +136,7 @@ function zombies(gametype: GametypeDecl = zombiesGametype, game?: GameKey): { m:
       interact: (_ctx, thing) => void used.push(thing),
     },
   };
-  const m = new Match(ground, world(game), TICK_RATE, 4, new WeaponRegistry([]), {
+  const m = new Match(ground, world(game), TICK_RATE, 4, zombiePistols(), {
     map: MAP,
     gametype,
     catalogue: catalogueViewOf({ version: CATALOG_VERSION }, new WeaponRegistry([])),

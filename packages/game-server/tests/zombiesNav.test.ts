@@ -36,6 +36,7 @@ import { WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { presenceFor } from "@3d/shared/worlds/presence.js";
 import { NO_BODIES } from "../src/bodies.js";
 import { Match } from "../src/match.js";
+import { zombiePistols } from "./zombiePistols.js";
 import { WorldRegistry, type LoadedWorld } from "../src/worlds.js";
 
 const SLUG = "theater-bo1";
@@ -271,7 +272,7 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
         },
       },
     };
-    const match = new Match(surfaces.view(presence), loaded.world, 60, 4, new WeaponRegistry([]), {
+    const match = new Match(surfaces.view(presence), loaded.world, 60, 4, zombiePistols(), {
       map: SLUG,
       gametype: defaultGametype,
       catalogue,
@@ -439,7 +440,7 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
       },
     };
     try {
-      const match = new Match(surfaces.view(presence), loaded.world, 60, 4, new WeaponRegistry([]), {
+      const match = new Match(surfaces.view(presence), loaded.world, 60, 4, zombiePistols(), {
         map: SLUG,
         gametype: defaultGametype,
         catalogue,
@@ -529,7 +530,7 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
         },
       },
     };
-    const match = new Match(surfaces.view(presence), loaded.world, 60, 4, new WeaponRegistry([]), {
+    const match = new Match(surfaces.view(presence), loaded.world, 60, 4, zombiePistols(), {
       map: SLUG,
       gametype: zombiesGametype,
       catalogue,

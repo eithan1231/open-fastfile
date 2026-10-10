@@ -33,6 +33,7 @@ import { indexWorld } from "@3d/shared/worlds/worldIndex.js";
 import { NO_BODIES } from "../src/bodies.js";
 import { buildServerCollision } from "../src/collision.js";
 import { Match } from "../src/match.js";
+import { zombiePistols } from "./zombiePistols.js";
 
 const SLUG = "theater-bo1";
 const TICK_RATE = 60;
@@ -68,7 +69,7 @@ function theater(): { m: Match; ctx: () => ServerContext; used: UsableThing[] } 
   const used: UsableThing[] = [];
   const listener: Script = { id: "listener", server: { matchStart: (ctx) => (held = ctx), interact: (_c, thing) => void used.push(thing) } };
   const presence = presenceFor(world, zombiesGametype.mode);
-  const m = new Match(collision.view(presence), world, TICK_RATE, 4, new WeaponRegistry([]), {
+  const m = new Match(collision.view(presence), world, TICK_RATE, 4, zombiePistols(), {
     map: SLUG,
     gametype: zombiesGametype,
     catalogue: catalogueViewOf({ version: CATALOG_VERSION }, new WeaponRegistry([])),
