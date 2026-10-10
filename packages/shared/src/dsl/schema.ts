@@ -143,6 +143,9 @@ export const PROPERTY_KINDS: Record<string, PropertyKind> = {
   // the edge of the HUD map (one value); a `sound`'s is its alias' own [ref,
   // max] overridden (two, through `rangeArity`).
   range: { valueKind: "number", unit: "length", minArity: 1, maxArity: 1 },
+  // A spot `light`'s beam: its full width, then optionally the width of its
+  // undimmed core. Degrees unless a unit says otherwise.
+  cone: { valueKind: "number", unit: "angle", minArity: 1, maxArity: 2 },
 
   // Behaviours (see BEHAVIOUR_TYPES). Each one is scoped to its own node, so
   // these names cannot collide with a placement's — which is the whole reason
@@ -316,7 +319,7 @@ export const NODE_TYPES: Record<string, NodeTypeSpec> = {
   light: {
     type: "light",
     nameMode: "optional-free",
-    properties: ["type", "at", "rotate", "intensity", "shadows", "color"],
+    properties: ["type", "at", "rotate", "intensity", "shadows", "color", "range", "cone"],
     children: "none",
     atArity: [3, 3],
   },

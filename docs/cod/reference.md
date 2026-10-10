@@ -324,9 +324,17 @@ halves share one chart layout; one to three pages a map, 512x512 to 4096x4096
 each. `lightmap.PAGED_GAMES` reads it as IW6's
 ([reverse/s1-zone](../../reverse/s1-zone/README.md#the-lightmap)).
 
-Black Ops has no usable lightmap: of its three pages only `primary` has pixel
-data, and it is black over 68% of the map even through the mesh's own UVs. Its
-maps are lit by their worldspawn sun and ambient.
+**Black Ops keeps two pages in an R5G6B5 secondary and two scales in a G16R16
+secondaryB** (D3D formats `0x17` and `0x22`, which the image dumper once
+skipped, so every map was lit by its worldspawn sun alone). The secondary's top
+page is the ambient colour and its bottom the directional one, each
+`s · (4r, 2(1 − r − b), 4b)` with `s` its secondaryB channel times 31.875; the
+two greens are a tangent-space direction. The primary is DXT1 at twice the
+page's size, its green the sun's visibility. The lit shaders add the bake and
+`sunDiffuse` (`sunParse.sunSettings.sunDiffuseColor`, times its strength) in one
+unit, as T6's do, so `t5/lightmap.py` bakes `A + D · w(d)` per texel and hands
+the sun over through T6's scales. Read on zombie_theater: neighbouring triangles
+sample 12× more alike than random pairs on both pages.
 
 **Black Ops II keeps one secondary per lightmap and no primary**, and its pages
 mean something else. The secondary is R8G8B8A8_UNORM, three pages stacked down
@@ -404,7 +412,7 @@ stacked atlas the way `shell.move_lightmap_uvs` moves the shell's UVs.
 
 1. **A for all five games.** The first check below decides its source:
    `groundLighting` if it is what its name says, otherwise the traced lightmap
-   sample. T5 has no usable lightmap, so it takes `groundLighting` or nothing.
+   sample. T5 takes either, as the others do.
 2. **C for S1's `0x100` placements**, on A's per-instance path.
 3. **B only if** S1's and IW6's `0x80` props visibly fail under A, and then in
    the texture form.

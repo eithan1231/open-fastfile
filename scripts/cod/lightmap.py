@@ -5,8 +5,10 @@ docs/cod/reference.md#lightmaps. Three shapes:
 
 - **IW4/IW5**: one pair of pages, and the signal this pipeline takes is the
   secondary's alpha, at full resolution.
-- **T5**: nothing usable; only the primary has pixels, so no `lightmap.png` is
-  written and the map is lit by its worldspawn sun alone.
+- **T5** (Black Ops): an R5G6B5 secondary of two pages and a G16R16 secondaryB per
+  lightmap, which the shaders combine into an ambient and a directional colour
+  beside a live sun. `t5/lightmap.py` bakes their sum per texel, as T6's is, and
+  hands the sun over with it.
 - **IW6**: a pair per page. The secondary holds the page's **ambient** colour
   stacked over its **highlight** colour, both half-float RGBA; the two are
   summed into one irradiance and written as sRGB of `E / range`, where `range`
@@ -37,6 +39,7 @@ from collections import namedtuple
 from PIL import Image
 
 from . import dxgi
+from .t5 import lightmap as t5_lightmap
 from .t6 import lightmap as t6_lightmap
 from .textures import decode_texture, texture_index
 
@@ -63,7 +66,7 @@ PAGED_GAMES = ("iw6", "s1")
 #: The games whose lightmap is not decoded yet, so none is written (see above).
 UNREAD_GAMES = ()
 #: The games whose lightmap is baked from its pages and its world (see above).
-BAKED_GAMES = ("t6",)
+BAKED_GAMES = {"t5": t5_lightmap, "t6": t6_lightmap}
 #: IW6 numbers its pages, under the `*` that marks a generated asset.
 IW6_PAGE = re.compile(r"\*lightmap(\d+)_(primary|secondary)")
 #: The share of texels the IW6 encode may clip, which is what sets an atlas's range.
@@ -97,7 +100,7 @@ def convert(img_root, out_dir, game, manifest_path=None):
         return None
     index = texture_index(img_root)
     if game in BAKED_GAMES:
-        return _t6(index, out_dir, manifest_path)
+        return _baked(BAKED_GAMES[game], index, out_dir, manifest_path)
     return _iw6(index, out_dir) if game in PAGED_GAMES else _iw(index, out_dir)
 
 
@@ -249,11 +252,11 @@ def _encode(value, factor, steps):
     return _SRGB[min(steps, int(value * factor + 0.5))] if value > 0.0 else 0
 
 
-def _t6(index, out_dir, manifest_path):
-    """Black Ops II: the baked irradiance per lightmap, stacked; its sun visibility beside it."""
+def _baked(baker, index, out_dir, manifest_path):
+    """Black Ops and Black Ops II: the baked irradiance per lightmap, stacked; its sun visibility beside it."""
     if manifest_path is None:
-        raise ValueError("a T6 lightmap is baked against its world: pass the .gfxworld.json")
-    baked = t6_lightmap.bake(index, manifest_path)
+        raise ValueError("a T5 or T6 lightmap is baked against its world: pass the .gfxworld.json")
+    baked = baker.bake(index, manifest_path)
     if baked is None:
         return None
     width, height, rows = _stack([(w, h) for w, h, _light in baked.pages])

@@ -6,7 +6,7 @@ import os
 import re
 import sys
 
-from . import gameobjects, gameplay
+from . import gameobjects, gameplay, lights
 from .entities import named_keys, parse_ents
 from .files import read_json, read_text, write_text
 from .fx import ref as fx_ref
@@ -291,7 +291,10 @@ def parse_vision(path):
     """A map's `.vision` film grading as `grade` properties, or {} when it has none.
 
     The r_film* cvars are already `grade`'s shape: three tints on a 0..2 scale
-    (1 = neutral) and two desaturations.
+    (1 = neutral) and two desaturations. Black Ops names the middle tint `Mid`
+    and keeps a saturation per zone instead (`r_filmSaturation`, read here as
+    dark, mid, light); its s-curve, contrast and colour temperature have no
+    `grade` property and are left out.
     """
     if not path or not os.path.exists(path):
         return {}
@@ -299,12 +302,17 @@ def parse_vision(path):
     if cvars.get("r_filmEnable", "0") != "1":
         return {}
     tints = {
-        k: _floats(cvars.get(f"r_film{n}Tint"), 3)
-        for k, n in (("light-tint", "Light"), ("medium-tint", "Medium"), ("dark-tint", "Dark"))
+        k: _floats(cvars.get(f"r_film{n}Tint") or cvars.get(f"r_film{alt}Tint"), 3)
+        for k, n, alt in (("light-tint", "Light", "Light"), ("medium-tint", "Medium", "Mid"), ("dark-tint", "Dark", "Dark"))
     }
     if not all(tints.values()):
         return {}
     props = {k: " ".join(str(v) for v in tints[k]) for k in ("light-tint", "medium-tint", "dark-tint")}
+    saturation = _floats(cvars.get("r_filmSaturation"), 3)
+    if saturation and "r_filmDesaturation" not in cvars:
+        props["desaturation"] = round(1.0 - saturation[2], 6)
+        props["desaturation-dark"] = round(1.0 - saturation[0], 6)
+        return props
     props["desaturation"] = (_floats(cvars.get("r_filmDesaturation"), 1) or [0.0])[0]
     props["desaturation-dark"] = (_floats(cvars.get("r_filmDesaturationDark"), 1) or [0.0])[0]
     return props
@@ -966,6 +974,7 @@ def write_world_file(
     navigation=False,
     fx=False,
     sound=False,
+    primary_lights=(),
 ):
     """Compose `world.world` from the map's worldspawn and spawn entities.
 
@@ -1138,7 +1147,8 @@ def write_world_file(
             "color": ambient_hex,
         },
     )
-    lines += [*sun_notes, f"light sun {{ {sun_body} }}", *fill_notes, f"light fill {{ {fill_body} }}", ""]
+    lines += [*sun_notes, f"light sun {{ {sun_body} }}", *fill_notes, f"light fill {{ {fill_body} }}"]
+    lines += [*lights.render(*lights.scripted_lights(named_keys(entities, game_key), primary_lights)), ""]
 
     if not spawn_at:
         lines.append("// No spawn entity found; placed above the shell's centre.")

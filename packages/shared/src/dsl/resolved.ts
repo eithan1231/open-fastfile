@@ -352,6 +352,13 @@ export interface ResolvedLight {
   intensity: number;
   color?: string;
   shadows: boolean;
+  /**
+   * Point and spot: metres to where the light reaches nothing. Set, it keeps its
+   * strength out to there rather than falling off with the square of distance.
+   */
+  range?: number;
+  /** Spot: the beam's full width and its undimmed core's, in radians. */
+  cone?: { outer: number; inner: number };
 }
 
 /**

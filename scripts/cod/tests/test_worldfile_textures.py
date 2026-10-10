@@ -42,6 +42,19 @@ def test_parse_vision(tmp_path):
     assert parse_vision(None) == {}
 
 
+def test_parse_vision_reads_black_ops_names(tmp_path):
+    """T5 says `Mid` for `Medium` and keeps a saturation per zone; it used to read as no grade at all."""
+    path = tmp_path / "zombie_x.vision"
+    path.write_text(
+        'r_filmEnable "1"\nr_filmLightTint "1 1 1"\nr_filmMidTint "1.01 1.01 1.03"\n'
+        'r_filmDarkTint "0.88 0.95 1.01"\nr_filmSaturation "0.6737 0.7509 0.6105"\n'
+    )
+    props = parse_vision(str(path))
+    assert props["medium-tint"] == "1.01 1.01 1.03"
+    assert props["desaturation"] == pytest.approx(0.3895)
+    assert props["desaturation-dark"] == pytest.approx(0.3263)
+
+
 def test_overrides_apply_and_note_what_they_replaced(tmp_path):
     (tmp_path / "_overrides.json").write_text(json.dumps({"world": {"sky": "#123456"}, "append": ["light x { type: ambient }"]}))
     o = Overrides(str(tmp_path))

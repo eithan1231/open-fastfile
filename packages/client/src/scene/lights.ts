@@ -20,6 +20,27 @@ export const AMBIENT_SCALE = 18;
  */
 export const LIGHTMAP_SCALE = AMBIENT_SCALE;
 
+/** The share of a ranged light's reach over which it fades out: a CoD primary light's `falloffdistance` over its radius, typically. */
+export const RANGE_FADE = 0.25;
+
+// three's cutoff window, (1 - (d/r)^4)^2, is already a third down at 80% of the
+// range, so a ceiling light whose range just reaches the floor lit nothing. A
+// ranged light (the only kind built with decay 0) instead keeps its strength
+// and smoothsteps to nothing over the last RANGE_FADE, as T5's spot shader does.
+const WINDOW = "distanceFalloff *= pow2( saturate( 1.0 - pow4( lightDistance / cutoffDistance ) ) );";
+const RANGED = `distanceFalloff *= decayExponent == 0.0
+			? 1.0 - smoothstep( cutoffDistance * ${(1 - RANGE_FADE).toFixed(2)}, cutoffDistance, lightDistance )
+			: pow2( saturate( 1.0 - pow4( lightDistance / cutoffDistance ) ) );`;
+if (!THREE.ShaderChunk.lights_pars_begin.includes(WINDOW)) {
+  throw new Error("three's lights_pars_begin changed: ranged lights would fall off with its window");
+}
+THREE.ShaderChunk.lights_pars_begin = THREE.ShaderChunk.lights_pars_begin.replace(WINDOW, RANGED);
+
+/** Point and spot: `range:` as three's (distance, decay). Unset, it falls off with distance squared for ever. */
+function reach(light: ResolvedLight): [distance: number, decay: number] {
+  return light.range === undefined ? [0, 2] : [light.range, 0];
+}
+
 /** `rotate:` as a target: three aims a light at a point, not by a rotation. */
 function aimTarget(light: ResolvedLight): THREE.Vector3 {
   const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(light.rotation.x, light.rotation.y, light.rotation.z, "XYZ"));
@@ -54,7 +75,7 @@ export function buildLight(light: ResolvedLight): THREE.Object3D {
     }
 
     case "point": {
-      const pointLight = new THREE.PointLight(color, light.intensity * POINT_SPOT_SCALE, 0, 2);
+      const pointLight = new THREE.PointLight(color, light.intensity * POINT_SPOT_SCALE, ...reach(light));
       pointLight.position.set(light.position.x, light.position.y, light.position.z);
 
       if (light.shadows) {
@@ -66,7 +87,11 @@ export function buildLight(light: ResolvedLight): THREE.Object3D {
     }
 
     case "spot": {
-      const spotLight = new THREE.SpotLight(color, light.intensity * POINT_SPOT_SCALE, 0, Math.PI / 6, 0.3, 2);
+      // three's angle is half the beam; its penumbra the share of that half which dims.
+      const half = light.cone ? light.cone.outer / 2 : Math.PI / 6;
+      const penumbra = light.cone ? 1 - light.cone.inner / light.cone.outer : 0.3;
+      const [distance, decay] = reach(light);
+      const spotLight = new THREE.SpotLight(color, light.intensity * POINT_SPOT_SCALE, distance, half, penumbra, decay);
       spotLight.position.set(light.position.x, light.position.y, light.position.z);
 
       // Down means below the light: a y = 0 target points a basement light back up.

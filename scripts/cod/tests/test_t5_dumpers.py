@@ -310,8 +310,9 @@ def nuked_dump(tmp_path_factory):
 
 
 # What this backend writes that OAT's golden dump never held: the layer data of
-# Black Ops' generated materials (docs/cod/reference.md#layered-materials).
-BEYOND_OAT = re.compile(r"(^|\.)(vertexLayerData|layerDataSize|layerFile)$|\.gfxworld_layers\.bin$")
+# Black Ops' generated materials (docs/cod/reference.md#layered-materials), and the
+# world's sun its lightmap is handed over with (t5/lightmap.py).
+BEYOND_OAT = re.compile(r"(^|\.)(vertexLayerData|layerDataSize|layerFile)$|\.gfxworld_layers\.bin$|^(sun|primaryLights)(\.|\[|$)")
 
 
 @pytest.mark.parametrize("sub", sorted(WORLD.values()))

@@ -5,9 +5,15 @@ plus what T5 carries beyond it: each surface's `lightmapIndex` and `flags`, the
 three lightmap pages per entry (`primary`, `secondary`, `secondaryB`), the
 dpvs surface ranges with `sortedSurfIndex`, and the third blob: `vld`, a
 generated (layered) material's extra layers, which each surface finds by its
-byte offset `vertexLayerData` (docs/cod/reference.md#layered-materials). T5 stores the world's and each brush
-model's bounds as corners, where IW4/IW5 store a midpoint and a half size.
+byte offset `vertexLayerData` (docs/cod/reference.md#layered-materials), and
+`sun`, `sunParse.sunSettings`, in T6's shape (t6/dumpers/gfxworld.py) so that
+t5/lightmap.py hands the world's sun over as T6's does, and `primaryLights`, which
+are the ComWorld's (scripts/cod/lights.py). T5 stores the world's
+and each brush model's bounds as corners, where IW4/IW5 store a midpoint and a
+half size.
 """
+
+import struct
 
 from ...iw5.dumpers import gfxworld as iw5
 from ...iw5.dumpers.common import vec3
@@ -20,6 +26,52 @@ def corners(record, path):
     """A `float[2][3]` (or two `float[3]` members) as {mins, maxs}."""
     raw = record.unpack("<6f", path) if path else record.unpack("<3f", "mins") + record.unpack("<3f", "maxs")
     return {"mins": vec3(raw[:3]), "maxs": vec3(raw[3:])}
+
+
+# GfxWorldSunColor, at sunParse + 72: control, angles, then five RGBA colours and the exposure.
+SUN_COLOR = struct.Struct("<I3f4f4f4f4f4ff")
+
+
+def sun(world):
+    """`sunParse.sunSettings`: angles (pitch, yaw, roll), `sunCd` (the diffuse colour and its
+    strength, which the lit shaders' `sunDiffuse` is), and the rest as it stands."""
+    values = SUN_COLOR.unpack_from(bytes(world.bytes("sunParse")), 72)
+    out = {"angles": list(values[1:4])}
+    for k, name in enumerate(("ambientColor", "sunCd", "sunCs", "skyColor", "groundColor")):
+        out[name] = list(values[4 + 4 * k : 8 + 4 * k])
+    out["exposure"] = values[24]
+    return out
+
+
+# ComPrimaryLight.type: what a light entity's `pl#` indexes, in the map's ComWorld.
+LIGHT_TYPES = {1: "sun", 2: "spot", 3: "omni"}
+
+
+def primary_lights(walk):
+    """ComWorld's primary lights, by index: what each light entity was compiled to.
+
+    Read beside the GfxWorld because a light entity says only what the designer
+    set: its `fov_outer` is not the cone the game draws, and it aims at a target
+    the map compiler strips. `dir` points back toward the light, as IW's does.
+    """
+    worlds = walk.by_type("comworld")
+    if not worlds:
+        return []
+    record = worlds[0].record
+    out = []
+    for light in list(record["primaryLights"] or ())[: record["primaryLightCount"]]:
+        out.append(
+            {
+                "type": LIGHT_TYPES.get(light["type"], light["type"]),
+                "origin": vec3(light.unpack("<3f", "origin")),
+                "dir": vec3(light.unpack("<3f", "dir")),
+                "color": vec3(light.unpack("<3f", "color")),
+                "radius": light["radius"],
+                "cosHalfFovOuter": light["cosHalfFovOuter"],
+                "cosHalfFovInner": light["cosHalfFovInner"],
+            }
+        )
+    return out
 
 
 def surfaces(world):
@@ -87,6 +139,7 @@ def manifest(asset, vertex_stride):
         staticSurfaceCount=static,
         **{key: world[f"dpvs.{key}"] for key in RANGES},
         sortedSurfIndex=[v for (v,) in sorted_index.view(0, static).unpack("<H")] if sorted_index is not None else [],
+        sun=sun(world),
         modelCount=world["modelCount"],
         models=brush_models(world),
     )
@@ -101,6 +154,7 @@ def write(walk, out, ctx=None):
         world = asset.record
         vertices, indices = world["draw.vd.vertices"], world["draw.indices"]
         data = manifest(asset, walk.program.struct("GfxWorldVertex").size)
+        data["primaryLights"] = primary_lights(walk)
         iw5._check_counts(asset.name, data, vertices, indices)
         write_json(asset_path(out, f"{asset.name}.gfxworld.json"), data)
         blobs = ((data["vertexFile"], vertices), (data["indexFile"], indices), (data["layerFile"], world["draw.vld.data"]))

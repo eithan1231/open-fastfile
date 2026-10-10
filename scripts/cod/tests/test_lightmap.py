@@ -175,5 +175,5 @@ def test_a_game_without_pages_does_not_read_them(tmp_path):
     img.mkdir()
     write_page(img / "*lightmap0_secondary.dds", 4, 4, (0.5, 0.5, 0.5, 0), (0, 0, 0, 0))
     assert lightmap.PAGED_GAMES == ("iw6", "s1")
-    for game in ("iw4", "iw5", "t5"):
+    for game in ("iw4", "iw5"):
         assert lightmap.convert(str(img), str(out), game) is None

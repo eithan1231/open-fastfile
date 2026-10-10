@@ -651,6 +651,32 @@ class ResolveContext {
     const colorProp = findProp(node, "color");
     const color = colorProp ? colorOf(colorProp, "#ffffff") : undefined;
     const shadows = boolOf(findProp(node, "shadows"), false);
+    const label = node.name ?? node.type;
+
+    const rangeProp = findProp(node, "range");
+    let range = numbersOf(rangeProp, toMeters)[0];
+    if (rangeProp && (type === "directional" || type === "ambient")) {
+      this.warn(`a ${type} light has no "range"; it is ignored on "${label}"`, rangeProp.span, "light-unused-range");
+      range = undefined;
+    } else if (range !== undefined && range <= 0) {
+      this.err(`a light's "range" must be positive, found ${range}`, rangeProp!.span, "light-bad-range");
+      range = undefined;
+    }
+
+    const coneProp = findProp(node, "cone");
+    let cone: ResolvedLight["cone"];
+    if (coneProp && type !== "spot") {
+      this.warn(`only a spot light has a "cone"; it is ignored on "${label}"`, coneProp.span, "light-unused-cone");
+    } else if (coneProp) {
+      const [outer, core] = numbersOf(coneProp, toRadians);
+      const inner = core ?? outer;
+      if (outer === undefined || inner === undefined || outer <= 0 || outer >= Math.PI || inner < 0 || inner > outer) {
+        this.err(`a "cone" is a width above 0 and below 180 degrees, then a core no wider than it`, coneProp.span, "light-bad-cone");
+      } else {
+        cone = { outer, inner };
+      }
+    }
+
     return {
       name: node.name,
       type,
@@ -660,6 +686,8 @@ class ResolveContext {
       intensity,
       color,
       shadows,
+      ...(range !== undefined && { range }),
+      ...(cone && { cone }),
     };
   }
 }

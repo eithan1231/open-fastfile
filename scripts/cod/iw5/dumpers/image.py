@@ -39,6 +39,9 @@ FORMATS = {
     "DXT3": Format(4, 16, 12, b"DXT3"),
     "DXT5": Format(4, 16, 13, b"DXT5"),
     "DXN": Format(4, 16, 14, 83),  # DXGI_FORMAT_BC5_UNORM
+    # Black Ops' lightmap pages (t5/lightmap.py): DDS only, read back by that module alone.
+    "R5G6B5": Format(1, 2, None, (DDPF_RGB, 16, 0xF800, 0x07E0, 0x001F, 0)),
+    "G16R16": Format(1, 4, None, (DDPF_RGB, 32, 0xFFFF, 0xFFFF0000, 0, 0)),
 }
 
 
@@ -50,8 +53,10 @@ D3D = {
     20: "BGR8",
     21: "BGRA8",
     22: "BGRX8",
+    23: "R5G6B5",
     28: "A8",
     32: "RGBA8",
+    34: "G16R16",
     50: "L8",
     51: "LA8",
     fourcc(b"DXT1"): "DXT1",

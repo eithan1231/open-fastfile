@@ -439,6 +439,7 @@ def export_map(
         navigation=has_nav,
         fx=has_fx,
         sound=has_sound,
+        primary_lights=manifest.get("primaryLights", []),
     )
     print(
         f"      world.world written"

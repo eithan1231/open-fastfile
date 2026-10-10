@@ -552,6 +552,22 @@ one.
 | `intensity` | number                                          | `1`     |
 | `color`     | color                                           | white   |
 | `shadows`   | bool                                            | `false` |
+| `range`     | number (metres) — point and spot only           | unset   |
+| `cone`      | 1–2 angles — spot only                          | `60 42` |
+
+A point or spot light with no `range` falls off with the square of distance and
+never quite reaches zero. Give it a `range` and it keeps its full strength out
+to three quarters of that distance, then fades smoothly to nothing at it: the way a game's placed
+light behaves, and cheaper, since nothing past the range is lit.
+
+A spot's `cone` is the full width of its beam in degrees, then optionally the
+width of its undimmed core; between the two the beam softens to dark. One
+value is a hard-edged beam. A spot points straight down unless `rotate:` aims
+it.
+
+```
+light stage_left { type: spot, at: -4 9 2, rotate: -60 30 0, cone: 50 42, range: 12, intensity: 0.12, color: #fff4dc }
+```
 
 If a world declares **no** lights at all, a default hemisphere + sun
 lighting rig is used instead, so a world with no `light` nodes still renders

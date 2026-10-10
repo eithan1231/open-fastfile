@@ -74,6 +74,23 @@ describe("resolveWorld — world/lights/spawn", () => {
     expect(world.lights[0]).toMatchObject({ type: "directional", position: { x: 6, y: 9, z: 4 }, intensity: 1.3, shadows: true });
   });
 
+  it("reads a spot light's beam and reach", () => {
+    const world = resolveOk("light lamp { type: spot, at: 0 4 0, cone: 60 40, range: 12 }");
+    expect(world.lights[0]!.range).toBe(12);
+    expect(world.lights[0]!.cone!.outer).toBeCloseTo(Math.PI / 3);
+    expect(world.lights[0]!.cone!.inner).toBeCloseTo((2 * Math.PI) / 9);
+    // One width is a beam with no soft edge.
+    const hard = resolveOk("light lamp { type: spot, cone: 30 }").lights[0]!.cone!;
+    expect(hard.inner).toBe(hard.outer);
+  });
+
+  it("refuses a cone whose core is wider than the beam, and ignores one on a point light", () => {
+    expect(resolve("light lamp { type: spot, cone: 30 50 }").diagnostics.map((d) => d.code)).toContain("light-bad-cone");
+    const point = resolve("light lamp { type: point, cone: 30 }");
+    expect(point.diagnostics.map((d) => d.code)).toContain("light-unused-cone");
+    expect(point.world!.lights[0]!.cone).toBeUndefined();
+  });
+
   it("uses an explicit spawn", () => {
     const world = resolveOk("spawn { at: 0 1.7 1.5, look: 0 1.6 -1 }");
     expect(world.spawn).toEqual({ position: { x: 0, y: 1.7, z: 1.5 }, look: { x: 0, y: 1.6, z: -1 } });

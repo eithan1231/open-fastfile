@@ -63,3 +63,20 @@ describe("buildLight — aiming", () => {
     expect(d.y).toBeCloseTo(-1, 9);
   });
 });
+
+describe("buildLight — cone and range", () => {
+  it("turns a cone's full width and core into three's half angle and penumbra", () => {
+    const spot = (buildLight(light({ cone: { outer: Math.PI / 2, inner: Math.PI / 4 } })) as THREE.Group).children[0] as THREE.SpotLight;
+    expect(spot.angle).toBeCloseTo(Math.PI / 4);
+    expect(spot.penumbra).toBeCloseTo(0.5);
+  });
+
+  it("keeps a ranged light's strength out to its range instead of the inverse square", () => {
+    const spot = (buildLight(light({ range: 10 })) as THREE.Group).children[0] as THREE.SpotLight;
+    expect([spot.distance, spot.decay]).toEqual([10, 0]);
+    const point = buildLight(light({ type: "point" })) as THREE.PointLight;
+    expect([point.distance, point.decay]).toEqual([0, 2]);
+    // ... and three's own window, which fades from the start, is replaced for it.
+    expect(THREE.ShaderChunk.lights_pars_begin).toContain("1.0 - smoothstep( cutoffDistance * 0.75, cutoffDistance, lightDistance )");
+  });
+});
