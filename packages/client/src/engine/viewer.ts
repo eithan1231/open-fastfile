@@ -4,7 +4,8 @@
 // engine/controls/.
 
 import * as THREE from "three";
-import { applyQuality, loadQualityLevel, saveQualityLevel, QUALITY, type QualityLevel, type QualitySettings, type QualityState } from "./quality.js";
+import { applyMaterialQuality, applyQuality, QUALITY, type QualitySettings, type QualityState } from "./quality.js";
+import { loadQualityLevel, saveQualityLevel, type QualityLevel } from "./qualityLevel.js";
 import { Profiler } from "./profiler.js";
 import { applyGrade } from "./render/grade.js";
 import { installChunks } from "./render/chunks.js";
@@ -60,7 +61,7 @@ export class Viewer {
     // computed once per build. See docs/engine/rendering.md#a-static-world.
     this.renderer.shadowMap.autoUpdate = false;
     this.scene.matrixWorldAutoUpdate = false;
-    applyQuality(this.quality, this.renderer, this.scene, this.qualityState);
+    applyQuality(this.quality, this.renderer, [this.scene], this.qualityState);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -187,8 +188,13 @@ export class Viewer {
 
   /** Apply the current level, e.g. to a newly built world. `texelSize` comes from ShadowFit.build. */
   applyQuality(root?: THREE.Object3D, texelSize?: number): void {
-    applyQuality(this.quality, this.renderer, this.scene, this.qualityState, root, texelSize);
+    applyQuality(this.quality, this.renderer, [this.scene, ...this.pipeline.scenes()], this.qualityState, root, texelSize);
     this.invalidateShadows();
+  }
+
+  /** The current level's per-material settings, for something added to a pass's scene since it was applied. */
+  applyQualityTo(object: THREE.Object3D): void {
+    applyMaterialQuality(this.quality, this.renderer, object);
   }
 
   /** Install a world's colour grading, or clear it: the output pass and the viewmodel are what it reaches. */

@@ -36,6 +36,11 @@ export interface PassContext {
 }
 
 export interface RenderPass {
+  /**
+   * What the pass draws from besides the world scene, so what reaches every
+   * material — a quality level's filtering and shadow filter — reaches it too.
+   */
+  readonly scene?: THREE.Object3D;
   /** Draw this frame's share, or nothing. */
   render(ctx: PassContext): void;
   /**
@@ -85,6 +90,11 @@ export class FramePipeline {
   /** Fill the slot `name` with `pass`, replacing what was there. */
   use(name: PassName, pass: RenderPass): void {
     this.passes.set(name, pass);
+  }
+
+  /** Every pass's own scene, in pass order. */
+  scenes(): THREE.Object3D[] {
+    return PASSES.flatMap((name) => this.passes.get(name)?.scene ?? []);
   }
 
   render(ctx: PassContext): void {

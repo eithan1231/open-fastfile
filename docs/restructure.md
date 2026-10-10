@@ -60,14 +60,9 @@ These are what the stages establish, and what review holds new work to.
 
 ### 1. Rendering — `client/src/engine/render/`
 
-Done in stages 1 and 2 ([the frame](engine/rendering.md#the-frame)). One piece
-is left for stage 4, which owns the list it needs:
-
-- **The per-frame update becomes a named list** as the passes are (animator,
-  controls, effects, remotes, actors, viewmodel pose, presenters, audio
-  listener, shadow fit). Today this order lives inside `App.frame` and depends
-  on comments; effects run _before_ the camera moves and are judged against last
-  frame's camera.
+Done in stages 1 and 2 ([the frame](engine/rendering.md#the-frame)); the
+per-frame update list that runs before the passes followed in stage 4
+(`app/frame.ts`).
 
 ### 2. The game boundary
 
@@ -90,26 +85,31 @@ is left for stage 4, which owns the list it needs:
 
 ### 3. The client app layer — `client/src/app/`
 
-`App.ts` (1,308 lines, 43 fields) becomes the composition root, about 200 lines:
-it constructs the pieces below, hands each what it needs explicitly, and owns
-nothing else.
+Done in stage 4. `App.ts` (1,308 lines) is the composition root (361, half of
+it the UI's command table): it builds the pieces below, hands each the others it
+needs, and owns nothing else.
 
-| New owner             | Takes from                                | Owns                                                                                 |
-| --------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------ |
-| `ScreenRouter`        | `App` commands, `PlayerSession` callbacks | the only writer of `ui.screen`                                                       |
-| `WorldLoader`         | `App` 430–558                             | the serialised load queue and its generation; cancel                                 |
-| `MatchController`     | `App` 565–901                             | connection, roster, tick rate, gametype, the snapshot fan-out, **one** teardown list |
-| `PauseController`     | `App` 1003–1068, 1138–1184                | prompt, pause, pointer lock, waiting-to-spawn                                        |
-| `Settings`, `Toaster` | `App` 1071–1110                           | quality, sensitivity, volume; the toast timer                                        |
-| `Presenters`          | `App` 1187–1248, 842–862                  | HUD, minimap, crosshair cone, use focus (entries in the update list)                 |
-| `WeaponViewmodel`     | `WorldSession` 139–152, 704–812           | hands, carried and drawn weapon, swap following                                      |
-| `DevTools` split      | `devTools.ts`                             | `NavDebug`, `StatsReadout`, `Inspector`, the overlay toggles, hot reload             |
+| Owner                 | Owns                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
+| `Systems`             | every page-lifetime engine object, built once and wired to the renderer                                 |
+| `GameContent`         | the weapon registry, the cast catalogue and the gametype: one live holder, read at use                  |
+| `CurrentWorld`        | the mounted session, written by the loader and read by everything that outlives it                      |
+| `FrameUpdates`        | the per-frame update list (`frame.ts`), named and ordered as the passes are, each step timed            |
+| `ScreenRouter`        | the only writer of `ui.screen` (a test holds it to that)                                                |
+| `WorldLoader`         | the serialised load queue and its generation, entering and leaving, and hot reload                      |
+| `MatchController`     | connection, roster, tick rate, the snapshot fan-out, **one** teardown list                              |
+| `PauseController`     | view mode, prompt, pause, pointer lock, waiting to be spawned                                           |
+| `Settings`, `Toaster` | quality, sensitivity, volume; the toast timer                                                           |
+| `Presenters`          | HUD, minimap, crosshair cone, use focus: one entry in the update list                                   |
+| `WeaponViewmodel`     | hands, carried and drawn weapon, swap following                                                         |
+| `dev/`                | `DevTools` composing `Inspector`, `Overlays`, `NavDebug` and `StatsReadout`, each over one `DevContext` |
 
-The `Engine` bag — 17 fields handed to `WorldSession`, some live getters and some
-captured values — is replaced by explicit dependencies, each a live reference.
-`WorldSession` keeps the mount pipeline and the world's assets only.
-`uiBridge.ts` stops importing engine values (it pulls three.js into the UI
-bundle today) and stops computing lobby modes.
+The `Engine` bag is gone: `WorldSession` takes `Systems`, `GameContent`, the
+`WeaponViewmodel` and the dev tools, each a live object, and keeps the mount
+pipeline and the world's assets only. Hot reload went to the loader rather than
+the dev tools, since a reload is a load. `uiBridge.ts` no longer reaches
+three.js (the quality levels are their own module, and a test walks the bridge's
+imports) and re-exports the lobby modes rather than computing them.
 
 ### 4. The game server — `game-server/src/match/`
 
@@ -146,14 +146,14 @@ test.
 
 | Defect                                                                                                          | Where                        | Status                                                                                                                                            |
 | --------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A dropped match connection is never cleared, so a reload never rejoins and input is sent into a dead channel    | `App.ts` 697–709             | confirmed                                                                                                                                         |
+| A dropped match connection is never cleared, so a reload never rejoins and input is sent into a dead channel    | `App.ts` 697–709             | **fixed in stage 4** (`MatchController.disconnect`, with a test)                                                                                  |
 | Lag-compensation counters count once per candidate player, not per shot, so `/healthz` grows with roster size   | `match.ts` 2344, 2187        | confirmed                                                                                                                                         |
-| A world entered before the weapon catalogue loads keeps an empty registry for the session, hot reloads included | `App.ts` 400, `WorldSession` | by reading                                                                                                                                        |
+| A world entered before the weapon catalogue loads keeps an empty registry for the session, hot reloads included | `App.ts` 400, `WorldSession` | **fixed in stage 4** (`GameContent`, read at use)                                                                                                 |
 | Layers and flag wind on one material: the second overwrote the first                                            | `layers.ts`, `flag.ts`       | **fixed in stage 1** (patch composer, with a test); a blend replacement deliberately starts with no patches                                       |
 | A grade change on hot reload kept old shader programs                                                           | `grade.ts`                   | **fixed for the world in stage 2** (the output pass is keyed on the grade); the viewmodel's materials can still keep the last grade until rebuilt |
 | `SceneDepth` is never disposed                                                                                  | `fx/system.ts`               | **gone in stage 2**: the depth pass no longer exists                                                                                              |
-| Effects judged against last frame's camera                                                                      | `App.frame` order            | confirmed                                                                                                                                         |
-| A runtime quality change misses the viewmodel's shadow filter and anisotropy                                    | `quality.ts`                 | by reading                                                                                                                                        |
+| Effects judged against last frame's camera                                                                      | `App.frame` order            | **fixed in stage 4** (the update list, with a test)                                                                                               |
+| A runtime quality change misses the viewmodel's shadow filter and anisotropy                                    | `quality.ts`                 | **fixed in stage 4** (`RenderPass.scene`, `applyQualityTo`, with a test)                                                                          |
 | Leaving a match fires no trigger-leave or script hook                                                           | `match.ts` 906               | by reading                                                                                                                                        |
 
 Checked and **not** a defect: "a seated player gets no snapshots" — seated
@@ -211,7 +211,13 @@ compared with the stage before.
    the lint rule holds `engine/` and `scene/` to it. Pixel-identical on all
    three worlds; frame rate and load unchanged within noise (dome, the noisiest
    at over 200 fps, measured 194–236 across three runs).
-4. **Client app layer.** The table in §3, with the app-layer defects.
+4. **Client app layer** — done (§3), with the four app-layer defects below.
+   Pixel-identical but for the viewmodel, whose textures now get the quality
+   level's anisotropic filtering (it was never applied to them). Frame rate,
+   stall and load unchanged within noise. Found on the way and fixed: joining a
+   match's channel cleared "waiting to be spawned", so a click on the joining
+   prompt could start play before a class was chosen; and a session the api
+   signed out showed the sign-in screen over a still-running world.
 5. **Game server.** §4, with its defects.
 6. **Shared.** §5.
 7. **Then features again, placed:** clustered local lights (a fixed light loop,

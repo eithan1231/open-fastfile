@@ -4,41 +4,17 @@
 // import from the rest of the codebase (enforced in eslint.config.js).
 
 import { signal, type Signal } from "@preact/signals-core";
-import { QUALITY_LEVELS, type QualityLevel } from "../engine/quality.js";
+import { QUALITY_LEVELS, type QualityLevel } from "../engine/qualityLevel.js";
 import { DEFAULT_SENSITIVITY, SENSITIVITY_RANGE } from "../input/sensitivity.js";
 import { AUDIO_CHANNELS, defaultAudioSettings, type AudioSettings, type Channel } from "../engine/audio/mixer.js";
 import { defaultLoadouts, LOADOUT_COUNT, LOADOUT_GAMES, MAX_LOADOUT_ATTACHMENTS, type Loadout } from "@3d/shared/sim/loadout.js";
 import { CATEGORY_LABEL, CATEGORY_SLOT, WEAPON_CATEGORIES, type WeaponCategory } from "@3d/shared/sim/weaponCategory.js";
-import { GAMETYPES } from "@3d/shared/game/gametypes/registry.js";
-import { zombiesGametype } from "@3d/shared/game/gametypes/zombies.js";
 
 export type { Loadout, WeaponCategory };
 /** Re-exported through the bridge, which is the only module src/ui/ may import from the rest of the codebase. */
 export { CATEGORY_LABEL, CATEGORY_SLOT, LOADOUT_COUNT, LOADOUT_GAMES, MAX_LOADOUT_ATTACHMENTS, WEAPON_CATEGORIES };
 
-/** Which picture is behind the menus. */
-export type MenuBackdrop = "generic" | "zombies";
-
-/** A gametype as a lobby offers it. */
-export interface LobbyMode {
-  id: string;
-  name: string;
-  description: string;
-  /** The map slugs it is played on, or null for every map. */
-  maps: readonly string[] | null;
-  /** The menus' picture while a lobby is set to it. */
-  backdrop: MenuBackdrop;
-}
-
-/** Every gametype, in the registry's order. */
-export const LOBBY_MODES: readonly LobbyMode[] = Object.values(GAMETYPES).map((decl) => ({
-  id: decl.id,
-  name: decl.display,
-  description: decl.description ?? "",
-  maps: decl.maps?.length ? decl.maps : null,
-  // By mode rather than id: every gametype played in the zombies' mode is Zombies to look at.
-  backdrop: decl.mode === zombiesGametype.mode ? "zombies" : "generic",
-}));
+export { LOBBY_MODES, type LobbyMode, type MenuBackdrop } from "./lobbyModes.js";
 
 export type { QualityLevel };
 /** The engine's cycle order, re-exported: src/ui/ reaches the rest of the codebase only through this module. */

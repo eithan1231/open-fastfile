@@ -56,6 +56,7 @@ async function signedIn() {
     onLobby: vi.fn(),
     onLeft: vi.fn(),
     onDisplaced: vi.fn(),
+    onSignedOut: vi.fn(),
   };
   const session = new PlayerSession(ui, handlers);
   expect(await session.restore()).toBe(true);

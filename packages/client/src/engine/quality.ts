@@ -3,11 +3,7 @@
 // the machine makes these trades, not the world author.
 
 import * as THREE from "three";
-
-export type QualityLevel = "low" | "medium" | "high";
-
-/** Cycle order, ascending, so repeated presses climb then wrap. */
-export const QUALITY_LEVELS: readonly QualityLevel[] = ["low", "medium", "high"];
+import type { QualityLevel } from "./qualityLevel.js";
 
 export interface QualitySettings {
   /** Upper bound on devicePixelRatio: the main lever when fragment-bound. */
@@ -35,35 +31,6 @@ export const QUALITY: Record<QualityLevel, QualitySettings> = {
   low: { pixelRatioCap: 1, shadowType: THREE.PCFShadowMap, shadowMapSize: 1024, shadowFocusRadius: 50, minShadowCasterTexels: 4, anisotropy: 1 },
 };
 
-const STORAGE_KEY = "3d-designer:quality";
-const DEFAULT_LEVEL: QualityLevel = "high";
-
-function isLevel(value: string | null): value is QualityLevel {
-  return value !== null && (QUALITY_LEVELS as readonly string[]).includes(value);
-}
-
-export function loadQualityLevel(): QualityLevel {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return isLevel(stored) ? stored : DEFAULT_LEVEL;
-  } catch {
-    return DEFAULT_LEVEL; // storage can be disabled outright
-  }
-}
-
-export function saveQualityLevel(level: QualityLevel): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, level);
-  } catch {
-    // not being able to remember the setting is not worth failing over
-  }
-}
-
-export function nextQualityLevel(level: QualityLevel): QualityLevel {
-  const i = QUALITY_LEVELS.indexOf(level);
-  return QUALITY_LEVELS[(i + 1) % QUALITY_LEVELS.length]!;
-}
-
 /** Per-renderer bookkeeping, owned by the Viewer. */
 export interface QualityState {
   /** The shadow filter compiled into the scene's shaders; changing it means recompiling every material. */
@@ -71,14 +38,16 @@ export interface QualityState {
 }
 
 /**
- * Apply a level to the renderer and the scene. `root` (BuiltScene.root) and
- * `texelSize` (from ShadowFit.build) enable the shadow-caster threshold, which
- * is measured in shadow texels. Callers must invalidate the shadow map afterwards.
+ * Apply a level to the renderer and to everything `scenes` draw: the world's
+ * scene and each pass's own (the viewmodel's, the effects'). `root`
+ * (BuiltScene.root) and `texelSize` (from ShadowFit.build) enable the
+ * shadow-caster threshold, which is measured in shadow texels. Callers must
+ * invalidate the shadow map afterwards.
  */
 export function applyQuality(
   level: QualityLevel,
   renderer: THREE.WebGLRenderer,
-  scene: THREE.Scene,
+  scenes: readonly THREE.Object3D[],
   state: QualityState,
   root?: THREE.Object3D,
   texelSize?: number,
@@ -91,12 +60,34 @@ export function applyQuality(
     renderer.shadowMap.type = settings.shadowType;
     state.compiledShadowType = settings.shadowType;
   }
-  const anisotropy = Math.min(settings.anisotropy, renderer.capabilities.getMaxAnisotropy());
   // Thousands of meshes share a few dozen materials, and both passes below are
   // per material: walking each one's properties per mesh is the same work over
   // and over.
   const seen = new Set<THREE.Material>();
-  scene.traverse((obj) => {
+  for (const scene of scenes) {
+    applyMaterialQuality(level, renderer, scene, recompile, seen);
+  }
+
+  if (root && texelSize !== undefined) {
+    applyShadowCasterThreshold(root, settings.minShadowCasterTexels * texelSize);
+  }
+}
+
+/**
+ * The per-material half of a level, over `object`: anisotropy, a recompile for
+ * a new shadow filter, and each casting light's map size. On its own for what
+ * joins a scene after the level was applied, such as a weapon drawn mid-world.
+ */
+export function applyMaterialQuality(
+  level: QualityLevel,
+  renderer: THREE.WebGLRenderer,
+  object: THREE.Object3D,
+  recompile = false,
+  seen = new Set<THREE.Material>(),
+): void {
+  const settings = QUALITY[level];
+  const anisotropy = Math.min(settings.anisotropy, renderer.capabilities.getMaxAnisotropy());
+  object.traverse((obj) => {
     if (obj instanceof THREE.Mesh) {
       for (const material of Array.isArray(obj.material) ? obj.material : [obj.material]) {
         if (!material || seen.has(material)) {
@@ -114,10 +105,6 @@ export function applyQuality(
       obj.shadow.map = null;
     }
   });
-
-  if (root && texelSize !== undefined) {
-    applyShadowCasterThreshold(root, settings.minShadowCasterTexels * texelSize);
-  }
 }
 
 /** Set every texture a material samples to `anisotropy`, re-uploading those already on the GPU. */

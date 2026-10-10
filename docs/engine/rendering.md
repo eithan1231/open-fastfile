@@ -26,6 +26,16 @@ one of its four mechanisms rather than into the viewer's loop or `App`.
      depth on the canvas, each tests against the target's depth in its shader.
   4. **viewmodel** draws the hands and weapon over everything, as before.
 
+  A pass that draws a scene of its own names it (`RenderPass.scene`), so what
+  reaches every material — a quality level's filtering and shadow filter —
+  reaches it as well as the world's.
+
+  What runs before the passes is the frame's update list
+  (`app/frame.ts`, `UPDATES`): the same mechanism for the update half — named
+  steps in a fixed order, each timed (the stats' `updates` line), where a step
+  that needs another first says so. Effects update after the controls and the
+  viewmodel, so they are judged from this frame's camera and zoom.
+
   One scene draw a frame is the point: the effects' soft fade used to draw the
   whole scene a second time to get its depth, which halved the frame rate
   wherever a map had smoke.

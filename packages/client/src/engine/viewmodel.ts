@@ -337,6 +337,7 @@ export class Viewmodel {
    * the image, so multiplying is what makes it a tube.
    */
   readonly pass: RenderPass = {
+    scene: this.scene,
     render: ({ renderer }) => {
       renderer.setRenderTarget(null);
       this.render(renderer);

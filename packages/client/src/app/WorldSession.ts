@@ -7,86 +7,32 @@
 import * as THREE from "three";
 import type { EntityId, ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import { indexWorld, type WorldIndex } from "@3d/shared/worlds/worldIndex.js";
-import type { Loadout } from "@3d/shared/sim/loadout.js";
-import type { Player } from "@3d/shared/sim/player.js";
-import { type WeaponId, type WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
-import { attachmentModelUrl, overlayImageUrl, weaponModelUrl } from "../net/catalog.js";
 import { AssetStore, type GltfAsset } from "../scene/assets.js";
 import { buildScene, contentBounds, disposeScene, type BuiltScene } from "../scene/scene.js";
 import { instanceModels } from "../scene/instancing.js";
-import { buildViewmodelRig, type FittedAttachment } from "../scene/viewmodel.js";
 import { CharacterKit, readCharacterSet, type CharacterSource } from "../scene/character.js";
-import type { CatalogueView } from "@3d/shared/game/catalogueView.js";
 import type { CastChoice, CatalogRef } from "@3d/shared/game/cast.js";
 import type { GameView, PlayerView } from "@3d/shared/game/context.js";
 import { scriptsFor } from "@3d/shared/game/registry.js";
 import { hashString } from "@3d/shared/game/random.js";
 import { counterIndex } from "@3d/shared/game/matchValues.js";
 import { castFilePath } from "@3d/shared/protocol/routes/catalog.js";
-import type { GametypeDecl } from "@3d/shared/game/gametypes/declaration.js";
-import type { Animator } from "../engine/animator.js";
-import type { FxSystem } from "../engine/fx/system.js";
 import { buildFx } from "../scene/fx.js";
-import type { AudioSystem } from "../engine/audio/system.js";
 import { buildSounds } from "../scene/sounds.js";
-import type { CollisionView, CollisionWorld } from "@3d/shared/collision/world.js";
 import { presenceFor, presentNamed, type Presence } from "@3d/shared/worlds/presence.js";
 import type { SnapshotPresence } from "@3d/shared/net/messages/snapshot.js";
-import type { FirstPersonControls } from "../engine/controls/firstPerson.js";
-import type { DollhouseControls } from "../engine/controls/orbit.js";
 import type { Vec3 } from "@3d/shared/sim/movement.js";
 import { applyWorldRules } from "@3d/shared/sim/worldRules.js";
-import type { ShadowFit } from "../engine/shadows.js";
-import type { Viewer } from "../engine/viewer.js";
-import { copyLights, type Viewmodel } from "../engine/viewmodel.js";
-import type { RemotePlayers } from "../net/remotePlayers.js";
-import type { Corpses } from "../net/corpses.js";
-import type { ActorKit, ActorsView } from "../net/actors.js";
+import type { ActorKit } from "../net/actors.js";
 import { ACTOR_KINDS, type ActorKindId } from "@3d/shared/game/actors/kinds.js";
 import { actorAssetsFor } from "@3d/shared/game/actors/assets.js";
 import { catalogRefUrl } from "../scene/assetUrl.js";
 import type { PhysicsWorld } from "@3d/shared/physics/world.js";
-import type { DevTools } from "./devTools.js";
-import { worldBaseUrl } from "./worldLoader.js";
-
-export interface Engine {
-  viewer: Viewer;
-  animator: Animator;
-  /** The world's particle effects. Owns a root beside the scene, so a world change replaces it. */
-  fx: FxSystem;
-  /** What the world sounds like. Owns a root beside the scene, like `fx`, and for a sharper reason (engine/audio/system.ts). */
-  audio: AudioSystem;
-  collision: CollisionWorld;
-  /** The collision as the match has it: each mount hands it this world's presence. */
-  live: CollisionView;
-  firstPerson: FirstPersonControls;
-  dollhouse: DollhouseControls;
-  shadowFit: ShadowFit;
-  viewmodel: Viewmodel;
-  /** The other players: they wear the world's own characters, so a world change re-dresses them. */
-  remotes: RemotePlayers;
-  /** The bodies on the floor. Owns a root beside the scene, like `fx` and `remotes`. */
-  corpses: Corpses;
-  /** The creatures a game server runs. Owns a root beside the scene; a world change reloads their bodies. */
-  actors: ActorsView;
-  /** Every weapon this build can name, so a world's viewmodel is built from the shared definition. */
-  weapons: WeaponRegistry;
-  /**
-   * The catalogue the cast is chosen out of, and the gametype choosing.
-   *
-   * A function, like `loadout`: the catalogue arrives over HTTP a moment after
-   * the page does, and a world can be mounted before or after that.
-   */
-  cast: () => { catalogue: CatalogueView; gametype: GametypeDecl };
-  /**
-   * The class the player spawns with, read when a world is mounted.
-   *
-   * A function rather than a value because the classes arrive over HTTP a moment
-   * after the page does, and a world can be mounted before or after that.
-   */
-  loadout: () => Loadout;
-  dev: DevTools;
-}
+import type { DevTools } from "./dev/devTools.js";
+import type { GameContent } from "./content.js";
+import type { Systems } from "./systems.js";
+import type { WeaponViewmodel } from "./weaponViewmodel.js";
+import { worldBaseUrl } from "./worldFetch.js";
 
 /** Where the camera goes once the world is up. */
 export type Arrival =
@@ -135,21 +81,6 @@ interface Mount {
 
 export class WorldSession {
   readonly assets = new AssetStore();
-  /** The map's view hands, worn by whichever weapon is in hand. */
-  private hands: GltfAsset | undefined;
-  /** Copies of the world's lights for the viewmodel's own pass, made once per world. */
-  private lights: THREE.Light[] = [];
-  /** Every carried weapon's models, by `rigKey`, so a swap redraws without a fetch. */
-  private readonly carried = new Map<string, { weapon: GltfAsset; attachments: FittedAttachment[] }>();
-  /** The `rigKey` currently drawn, or null for empty hands. What `followSwap` compares against. */
-  private drawn: string | null = null;
-  /**
-   * The `Player.armed` count whose weapons have been fetched and drawn. A server
-   * handing over weapons mid-life — a respawn, a class taking effect, a script's
-   * `arm` — reaches this end as a new count in a snapshot, and `followSwap` is
-   * what notices.
-   */
-  private armedSeen = -1;
   private built: BuiltScene | undefined;
   /**
    * This world's physics, or undefined where the engine did not load.
@@ -170,7 +101,10 @@ export class WorldSession {
 
   constructor(
     readonly slug: string,
-    private readonly engine: Engine,
+    private readonly systems: Systems,
+    private readonly content: GameContent,
+    private readonly weapon: WeaponViewmodel,
+    private readonly dev: DevTools,
   ) {}
 
   get world(): ResolvedWorld | undefined {
@@ -197,7 +131,8 @@ export class WorldSession {
    * runs, and may return a promise to yield (so a loading screen can paint).
    */
   async mount(world: ResolvedWorld, arrival: Arrival, onStep?: (step: string, index: number, count: number) => void | Promise<void>): Promise<void> {
-    const { viewer, animator, fx, audio, collision, live, corpses, firstPerson, dollhouse, shadowFit, remotes, actors, dev } = this.engine;
+    const { viewer, animator, fx, audio, collision, world: live, corpses, firstPerson, dollhouse, shadowFit, remotes, actors } = this.systems;
+    const { dev, weapon } = this;
     const { player } = firstPerson;
 
     // Each step depends on the ones above it; the comment says on what.
@@ -214,7 +149,7 @@ export class WorldSession {
       [
         "build",
         (m) => {
-          m.presence = presenceFor(m.world, this.engine.cast().gametype.mode);
+          m.presence = presenceFor(m.world, this.content.gametype.mode);
           m.built = buildScene(m.world, worldBaseUrl(this.slug), this.assets, m.presence);
           this.built = m.built;
           this.resolved = m.world;
@@ -390,31 +325,15 @@ export class WorldSession {
       [
         "viewmodel",
         async (m) => {
-          if (!m.cast || !m.hands) {
-            return;
-          }
           const hands = await m.hands;
-          if (!hands) {
+          if (!m.cast || !hands) {
             return; // the store has warned
           }
-          this.hands = hands;
-          this.lights = copyLights(m.built.root);
-
-          // The player's class wins, and the gametype's default is what a player
-          // with no class — or one naming nothing this catalogue holds — falls
-          // back to. Something names a weapon so that walking into a world armed
-          // is not conditional on having built a class.
-          const carried = this.carry(m.cast.defaultWeapon);
-          this.armedSeen = player.armed;
-          await this.fetchCarried(player);
-          // Equipping brings the weapon up (Player.equip). A held pose is a
-          // screenshot and a hot reload keeps going, so neither plays that raise:
-          // a frozen player never steps it, and would hold its first frame.
-          const first = m.arrival.kind === "spawn" || (m.arrival.kind === "pose" && !m.arrival.hold);
-          if (!this.showHeld({ ready: !first })) {
-            return;
+          const raise = m.arrival.kind === "spawn" || (m.arrival.kind === "pose" && !m.arrival.hold);
+          const carried = await weapon.arm(this.assets, hands, m.built.root, m.cast, raise);
+          if (carried) {
+            console.info(`[viewmodel] ${carried} in ${m.cast.hands.file}`);
           }
-          console.info(`[viewmodel] ${carried} in ${m.cast.hands.file}`);
         },
       ],
       // Other players wear the catalogue's bodies, chosen by the gametype: the kit
@@ -548,7 +467,7 @@ export class WorldSession {
       }
     }
     // One redraw: the shadow map never updates by itself (engine/viewer.ts).
-    this.engine.viewer.invalidateShadows();
+    this.systems.viewer.invalidateShadows();
   }
 
   /** Leave the world: free its scene and every asset it loaded. */
@@ -558,25 +477,26 @@ export class WorldSession {
     this.indexed = undefined;
     this.presence = undefined;
     this.assets.dispose();
-    this.engine.viewer.roots.setWorld(undefined);
+    this.systems.viewer.roots.setWorld(undefined);
   }
 
   /** Let go of the built scene and everything attached to it. The highlight borrows its geometry, so it lets go first. */
   private releaseScene(): void {
-    this.engine.dev.beforeSwap();
-    this.engine.animator.clear();
-    this.engine.fx.clear();
-    this.engine.audio.clear();
-    this.engine.remotes.setKit(undefined);
-    this.engine.actors.setKits(new Map());
+    const { animator, fx, audio, remotes, actors, corpses } = this.systems;
+    this.dev.beforeSwap();
+    animator.clear();
+    fx.clear();
+    audio.clear();
+    remotes.setKit(undefined);
+    actors.setKits(new Map());
     // Before the scene goes. A Rapier world is wasm memory that no garbage
     // collector frees, so leaving a world without this is a leak no `dispose()`
     // can find — the same argument the AssetStore invariant makes about textures.
-    this.engine.corpses.setWorld(undefined);
-    this.engine.corpses.setSidecars(undefined);
+    corpses.setWorld(undefined);
+    corpses.setSidecars(undefined);
     this.physics?.free();
     this.physics = undefined;
-    this.dropWeapon();
+    this.weapon.drop();
     this.partNodes = [];
     if (this.built) {
       disposeScene(this.built);
@@ -594,7 +514,7 @@ export class WorldSession {
    * the same number the server's is — and 0 offline, where nothing is ticking.
    */
   gameView(world: ResolvedWorld, now = 0, players: readonly PlayerView[] = [], values: MatchValues = NO_MATCH_VALUES): GameView {
-    const { catalogue, gametype } = this.engine.cast();
+    const { catalogue, gametype } = this.content;
     const byId = new Map(players.map((p) => [p.id, p]));
     // The mounted world's index, which is the same object every time: a world
     // never changes for the life of a session, and `indexWorld` walks every
@@ -630,7 +550,7 @@ export class WorldSession {
    * `pnpm dev` is. The first script with an opinion wins; none means capsules.
    */
   private chooseCast(world: ResolvedWorld): CastChoice | undefined {
-    const { gametype } = this.engine.cast();
+    const { gametype } = this.content;
     // Nobody is in the world at mount, and the cast reads neither the clock nor
     // the roster.
     const view = this.gameView(world);
@@ -653,7 +573,7 @@ export class WorldSession {
    */
   private async fetchActorKits(): Promise<Map<ActorKindId, ActorKit>> {
     const kits = new Map<ActorKindId, ActorKit>();
-    const { catalogue, gametype } = this.engine.cast();
+    const { catalogue, gametype } = this.content;
     const wanted = new Set(scriptsFor(gametype.id, this.slug).flatMap((script) => script.actors ?? []));
     const file = (ref: CatalogRef) => this.assets.gltf(catalogRefUrl(ref));
     await Promise.all(
@@ -692,121 +612,6 @@ export class WorldSession {
     ]);
     return { animations, bodies: bodies as LoadedBody[] };
   }
-
-  /**
-   * Equip the player: their class, or the gametype's default when the class arms
-   * them with nothing this catalogue holds. Returns what they ended up carrying,
-   * for the log.
-   */
-  private carry(fallback: WeaponId | null, loadout: Loadout = this.engine.loadout()): string {
-    const player = this.engine.firstPerson.player;
-    player.equipLoadout(loadout);
-    if (player.weaponId !== null) {
-      return `class ${loadout.name}`;
-    }
-    if (fallback === null) {
-      return "nothing (this gametype names no default weapon)";
-    }
-    player.equipById(fallback);
-    return player.weaponId === null ? `nothing ("${fallback}" is not in the catalogue)` : fallback;
-  }
-
-  /**
-   * Fetch a model for every weapon the player carries and everything fitted to
-   * it, so a swap draws immediately rather than after a round trip.
-   *
-   * Both weapons, not just the one in hand: the second is one keypress away, and
-   * a two-megabyte fetch between the putaway and the raise would show as the
-   * hands coming up empty.
-   */
-  private async fetchCarried(player: Player): Promise<void> {
-    const wanted = player.carrying.filter((held) => held.id !== null);
-    await Promise.all(wanted.map((held) => this.fetchWeapon(held.id!, held.fitted)));
-  }
-
-  private async fetchWeapon(id: WeaponId, fitted: readonly number[]): Promise<void> {
-    const entry = this.engine.weapons.entry(id);
-    const url = weaponModelUrl(id);
-    if (!entry || url === undefined || this.carried.has(rigKey(id, fitted))) {
-      return;
-    }
-    const wanted = entry.attachments.filter((_, slot) => fitted.includes(slot));
-    const [weapon, ...models] = await Promise.all([
-      this.assets.gltf(url),
-      ...wanted.map((a) => (a.model ? this.assets.gltf(attachmentModelUrl(entry.game, a.model)) : Promise.resolve(undefined))),
-    ]);
-    if (weapon) {
-      this.carried.set(rigKey(id, fitted), { weapon, attachments: wanted.map((entryFor, i) => ({ entry: entryFor, asset: models[i] })) });
-    }
-  }
-
-  /**
-   * Draw whatever the player is holding now.
-   *
-   * Called on every frame the held weapon changes, which is what makes a swap
-   * visible: the rig is per weapon *and* per fitted set, so it is rebuilt rather
-   * than re-posed — `Viewmodel.clear` disposes the skeletons of the one it had.
-   */
-  showHeld(options: { ready?: boolean } = {}): boolean {
-    const player = this.engine.firstPerson.player;
-    const weapon = player.weapon;
-    const parts = this.carried.get(rigKey(player.weaponId, player.fitted));
-    if (!weapon || !parts || !this.hands) {
-      this.drawn = null;
-      this.engine.viewmodel.clear();
-      return false;
-    }
-    try {
-      const rig = buildViewmodelRig(parts.weapon, this.hands, { def: weapon.def, attachments: parts.attachments });
-      // The scope picture is read from the *resolved* definition, not the GLB's:
-      // it is what a fitted optic changes, and an ACOG on a sniper rifle removes.
-      const overlay = weapon.def.adsOverlay;
-      this.engine.viewmodel.attach(rig, this.lights, weapon, overlay ? this.assets.picture(overlayImageUrl(weapon.def.game, overlay)) : undefined);
-      this.drawn = rigKey(player.weaponId, player.fitted);
-      if (options.ready) {
-        weapon.ready();
-      }
-      return true;
-    } catch (e) {
-      this.dropWeapon();
-      console.warn(`[viewmodel] ${player.weaponId ?? "?"}: ${e instanceof Error ? e.message : String(e)}`);
-      return false;
-    }
-  }
-
-  /**
-   * Redraw if the player is holding something other than what is drawn: a swap,
-   * or weapons a server handed over. Cheap when neither, which is every frame but
-   * one.
-   *
-   * Handed-over weapons may not have been fetched — a class chosen in the match,
-   * a script's rocket launcher — so they are fetched first and drawn when they
-   * arrive, unless something newer was handed over meanwhile.
-   */
-  followSwap(): void {
-    const player = this.engine.firstPerson.player;
-    if (this.hands && player.armed !== this.armedSeen) {
-      const armed = (this.armedSeen = player.armed);
-      void this.fetchCarried(player).then(() => {
-        if (this.hands && this.armedSeen === armed) {
-          this.showHeld();
-        }
-      });
-      return;
-    }
-    if (this.drawn !== null && rigKey(player.weaponId, player.fitted) !== this.drawn) {
-      this.showHeld();
-    }
-  }
-
-  /** The bodies belong to the world they came from, like the weapon. */
-  private dropWeapon(): void {
-    this.engine.viewmodel.clear();
-    this.engine.firstPerson.player.equip(undefined);
-    this.carried.clear();
-    this.hands = undefined;
-    this.drawn = null;
-  }
 }
 
 /**
@@ -830,11 +635,6 @@ function partNodesOf(root: THREE.Object3D, parts: readonly string[]): THREE.Obje
     });
   });
   return found;
-}
-
-/** A rig is per weapon *and* per fitted set: the same gun with an ACOG is a different thing to draw. */
-function rigKey(id: WeaponId | null, fitted: readonly number[]): string {
-  return `${id ?? ""}|${fitted.join(",")}`;
 }
 
 /** Every file a `characters` names, the clip file first, in the order buildCharacterKit expects them back. */

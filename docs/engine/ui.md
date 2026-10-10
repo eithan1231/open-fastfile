@@ -11,7 +11,7 @@ app/ (App, DevTools)  ──writes──▶  UiState signals  ──read by─�
 
 - **`packages/client/src/app/uiBridge.ts`** is the whole contract: `UiState` (signals holding
   plain data) and `UiCommands` (what the UI may ask for). No three.js values
-  cross it; convert them in `packages/client/src/app/` first (see `pickInfo` in `devTools.ts`).
+  cross it; convert them in `packages/client/src/app/` first (see `pickInfo` in `app/dev/inspector.ts`).
   The one thing that is not plain data is a **DOM element**, and there is one
   such command: `previewWeapon(host, weapon, attachments)`. The class menu has
   to show a real weapon turning, and that is the smallest seam that works — the

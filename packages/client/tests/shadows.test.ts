@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { ShadowFit, biasFor } from "../src/engine/shadows.js";
-import { QUALITY, QUALITY_LEVELS } from "../src/engine/quality.js";
+import { QUALITY } from "../src/engine/quality.js";
+import { QUALITY_LEVELS } from "../src/engine/qualityLevel.js";
 
 /** A shadow-casting sun at `at`, aimed at the origin, plus a caster box to give the scene bounds. */
 function scene(opts: { at: THREE.Vector3; contentHalfExtent: number }): {

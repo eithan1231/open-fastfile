@@ -1,6 +1,6 @@
 # Debugging a world
 
-The dev tools live in `packages/client/src/app/devTools.ts` and are bound only in development
+The dev tools live in `packages/client/src/app/dev/` and are bound only in development
 builds (`pnpm dev`). Their readouts are the debug overlay (`packages/client/src/ui/debug/`).
 
 | Key     | Tool                                                                                          |
@@ -99,7 +99,7 @@ at the match's tick rate. Nothing is sent by a server, and a view nobody pressed
 `K` for fetches nothing and bakes nothing.
 
 The bake is seconds of CPU, so it runs 4 ms a frame (`NAV_SLICE_MS` in
-`app/devTools.ts`): several times its CPU time in wall time, and the stats line
+`app/dev/navDebug.ts`): several times its CPU time in wall time, and the stats line
 says `baking nav… 42%` meanwhile. Turning the view off pauses it. The nodes are
 drawn at once where the file puts them, dimmed, and move onto their snapped feet
 with the links when the bake is done. A world reload bakes again, against the

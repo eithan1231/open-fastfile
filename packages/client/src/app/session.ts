@@ -39,6 +39,8 @@ export interface PlayerSessionHandlers {
   onLeft: () => void;
   /** Another tab is this player now. Nothing here is listening any more. */
   onDisplaced: () => void;
+  /** The api no longer knows this player's session: whatever they were doing, they sign in again. */
+  onSignedOut: () => void;
 }
 
 export class PlayerSession {
@@ -311,7 +313,7 @@ export class PlayerSession {
   private signedOut(): void {
     this.clear();
     this.ui.user.value = null;
-    this.ui.screen.value = "auth";
+    this.handlers.onSignedOut();
   }
 
   private displaced(): void {

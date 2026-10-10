@@ -357,6 +357,7 @@ export class FxSystem {
    * its shader, and a feathered one fades by it.
    */
   readonly pass: RenderPass = {
+    scene: this.scene,
     render: ({ renderer, camera, target, roots }) => {
       this.scene.fog = roots.fog;
       for (const batch of this.batches.values()) {

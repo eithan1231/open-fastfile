@@ -100,7 +100,8 @@ and the process dies on its first resolve. Each package's
 | `client/src/input/`            | Keyboard, mouse and pointer lock → named actions (`bindings.ts`)                                                              |
 | `client/src/net/`              | The match: finding a game server, the data channel, the other players as characters (or capsules)                             |
 | `client/src/net/actors.ts`     | The actors, drawn beside the scene like corpses and interpolated like peers: a posed rig, or the kind's capsule               |
-| `client/src/app/`              | Wiring: `App` (page lifetime), `WorldSession` (one loaded world), dev tools, the UI bridge                                    |
+| `client/src/app/`              | Wiring: `App` the composition root, `WorldSession` one loaded world, the match, pause, the frame's update list, the UI bridge |
+| `client/src/app/dev/`          | The dev tools: inspector, debug overlays, navigation view, stats readout                                                      |
 | `client/src/ui/`               | Preact: menus, loading/error/pause screens, HUD, dev overlay                                                                  |
 | `client/vite/`                 | The `worlds/` watcher. The routes themselves are proxied to `@3d/api`                                                         |
 | `scripts/`                     | `check.ts` (`pnpm check`), `cod/` (the CoD importer, Python). Stays at the root                                               |
