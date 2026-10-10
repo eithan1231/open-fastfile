@@ -87,7 +87,9 @@ describe("buildServerCollision", () => {
     // `assets/props`, a per-world directory that stopped existing when props moved
     // — so this test skipped rather than failing, and a server that collided with
     // no prop at all looked fine for as long as it did not correct anybody.
-    if (!has(IMPORTED) || !hasCatalog) {
+    // And on the map's own collision mesh, which is built like the catalogue and
+    // can be absent beside one that is there.
+    if (!has(IMPORTED) || !hasCatalog || !fs.existsSync(path.join(WORLDS, IMPORTED, "assets/collision.glb"))) {
       return;
     }
     const source = dirSource(IMPORTED);

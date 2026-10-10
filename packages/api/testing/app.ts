@@ -36,7 +36,12 @@ import { Registry } from "../src/registry.js";
 // thing worth testing is that an actual exported map loads; otherwise (the public
 // mirror carries none) two hand-written worlds beside this file stand in.
 const REPO_WORLDS = path.resolve(import.meta.dirname, "../../../worlds");
-const IMPORTED = fs.existsSync(path.join(REPO_WORLDS, "dome-mw3", "world.world"));
+const REPO_CATALOG_FILE = { kind: "weapons", game: "iw5", id: "iw5_m4_mp", rest: "iw5_m4_mp.glb" };
+// Both, or neither: a map's text is committed and the catalogue is built, so a
+// fresh checkout has the first without the second and must use the stand-ins.
+const IMPORTED =
+  fs.existsSync(path.join(REPO_WORLDS, "dome-mw3", "world.world")) &&
+  fs.existsSync(path.join(REPO_WORLDS, "catalog", REPO_CATALOG_FILE.kind, REPO_CATALOG_FILE.game, REPO_CATALOG_FILE.id, REPO_CATALOG_FILE.rest));
 
 export const TEST_WORLDS = IMPORTED ? REPO_WORLDS : path.resolve(import.meta.dirname, "worlds");
 export const TEST_TOKEN = "test-token";
@@ -51,9 +56,7 @@ export const TEST_OTHER_WORLD = IMPORTED ? "rust-mw2" : "test-yard";
  */
 export const TEST_WORLD_FILE = IMPORTED ? "export_metadata.json" : "meta.json";
 /** A file in TEST_WORLDS' catalogue, for the catalogue's file route. The repo's catalogue is gitignored and built. */
-export const TEST_CATALOG_FILE = IMPORTED
-  ? { kind: "weapons", game: "iw5", id: "iw5_m4_mp", rest: "iw5_m4_mp.glb" }
-  : { kind: "weapons", game: "iw5", id: "test_gun", rest: "test_gun.json" };
+export const TEST_CATALOG_FILE = IMPORTED ? REPO_CATALOG_FILE : { kind: "weapons", game: "iw5", id: "test_gun", rest: "test_gun.json" };
 
 /** Short where the real defaults are long, so a countdown can be driven in a few ticks. */
 export const TEST_MATCHMAKING: MatchmakingConfig = {
