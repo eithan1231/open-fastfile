@@ -12,7 +12,8 @@
 // settles the camera differently on each run and the diff measures that.
 //
 // The api has to be running: the client proxies worlds and assets to it, and a
-// bare Vite dev server has none (see docs/server/README.md).
+// bare Vite dev server has none (see docs/server/README.md). The script signs in
+// as a bench account first (scripts/signIn.mjs), or a pose lands on the sign-in screen.
 //
 // Renders on the real GPU through ANGLE (`--software` forces SwiftShader). The
 // app logs `[render] renderer: ...`, echoed here, so you can see which you got.
@@ -23,6 +24,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { chromium } from "playwright";
 import { PNG } from "pngjs";
+import { signIn } from "./signIn.mjs";
 
 function parseArgs(argv) {
   const args = {
@@ -140,7 +142,9 @@ const browser = await chromium.launch({
     ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"]
     : ["--use-gl=angle", "--use-angle=gl", "--enable-gpu", "--ignore-gpu-blocklist", "--disable-gpu-sandbox"],
 });
-const page = await browser.newPage({ viewport: { width: spec.width ?? 1280, height: spec.height ?? 720 } });
+const context = await browser.newContext({ viewport: { width: spec.width ?? 1280, height: spec.height ?? 720 } });
+await signIn(context, args.base);
+const page = await context.newPage();
 
 const problems = [];
 page.on("pageerror", (e) => problems.push(`PAGEERROR ${e.message}`));

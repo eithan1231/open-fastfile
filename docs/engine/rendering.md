@@ -422,7 +422,7 @@ what stops a threshold coming back.
   bodies gets a capsule at the simulation's own radius and height, which is what
   shows whether a fault is in the state on the wire or the rig over it.
 - **They take two clients to see.** Nothing draws a body for the local player,
-  and `pnpm shots` cannot reach one: a shot presses no keys and the world it
+  and `pnpm shots` cannot show one: a shot presses no keys and the world it
   loads has joined no match. `pnpm dev:mp` with two players ([one tab each](../server/README.md#one-tab-per-player)) is the check.
 
 ## Effects
@@ -569,5 +569,5 @@ games, is in [docs/cod/reference.md](../cod/reference.md#prop-lighting).
 - **The shader patch**, with flag wind, blend replacements, the fill light and a
   single placement, each checked in the browser console. A program that fails to
   link draws nothing, as [effects](#effects) warns.
-- **The result, by eye**, before and after on a lit world. `pnpm shots` cannot
-  reach a world (CLAUDE.md, "Known rough edges"), so this is done by hand.
+- **The result, by eye**, before and after on a lit world, with
+  `pnpm shots --compare`.

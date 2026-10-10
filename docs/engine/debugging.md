@@ -211,7 +211,24 @@ Loads each pose in headless Chromium (on the GPU; `--software` for
 SwiftShader), waits until consecutive frames are identical, and saves a PNG.
 `--compare` prints the fraction of pixels that changed and the mean change per
 channel. The UI is hidden unless `--ui` is passed. Each imported world keeps its
-poses in `_shots.json`, and every pose must have `hold`.
+poses in `_shots.json`, and every pose must have `hold`. The script signs in as a
+bench account (`BENCH_USER`/`BENCH_PASSWORD`, registered on first use), since a
+pose link otherwise lands on the sign-in screen.
+
+## Performance
+
+```sh
+pnpm perf worlds/<slug>/_shots.json --out before.json
+pnpm perf worlds/<slug>/_shots.json --compare before.json
+```
+
+Each pose loads in a fresh headless browser, so no shader is cached from the
+last. It reports the load time and its slowest steps; the **stall**, the longest
+frame in the three seconds after load, beside the shader programs compiled after
+the prewarm — each of those compiled on a frame, which is what a player feels as
+a hitch; the steady frame rate with vsync off; and one frame's draw calls and
+triangles across every pass. The numbers are only comparable with each other on
+one machine, and a change that moves them says so in its review.
 
 ## Logs
 

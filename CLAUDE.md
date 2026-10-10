@@ -329,10 +329,6 @@ In this order, since each step assumes the previous:
   and `WorldSession` leaves the player unarmed (iw4, both iw5 copies, iw6, and
   `iw6_knifeonly_mp`). AW's build drops such a role (`catalog.s1_without_still_clips`);
   the other games' builds do not yet.
-- **`pnpm shots` cannot reach a world.** A pose link lands on the sign-in screen
-  (`client/src/app/App.ts`) and the script has no sign-in step, so it waits until it
-  times out. Pixel diffs are the acceptance test three parts of the asset migration
-  wanted, and this is why they were not taken.
 - **Zombies has never been seen or heard in a browser.** Its whole round loop is
   proved headless on theater-bo1 (`game-server/tests/zombiesNav.test.ts`), but no one
   has looked at an actor's pose, the prompt or the tally on screen, or listened to a
@@ -387,7 +383,12 @@ Run from the repo root; each delegates to the package that owns it.
 - `pnpm lint` / `pnpm format`: ESLint (including the boundaries) / Prettier.
 - `pnpm build`: typecheck, lint, and the client into `packages/client/dist/`.
 - `pnpm shots <poses.json> [--compare DIR]`: headless screenshots and pixel
-  diffs. Needs `pnpm dev:api` beside it, like `pnpm preview`.
+  diffs. Needs `pnpm dev:api` beside it, like `pnpm preview`; signs in as a bench
+  account first (`client/scripts/signIn.mjs`).
+- `pnpm perf <poses.json | pose> [--out F] [--compare F]`: what a world costs to
+  load and draw — load time, the first-frame stall, shaders compiled after the
+  prewarm, steady frame time, draw calls. Headless, so compare runs with each
+  other, not with a player's machine. Needs `pnpm dev`.
 - `pnpm catalog [<game>/<weapon>] [attachment...]`: load `worlds/catalog/` through
   `WeaponRegistry` and report it — every weapon and the `catalogHash`, or one
   weapon and what each attachment does to its numbers. It also resolves every cast
@@ -445,5 +446,5 @@ sources either. `@3d/api` serves all three, from whatever `WORLDS_ROOT` points
 at, in dev and in production alike — Vite proxies to it rather than keeping its
 own copy of those routes, so there is one implementation instead of two that have
 to agree. The consequences to know about: `pnpm dev` starts two processes, and
-`pnpm preview` and `pnpm shots` need `pnpm dev:api` beside them or they have no
+`pnpm preview`, `pnpm shots` and `pnpm perf` need `pnpm dev:api` beside them or they have no
 worlds at all.

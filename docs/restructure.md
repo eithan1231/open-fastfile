@@ -196,9 +196,20 @@ review before the next. The gate for every stage: typecheck, lint, all tests,
 and `pnpm perf` plus screenshots on theater-bo1, russianbase-bo1 and dome-mw3
 compared with the stage before.
 
-0. **Measurement.** `pnpm perf <world>` (the probe used above, signed in), and a
-   sign-in step for `pnpm shots` so screenshots can be compared — today it cannot
-   reach a world. Without these, "behaviour-neutral" is a claim, not a check.
+0. **Measurement** — done: `pnpm perf` and a signed-in `pnpm shots`
+   ([debugging](engine/debugging.md#performance)).
+
+   Baseline at Stage 0 (`pnpm perf worlds/<slug>/_shots.json`, RTX 4070 Ti headless):
+
+   | World           | Load  | Stall   | Late programs | FPS   | Draws |
+   | --------------- | ----- | ------- | ------------- | ----- | ----- |
+   | theater-bo1     | 8.6 s | 1478 ms | 49            | 27.6  | 2528  |
+   | russianbase-bo1 | 5.7 s | 1002 ms | 45            | 40.1  | 2026  |
+   | dome-mw3        | 4.5 s | 521 ms  | 30            | 103.8 | 560   |
+
+   Every world stalls after load, not only theater: the prewarm misses programs
+   on all of them.
+
 1. **Rendering structure.** Scene roots, the frame pipeline with the passes as
    they are today, the patch composer, the pipeline-owned prewarm, per-pass
    timings. Neutral: same pixels, same frame rate, except that the first-frame

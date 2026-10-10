@@ -21,6 +21,7 @@
     "check": "tsx scripts/check.ts",
     "catalog": "tsx scripts/catalog.ts",
     "shots": "node packages/client/scripts/shots.mjs",
+    "perf": "node packages/client/scripts/perf.mjs",
     "export:cod": "node scripts/venv-python.mjs -m scripts.cod export",
     "test:py": "node scripts/venv-python.mjs -m pytest",
     "lint:py": "node scripts/venv-python.mjs -m ruff check . && node scripts/venv-python.mjs -m ruff format --check .",
