@@ -9,6 +9,8 @@
 // alpha, straight (not premultiplied), fog blends the colour toward the fog colour.
 
 import * as THREE from "three";
+import type { FrameTarget } from "../render/target.js";
+import { bindSceneDepth, SCENE_DEPTH_GLSL, sceneDepthUniforms } from "./sceneDepth.js";
 import { keepAlpha } from "../../scene/importedMaterials.js";
 import type { ParticleView } from "./emitter.js";
 
@@ -152,11 +154,8 @@ void main() {
 const FRAGMENT = /* glsl */ `
 uniform sampler2D map;
 uniform float featherDepth;
-uniform sampler2D sceneDepth;
-uniform vec2 depthResolution;
-uniform vec2 nearFar;
 uniform float softEnabled;
-
+${SCENE_DEPTH_GLSL}
 varying vec2 vUv;
 varying vec4 vColor;
 varying float vViewDepth;
@@ -164,27 +163,28 @@ varying float vViewDepth;
 // zfeather's other half: fade where the sheet nears what is behind it, by
 // sat((sceneDepth - particleDepth) / featherDepth). Behind a wall it is 0, so a
 // sheet crossing the world melts into it rather than cutting a line.
-float softness() {
+float softness(float scene) {
   if (softEnabled < 0.5 || featherDepth <= 0.0) return 1.0;
-  float d = texture2D(sceneDepth, gl_FragCoord.xy / depthResolution).x * 2.0 - 1.0;
-  float scene = 2.0 * nearFar.x * nearFar.y / (nearFar.y + nearFar.x - d * (nearFar.y - nearFar.x));
   return clamp((scene - vViewDepth) / featherDepth, 0.0, 1.0);
 }
 
 void main() {
+  // The world's depth test, done here: the canvas this draws on holds none of it.
+  float scene = sceneViewDepth();
+  if (vViewDepth > scene) discard;
   vec4 texel = texture2D(map, vUv);
 #if defined(OUTPUT_ALPHA) || defined(OUTPUT_LUMA)
   // T5's additive sets multiply colour by alpha in the shader and blend one/one.
   // The game does it in display space, so the colour is encoded first and the
   // output transfer skipped: encoding a product is not the product of encodings.
   vec3 rgb = linearToOutputTexel(vec4(texel.rgb * vColor.rgb, 1.0)).rgb;
-  float a = texel.a * vColor.a * softness();
+  float a = texel.a * vColor.a * softness(scene);
   #ifdef OUTPUT_LUMA
     a *= dot(rgb, vec3(0.25, 0.5, 0.25));
   #endif
   gl_FragColor = vec4(rgb * a, a);
 #else
-  float soft = softness();
+  float soft = softness(scene);
   gl_FragColor = texel * vColor;
   gl_FragColor.a *= soft;
   // The materials' alpha test is gt0: only a fully transparent texel is dropped.
@@ -290,9 +290,7 @@ export function fxMaterial(map: THREE.Texture, opts: FxMaterialOptions, atlas: {
         map: { value: null },
         atlasGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
         featherDepth: { value: opts.featherDepth },
-        sceneDepth: { value: null },
-        depthResolution: { value: new THREE.Vector2(1, 1) },
-        nearFar: { value: new THREE.Vector2(0.1, 200) },
+        ...sceneDepthUniforms(),
         softEnabled: { value: 0 },
         eyeOffset: { value: opts.eyeOffset ?? 0 },
         falloff: { value: new THREE.Vector3(opts.falloff?.scale ?? 0, opts.falloff?.bias ?? 0, opts.falloff ? 1 : 0) },
@@ -311,7 +309,8 @@ export function fxMaterial(map: THREE.Texture, opts: FxMaterialOptions, atlas: {
     transparent: true,
     toneMapped: false,
     depthWrite: false,
-    depthTest: true,
+    // Tested against the frame's depth in the shader (sceneDepth.ts).
+    depthTest: false,
     // The particle quads are built facing the camera, but their winding is not
     // guaranteed once rotated or laid along a tail; nothing is gained by culling.
     side: THREE.DoubleSide,
@@ -438,13 +437,10 @@ export class FxBatch {
     return (this.material.uniforms.featherDepth!.value as number) > 0;
   }
 
-  /** Point the soft-particle fade at this frame's scene depth. */
-  useDepth(depth: { texture: THREE.Texture; resolution: THREE.Vector2; nearFar: THREE.Vector2 }): void {
-    const u = this.material.uniforms;
-    u.sceneDepth!.value = depth.texture;
-    (u.depthResolution!.value as THREE.Vector2).copy(depth.resolution);
-    (u.nearFar!.value as THREE.Vector2).copy(depth.nearFar);
-    u.softEnabled!.value = 1;
+  /** Test against this frame's depth, and fade by it where the sheet is feathered and `soft`. */
+  useDepth(target: FrameTarget, soft: boolean): void {
+    bindSceneDepth(this.material.uniforms, target);
+    this.material.uniforms.softEnabled!.value = soft ? 1 : 0;
   }
 
   dispose(): void {

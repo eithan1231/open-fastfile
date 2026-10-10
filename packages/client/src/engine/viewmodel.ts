@@ -82,7 +82,7 @@ const NO_KICK = { pitch: 0, yaw: 0 };
  * overlay in both games, which is that same square on any aspect, so they are
  * not carried.
  *
- * Nothing here is tone-mapped: the world pass has already written encoded
+ * Nothing here is tone-mapped: the output pass has already written encoded
  * colour, and this multiplies onto it the way the game multiplies onto a
  * finished frame.
  */
@@ -331,14 +331,16 @@ export class Viewmodel {
   }
 
   /**
-   * The pipeline's "viewmodel" pass. Draws over what the world pass left in the
-   * framebuffer: its colour stays, its depth goes. Scoped, the picture is drawn
-   * *instead of* the hands and the gun, multiplied onto the frame the world pass
-   * left — the scope's tube is black in the image, so multiplying is what makes
-   * it a tube.
+   * The pipeline's "viewmodel" pass, last: draws over the finished frame on the
+   * canvas with its depth cleared. Scoped, the picture is drawn *instead of* the
+   * hands and the gun, multiplied onto that frame — the scope's tube is black in
+   * the image, so multiplying is what makes it a tube.
    */
   readonly pass: RenderPass = {
-    render: ({ renderer }) => this.render(renderer),
+    render: ({ renderer }) => {
+      renderer.setRenderTarget(null);
+      this.render(renderer);
+    },
     prewarm: async ({ renderer }) => {
       if (this.rig) {
         await renderer.compileAsync(this.scene, this.camera);

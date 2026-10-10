@@ -8,6 +8,8 @@
 // handful of uniforms are all that differ, and three uploads the buffer once.
 
 import * as THREE from "three";
+import type { FrameTarget } from "../render/target.js";
+import { bindSceneDepth, SCENE_DEPTH_GLSL, sceneDepthUniforms } from "./sceneDepth.js";
 import { keepAlpha } from "../../scene/importedMaterials.js";
 import { seeded } from "./library.js";
 
@@ -101,6 +103,7 @@ uniform vec2 size;
 uniform vec3 streak;
 
 varying vec2 vUv;
+varying float vViewDepth;
 
 void main() {
   vec3 world = origin + scale * (axes * point);
@@ -122,6 +125,7 @@ void main() {
   }
   mvPosition.xy += (corner.x - 0.5) * a + (corner.y - 0.5) * b;
   gl_Position = projectionMatrix * mvPosition;
+  vViewDepth = -mvPosition.z;
 
   // D3D's v = 0 is the image's top row and runs along +b, screen up: a cloud's
   // flake is drawn upside down against a sprite's.
@@ -132,14 +136,17 @@ void main() {
 const FRAGMENT = /* glsl */ `
 uniform sampler2D map;
 uniform vec4 color;
-
+${SCENE_DEPTH_GLSL}
 varying vec2 vUv;
+varying float vViewDepth;
 
 vec3 srgbToLinear(vec3 c) {
   return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThanEqual(c, vec3(0.04045))));
 }
 
 void main() {
+  // The world's depth test, done here: the canvas this draws on holds none of it.
+  if (vViewDepth > sceneViewDepth()) discard;
   vec4 c = texture2D(map, vUv) * vec4(srgbToLinear(color.rgb), color.a);
 #ifdef OUTPUT_ALPHA
   // particle_cloud_add: colour times alpha, blended one/one, in display space.
@@ -242,6 +249,7 @@ export class FxCloudBatch {
         scale: { value: 1 },
         size: { value: new THREE.Vector2(1, 1) },
         streak: { value: new THREE.Vector3() },
+        ...sceneDepthUniforms(),
       },
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
@@ -249,6 +257,8 @@ export class FxCloudBatch {
       transparent: true,
       toneMapped: false,
       depthWrite: false,
+      // Tested against the frame's depth in the shader (sceneDepth.ts).
+      depthTest: false,
       side: THREE.DoubleSide,
       blending: THREE.CustomBlending,
       blendEquation: THREE.AddEquation,
@@ -308,6 +318,13 @@ export class FxCloudBatch {
 
   get count(): number {
     return this.n;
+  }
+
+  /** Test the drawn meshes against this frame's depth. Each has its own uniforms, cloned. */
+  useDepth(target: FrameTarget): void {
+    for (let i = 0; i < this.n; i++) {
+      bindSceneDepth(this.meshes[i]!.material.uniforms, target);
+    }
   }
 
   /** The shared attributes belong to whoever built them; each mesh's own geometry and material are freed here. */

@@ -254,8 +254,8 @@ export class App {
     // the frozen-matrix rules that apply to everything in it.
     this.audio.attachTo(this.viewer.camera);
     // Beside the world rather than inside it, because the world root's matrices are frozen.
-    this.viewer.roots.keep(this.remotes.root, this.fx.root, this.audio.root, this.corpses.root, this.actors.root);
-    this.viewer.pipeline.use("effects depth", this.fx.depthPass);
+    this.viewer.roots.keep(this.remotes.root, this.audio.root, this.corpses.root, this.actors.root);
+    this.viewer.pipeline.use("effects", this.fx.pass);
     this.viewer.pipeline.use("viewmodel", this.viewmodel.pass);
     // The moment this client last drew other players at, so the server can judge a
     // shot against what the shooter actually saw rather than against the present.

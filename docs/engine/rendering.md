@@ -9,15 +9,32 @@ long version.
 one of its four mechanisms rather than into the viewer's loop or `App`.
 
 - **Passes** (`pipeline.ts`). A frame is the named passes in `PASSES`, in that
-  order: `effects depth`, `world` (the shadow map renders inside it, when
-  invalidated), `viewmodel`. A feature fills its slot with
-  `viewer.pipeline.use(name, pass)`; a new kind of pass is a new name in the
-  list, which is where its order is decided. Each pass is timed under its name
-  (the dev stats' `passes` line), CPU submission only.
+  order. A feature fills its slot with `viewer.pipeline.use(name, pass)`; a new
+  kind of pass is a new name in the list, which is where its order is decided.
+  Each pass is timed under its name (the dev stats' `passes` line), CPU
+  submission only.
+  1. **world** draws the scene into the frame target (`target.ts`): linear, half
+     float, 4× multisampled, keeping its depth as a texture. No material tone-maps
+     or fogs here; the shadow map renders inside it when invalidated.
+  2. **output** (`output.ts`) draws that onto the canvas in three's own order:
+     tone mapping (with the grade), the sRGB encode, then fog from the depth — so
+     a fully fogged hill is the sky's colour, as it is when three fogs a material.
+     The sky's pixels (depth still 1) pass through untouched, as
+     `scene.background` always has. This is the one program the grade is in.
+  3. **effects** draws particles onto the canvas after that, in display space
+     and untouched by tone mapping, as [effects](#effects) explains; with no world
+     depth on the canvas, each tests against the target's depth in its shader.
+  4. **viewmodel** draws the hands and weapon over everything, as before.
+
+  One scene draw a frame is the point: the effects' soft fade used to draw the
+  whole scene a second time to get its depth, which halved the frame rate
+  wherever a map had smoke.
+
 - **The scene's contents** (`roots.ts`). `viewer.roots` is the only thing that
   adds to or removes from the world scene: `setWorld` swaps a built world and
-  its sky, `keep` adds a root that lives beside every world for the page
-  (effects, peers, corpses, actors, sound, the debug overlays).
+  its sky, `keep` adds a root that lives beside every world for the page (peers,
+  corpses, actors, sound, the debug overlays). It also holds the world's fog,
+  which is deliberately not the scene's: the output pass applies it.
 - **Shader patches** (`patches.ts`). A per-material change to a three shader is
   a named `ShaderPatch` added with `addPatch`. A material runs its patches in
   order and keys its program on all of theirs, so two features compose; never
@@ -27,7 +44,7 @@ one of its four mechanisms rather than into the viewer's loop or `App`.
 - **Chunks** (`chunks.ts`, `grade.ts`). Changes to three's own chunks reach every
   program, so they are installed once by the `Viewer` before any material
   compiles — never on import. The ranged-light falloff is one; the grade is the
-  other, set per world.
+  other, set per world, and reaching only the output pass and the viewmodel.
 
 **The prewarm.** The last load step, `viewer.prewarm()`, does a first frame's
 work behind the loading screen: each pass compiles its own programs for its own
@@ -82,14 +99,12 @@ material with an unlit `MeshBasicMaterial` using the game's equation:
   no alpha; screen is `ONE_MINUS_DST_COLOR/ONE`.
 - **Unlit**: the result is `decal × wall` and the wall is already lit, so a lit
   decal applies the lighting twice and goes black in sunlight.
-- **Not tone mapped**: three tone-maps inside each material before the GPU
-  blends, so a multiply decal would compute `ACES(decal) × ACES(wall)` instead
-  of `ACES(decal × wall)`. At exposure 0.35 a 0.2 decal over a 2.0 wall lands
-  4.2× too dark (7.7× over 4.0), worse the brighter the wall: black blobs on lit
-  surfaces. Exposure cannot fix this.
-- **Not fogged**: fog mixes toward the sky colour, which no decal equation
-  treats as "no effect", so a stain fogged halfway darkens its whole quad and
-  reappears at range as a grey rectangle. The wall under it is already fogged.
+- **Not tone mapped, not fogged**, and needing neither: the world pass does
+  neither, so the GPU blends `decal × wall` in linear light and the
+  [output pass](#the-frame) tone-maps and fogs the product once. Doing either
+  per material would be wrong: `ACES(decal) × ACES(wall)` lands a 0.2 decal over
+  a 2.0 wall 4.2× too dark at exposure 0.35, and fog mixes toward the sky colour,
+  which no decal equation treats as "no effect".
 - **Faded by vertex alpha** toward the equation's identity (white for multiply,
   black for add and screen) in the fragment shader, because none of these
   equations reads alpha. Without it every decal shows the hard edge of its quad.
@@ -164,11 +179,11 @@ is the switch to per-frame fitting once something animates.
 
 A world's `grade` (a CoD `.vision` film tweak for imported maps) is compiled
 into three's tone-mapping stage by overriding `CustomToneMapping`'s GLSL
-(`engine/render/grade.ts`). A post-process pass would cost a full-screen resolve each
-frame and lose MSAA. The override is global to the page, and the grade is part
-of every shader, so it must be set before materials compile. Its `gamma` is the
-last step, after tone mapping and the tints and before three's sRGB encode, so
-it bends the displayed curve without touching lighting.
+(`engine/render/grade.ts`), which the [output pass](#the-frame) runs once per
+pixel; the viewmodel, drawn straight onto the canvas, tone-maps through the same
+chunk. The output pass keys its program on the grade, so a new grade recompiles
+it. Its `gamma` is the last step, after tone mapping and the tints and before
+three's sRGB encode, so it bends the displayed curve without touching lighting.
 
 ## Quality levels
 
@@ -234,9 +249,9 @@ world into the same framebuffer with only the depth cleared (the `viewmodel`
   (horizontal at 4:3, 51.08° vertical); the world camera's 70° vertical would
   shrink and stretch them. Its near plane is 1 cm: hands come that close in a
   reload. Aiming zooms both cameras by the weapon's `adsZoomFov`.
-- **The world's grade and exposure** reach it unasked: tone mapping is the
-  renderer's, and the grade is compiled into every shader, the viewmodel's
-  built after it. It has no fog.
+- **The world's grade and exposure** reach it unasked: it draws onto the canvas,
+  so its materials tone-map with the renderer's tone mapping, and the grade is
+  in that chunk, installed before the viewmodel is built. It has no fog.
 - **Lit where the player stands.** Its scene holds copies of the world's sun
   and ambient light, and the rig is drawn at the eye's world position. Each sun
   copy shares its source's `shadow`, so the gun samples the world's own shadow
@@ -252,7 +267,7 @@ world into the same framebuffer with only the depth cleared (the `viewmodel`
   drawn in, so multiplying is what makes the black a tube; it is a square of the
   screen's height, centred, and the quad is the whole screen with the UVs making
   the square — the texture is clamped and its edge is black, so the bars either
-  side cost nothing. Nothing about it is tone-mapped: the world pass has already
+  side cost nothing. Nothing about it is tone-mapped: the output pass has already
   written encoded colour, as the game's own 2D pass assumes. It is all or nothing
   at `ads === 1`, as the game is — fading between a gun and a scope would show
   the receiver filling a 15° field of view on the way — and it waits for the
@@ -471,10 +486,11 @@ established from `iw5mp.exe`, is in
 [docs/cod/reference.md](../cod/reference.md#effects-fx) and
 [docs/cod/effects.md](../cod/effects.md); this section is how the engine hosts it.
 
-- **Beside the world, never in it.** `FxSystem` owns a root the viewer's
-  [scene roots](#the-frame) keep beside every world, next to the remote players'. Particles are written in **world space**, so that
-  root and its meshes never move and need no matrix update — effects sidestep
-  the frozen-matrix rules below rather than opting out of them.
+- **Beside the world, never in it.** `FxSystem` owns a scene of its own, which
+  the `effects` [pass](#the-frame) draws after the world has been tone-mapped
+  onto the canvas. Particles are written in **world space**, so its root and
+  meshes never move and need no matrix update — effects sidestep the
+  frozen-matrix rules below rather than opting out of them.
 - **Simulated on the CPU.** The game's element logic is branchy (per-particle
   ranges, flag-selected frames, runners), so the runtime is one interpreter
   rather than a second copy in a shader. That also makes `seekTo` exact.
@@ -489,11 +505,9 @@ established from `iw5mp.exe`, is in
 - **Blending is the material's own**, factor for factor, with straight alpha,
   and `keepAlpha` so a sheet never punches through the page. Both halves of the
   game's soft-particle fade are in: near the camera, and where a sheet meets
-  geometry. The second reads the scene's depth, which the `effects depth`
-  [pass](#the-frame) (`fx/depth.ts`) renders into a half-resolution texture on
-  any frame a feathered sheet is drawn — by drawing the whole scene again with
-  its real materials, which roughly doubles a frame's cost wherever a map has
-  smoke.
+  geometry. The second reads the frame target's depth (`fx/sceneDepth.ts`),
+  which every sheet also tests against in its shader instead of the GPU's depth
+  test: the canvas it draws on holds none of the world's depth.
 - **Deterministic.** Every random comes from a generator seeded by the placement,
   element and particle, never `Math.random`. A held screenshot pose calls
   `seekTo(POSE_TIME)`: a replay from zero in fixed steps, so the shot is the same

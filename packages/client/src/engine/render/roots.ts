@@ -16,6 +16,7 @@ export interface WorldSky {
 
 export class SceneRoots {
   private world: THREE.Object3D | undefined;
+  private worldFog: WorldSky["fog"] = null;
 
   constructor(private readonly scene: THREE.Scene) {}
 
@@ -34,6 +35,15 @@ export class SceneRoots {
       this.scene.add(root);
     }
     this.scene.background = sky.background;
-    this.scene.fog = sky.fog;
+    this.worldFog = sky.fog;
+  }
+
+  /**
+   * The world's fog. Not the scene's: three fogs a material after tone mapping,
+   * so the output pass applies it from the frame's depth once the frame is
+   * tone-mapped (render/output.ts), and the effects pass hands it to particles.
+   */
+  get fog(): WorldSky["fog"] {
+    return this.worldFog;
   }
 }

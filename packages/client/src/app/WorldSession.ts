@@ -209,7 +209,7 @@ export class WorldSession {
           this.assets.disposeRetired();
         },
       ],
-      // The grade is compiled into every shader, so it must precede the materials.
+      // Before the viewmodel step: the grade is compiled into its materials, as into the output pass.
       ["grade", (m) => viewer.setGrade(m.world.grade)],
       [
         "build",

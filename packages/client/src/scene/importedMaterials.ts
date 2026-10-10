@@ -144,7 +144,7 @@ export function blendedMaterialFor(source: THREE.Material, mode: string): THREE.
  * own alpha is its fade weight, not coverage — and three writes CustomBlending's
  * alpha factors from the colour ones unless they are set, so `dst.a *= src.a`
  * punches a decal-shaped hole in the frame that the compositor fills with the
- * page behind it. ZERO/ONE keeps `dst.a` exactly as the world pass left it.
+ * page behind it. ZERO/ONE keeps `dst.a` exactly as the pass before it left it.
  */
 export function keepAlpha(mat: THREE.Material): void {
   mat.blendEquationAlpha = THREE.AddEquation;

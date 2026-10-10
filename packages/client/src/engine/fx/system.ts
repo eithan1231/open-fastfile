@@ -9,7 +9,6 @@
 import * as THREE from "three";
 import type { FxBatch } from "./batch.js";
 import { emptyCloudView, type FxCloudBatch } from "./cloud.js";
-import { SceneDepth } from "./depth.js";
 import type { RenderPass } from "../render/pipeline.js";
 import { emptyView, FX_FLAG_FRUSTUM_CULL, FxEmitter, type EmitterPlacement, type ParticleView } from "./emitter.js";
 import { RAND, type FxEffect, type FxGame, type FxLibrary, type Range } from "./library.js";
@@ -87,6 +86,8 @@ export interface FxBuild {
 }
 
 export class FxSystem {
+  /** Drawn by the pipeline's "effects" pass, after the world has been tone-mapped onto the canvas. */
+  readonly scene = new THREE.Scene();
   readonly root = new THREE.Group();
   /** Stops time, so a held screenshot pose renders the same frame every run. */
   paused = false;
@@ -98,8 +99,7 @@ export class FxSystem {
   private batches = new Map<string, FxBatch>();
   private clouds = new Map<string, FxCloudBatch>();
   private cloudView = emptyCloudView();
-  private depth: SceneDepth | undefined;
-  /** Soft particles: a second, depth-only draw of the world whenever a feathered sheet is on screen. */
+  /** Soft particles: feathered sheets fade where they meet the world, by the frame's depth. */
   soft = true;
   private batchOf = new Map<string, string>();
   private view: ParticleView = emptyView();
@@ -108,6 +108,8 @@ export class FxSystem {
   constructor() {
     this.root.name = "fx";
     this.root.matrixAutoUpdate = false;
+    this.scene.matrixWorldAutoUpdate = false;
+    this.scene.add(this.root);
   }
 
   /** Every element type the runtime draws. Anything else is counted, never substituted. */
@@ -350,31 +352,32 @@ export class FxSystem {
   }
 
   /**
-   * The pipeline's "effects depth" pass: the scene's depth for this frame's
-   * feathered sheets, if any are drawn. A pass, so it runs after `update` and
-   * sees the frame's final camera.
+   * The pipeline's "effects" pass. After the output pass, onto the canvas, so a
+   * sheet blends in display space and skips tone mapping as the game's do
+   * (docs/engine/rendering.md#effects); each tests against the frame's depth in
+   * its shader, and a feathered one fades by it.
    */
-  readonly depthPass: RenderPass = {
-    render: ({ renderer, scene, camera }) => {
-      if (!this.soft) {
-        return;
+  readonly pass: RenderPass = {
+    render: ({ renderer, camera, target, roots }) => {
+      this.scene.fog = roots.fog;
+      for (const batch of this.batches.values()) {
+        if (batch.count > 0) {
+          batch.useDepth(target, this.soft && batch.feathered);
+        }
       }
-      const feathered = [...this.batches.values()].filter((b) => b.feathered && b.count > 0);
-      if (feathered.length === 0) {
-        return;
+      for (const cloud of this.clouds.values()) {
+        cloud.useDepth(target);
       }
-      this.depth ??= new SceneDepth();
-      this.depth.render(renderer, scene, camera, this.root);
-      for (const batch of feathered) {
-        batch.useDepth(this.depth);
-      }
+      const autoClear = renderer.autoClear;
+      renderer.autoClear = false;
+      renderer.setRenderTarget(null);
+      renderer.render(this.scene, camera);
+      renderer.autoClear = autoClear;
     },
-    // Whenever the world has a feathered sheet at all: none may be alive yet at load.
-    prewarm: async ({ renderer, scene, camera }) => {
-      if (this.soft && [...this.batches.values()].some((b) => b.feathered)) {
-        this.depth ??= new SceneDepth();
-        await this.depth.prewarm(renderer, scene, camera, this.root);
-      }
+    prewarm: async ({ renderer, camera, roots }) => {
+      this.scene.fog = roots.fog;
+      renderer.setRenderTarget(null);
+      await renderer.compileAsync(this.scene, camera);
     },
   };
 

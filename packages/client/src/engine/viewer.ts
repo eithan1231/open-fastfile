@@ -10,6 +10,8 @@ import { applyGrade } from "./render/grade.js";
 import { installChunks } from "./render/chunks.js";
 import { FramePipeline, type PassContext } from "./render/pipeline.js";
 import { SceneRoots } from "./render/roots.js";
+import { FrameTarget } from "./render/target.js";
+import { OutputPass } from "./render/output.js";
 import type { ResolvedGrade } from "@3d/shared/dsl/resolved.js";
 
 /** Vertical field of view, degrees. */
@@ -34,6 +36,8 @@ export class Viewer {
 
   private frameCallbacks: Array<(dt: number, elapsed: number) => void> = [];
   private readonly frame: PassContext;
+  private readonly target = new FrameTarget();
+  private readonly output = new OutputPass();
   private lastTime = performance.now();
   private rafId = 0;
   private quality: QualityLevel = loadQualityLevel();
@@ -70,12 +74,25 @@ export class Viewer {
     this.camera.position.set(0, 1.7, 3);
 
     this.roots = new SceneRoots(this.scene);
-    this.frame = { renderer: this.renderer, scene: this.scene, camera: this.camera };
+    this.frame = { renderer: this.renderer, scene: this.scene, camera: this.camera, target: this.target, roots: this.roots };
     this.pipeline.use("world", {
-      render: ({ renderer, scene, camera }) => renderer.render(scene, camera),
-      prewarm: async ({ renderer, scene, camera }) => {
-        await renderer.compileAsync(scene, camera);
+      render: ({ renderer, scene, camera, target }) => {
+        target.fit(renderer, camera);
+        renderer.setRenderTarget(target.target);
+        renderer.render(scene, camera);
       },
+      // compileAsync picks every program synchronously and only then waits, so the
+      // canvas is bound again before the wait: a hot reload loads with the loop running.
+      prewarm: async ({ renderer, scene, camera, target }) => {
+        renderer.setRenderTarget(target.target);
+        const ready = renderer.compileAsync(scene, camera);
+        renderer.setRenderTarget(null);
+        await ready;
+      },
+    });
+    this.pipeline.use("output", {
+      render: ({ renderer, target, roots }) => this.output.render(renderer, target, roots.fog),
+      prewarm: ({ renderer }) => this.output.prewarm(renderer),
     });
 
     this.resize();
@@ -174,9 +191,10 @@ export class Viewer {
     this.invalidateShadows();
   }
 
-  /** Install a world's colour grading, or clear it. Must precede building its materials: the grade is compiled into every shader. */
+  /** Install a world's colour grading, or clear it: the output pass and the viewmodel are what it reaches. */
   setGrade(grade: ResolvedGrade | undefined): void {
     applyGrade(this.renderer, grade);
+    this.output.setGrade(grade ? JSON.stringify(grade) : "none");
   }
 
   setExposure(value: number): void {
@@ -203,6 +221,8 @@ export class Viewer {
     window.removeEventListener("resize", this.resize);
     this.containerObserver.disconnect();
     this.stop();
+    this.output.dispose();
+    this.target.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

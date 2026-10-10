@@ -60,27 +60,14 @@ These are what the stages establish, and what review holds new work to.
 
 ### 1. Rendering — `client/src/engine/render/`
 
-The mechanisms are in place ([the frame](engine/rendering.md#the-frame)):
-named passes, scene roots, the patch composer, chunks installed by the viewer,
-and the prewarm. What remains is stage 2's:
+Done in stages 1 and 2 ([the frame](engine/rendering.md#the-frame)). One piece
+is left for stage 4, which owns the list it needs:
 
-- **The world pass keeps its depth.** It renders into an offscreen, multisampled
-  target that keeps its depth; the effects read that depth for the soft fade
-  instead of the `effects depth` pass drawing the scene again; an `output` pass
-  applies tone mapping and the grade once, to the finished frame, in place of
-  the grade chunk. This also retires the save-and-restore in `fx/depth.ts` and
-  the `autoClear` juggling in `Viewmodel.render`.
 - **The per-frame update becomes a named list** as the passes are (animator,
   controls, effects, remotes, actors, viewmodel pose, presenters, audio
   listener, shadow fit). Today this order lives inside `App.frame` and depends
   on comments; effects run _before_ the camera moves and are judged against last
-  frame's camera. Done with the app layer (stage 4), which owns that list.
-
-**Risks to check in stage 2:** a multisampled target's depth must resolve to a
-texture (three r169 supports it; to be proven on our GPU path); the sky is
-`scene.background`, which three never tone-maps, so an `output` pass would grade
-it unless it is drawn after; the effects' materials stop including tone mapping
-themselves.
+  frame's camera.
 
 ### 2. The game boundary
 
@@ -155,17 +142,17 @@ games and the shot-trace diagnostic move out.
 Checked against the code. Each is fixed in the stage that moves its code, with a
 test.
 
-| Defect                                                                                                                | Where                        | Status                                                                                                      |
-| --------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| A dropped match connection is never cleared, so a reload never rejoins and input is sent into a dead channel          | `App.ts` 697–709             | confirmed                                                                                                   |
-| Lag-compensation counters count once per candidate player, not per shot, so `/healthz` grows with roster size         | `match.ts` 2344, 2187        | confirmed                                                                                                   |
-| A world entered before the weapon catalogue loads keeps an empty registry for the session, hot reloads included       | `App.ts` 400, `WorldSession` | by reading                                                                                                  |
-| Layers and flag wind on one material: the second overwrote the first                                                  | `layers.ts`, `flag.ts`       | **fixed in stage 1** (patch composer, with a test); a blend replacement deliberately starts with no patches |
-| A grade change on hot reload keeps old shader programs; page-lifetime materials can carry a grade into the next world | `grade.ts`                   | by reading                                                                                                  |
-| `SceneDepth` is never disposed                                                                                        | `fx/system.ts`               | confirmed                                                                                                   |
-| Effects judged against last frame's camera                                                                            | `App.frame` order            | confirmed                                                                                                   |
-| A runtime quality change misses the viewmodel's shadow filter and anisotropy                                          | `quality.ts`                 | by reading                                                                                                  |
-| Leaving a match fires no trigger-leave or script hook                                                                 | `match.ts` 906               | by reading                                                                                                  |
+| Defect                                                                                                          | Where                        | Status                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A dropped match connection is never cleared, so a reload never rejoins and input is sent into a dead channel    | `App.ts` 697–709             | confirmed                                                                                                                                         |
+| Lag-compensation counters count once per candidate player, not per shot, so `/healthz` grows with roster size   | `match.ts` 2344, 2187        | confirmed                                                                                                                                         |
+| A world entered before the weapon catalogue loads keeps an empty registry for the session, hot reloads included | `App.ts` 400, `WorldSession` | by reading                                                                                                                                        |
+| Layers and flag wind on one material: the second overwrote the first                                            | `layers.ts`, `flag.ts`       | **fixed in stage 1** (patch composer, with a test); a blend replacement deliberately starts with no patches                                       |
+| A grade change on hot reload kept old shader programs                                                           | `grade.ts`                   | **fixed for the world in stage 2** (the output pass is keyed on the grade); the viewmodel's materials can still keep the last grade until rebuilt |
+| `SceneDepth` is never disposed                                                                                  | `fx/system.ts`               | **gone in stage 2**: the depth pass no longer exists                                                                                              |
+| Effects judged against last frame's camera                                                                      | `App.frame` order            | confirmed                                                                                                                                         |
+| A runtime quality change misses the viewmodel's shadow filter and anisotropy                                    | `quality.ts`                 | by reading                                                                                                                                        |
+| Leaving a match fires no trigger-leave or script hook                                                           | `match.ts` 906               | by reading                                                                                                                                        |
 
 Checked and **not** a defect: "a seated player gets no snapshots" — seated
 players are members, so the game still sends.
@@ -203,9 +190,20 @@ compared with the stage before.
    The prewarm now does a first frame's work at load, so loading takes up to a
    second longer and the first frames of play do none of it.
 
-2. **Rendering fix.** The world pass keeps its depth, effects read it, the grade
-   moves to `output`. Changes pixels slightly; you review screenshots. Expected:
-   theater with effects near 70 fps.
+2. **Rendering fix** — done. The world is drawn once, into a target that keeps
+   its depth; an output pass tone-maps, grades and fogs it in three's own order;
+   effects draw after it and test against that depth.
+
+   | World           | FPS (stage 1 → 2) | Draws       |
+   | --------------- | ----------------- | ----------- |
+   | theater-bo1     | 27 → 68           | 2528 → 1278 |
+   | russianbase-bo1 | 40 → 102          | 2026 → 1036 |
+   | dome-mw3        | 103 → 233         | 560 → 292   |
+
+   Pixels: 3–13% changed, mostly by a level or two. Edges are resolved before
+   tone mapping, so high-contrast silhouettes differ by a pixel; glass, blended
+   in linear light now, is slightly clearer.
+
 3. **Game boundary.** Effects adapter and exporter properties, lint rule.
 4. **Client app layer.** The table in §3, with the app-layer defects.
 5. **Game server.** §4, with its defects.

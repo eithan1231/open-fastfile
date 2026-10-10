@@ -7,14 +7,19 @@
 // pass rather than the world's alone (docs/engine/rendering.md#the-frame).
 
 import type * as THREE from "three";
+import type { FrameTarget } from "./target.js";
+import type { SceneRoots } from "./roots.js";
 
 /** Every pass a frame can run, in order. A new pass is a new name here. */
 export const PASSES = [
-  // The scene's depth for soft particles (engine/fx/depth.ts); only on frames with a feathered sheet.
-  "effects depth",
-  // The built world and everything kept beside it, shadow map included when invalidated.
+  // The built world and everything kept beside it, into the frame target (render/target.ts),
+  // linear and with its depth kept; the shadow map renders here when invalidated.
   "world",
-  // Hands and weapon over the world, or the scope picture instead (engine/viewmodel.ts).
+  // The frame, tone-mapped and graded, onto the canvas (render/output.ts).
+  "output",
+  // Particles, onto the canvas in display space, tested against the frame's depth (engine/fx/).
+  "effects",
+  // Hands and weapon over everything, or the scope picture instead (engine/viewmodel.ts).
   "viewmodel",
 ] as const;
 
@@ -24,6 +29,10 @@ export interface PassContext {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
+  /** The world pass's output: colour for the output pass, depth for whatever reads it. */
+  readonly target: FrameTarget;
+  /** What the scene holds, and the world's fog. */
+  readonly roots: SceneRoots;
 }
 
 export interface RenderPass {
