@@ -23,7 +23,7 @@ import {
   START_POINTS,
   zombieHealth,
   zombiesScript,
-} from "@3d/shared/game/scripts/zombies.js";
+} from "@3d/shared/game/scripts/zombies/base.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";

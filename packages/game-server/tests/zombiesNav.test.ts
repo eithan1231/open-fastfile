@@ -26,7 +26,7 @@ import { SEEK_NEAREST } from "@3d/shared/game/bots/brains/seekNearest.js";
 import { catalogueViewOf, type CatalogueView } from "@3d/shared/game/catalogueView.js";
 import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
 import { zombiesGametype } from "@3d/shared/game/gametypes/zombies.js";
-import { FIRST_ROUND_DELAY, ROUND_BREAK, zombiesScript } from "@3d/shared/game/scripts/zombies.js";
+import { FIRST_ROUND_DELAY, ROUND_BREAK, zombiesScript } from "@3d/shared/game/scripts/zombies/base.js";
 import type { Script } from "@3d/shared/game/hooks.js";
 import { createApiClient } from "@3d/shared/protocol/api.js";
 import type { HttpFetch } from "@3d/shared/protocol/http.js";

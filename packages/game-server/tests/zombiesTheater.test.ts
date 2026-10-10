@@ -21,7 +21,7 @@ import { volumeCentre } from "@3d/shared/game/volumes.js";
 import type { UsableThing } from "@3d/shared/game/focus.js";
 import { zombiesGametype } from "@3d/shared/game/gametypes/zombies.js";
 import type { Script } from "@3d/shared/game/hooks.js";
-import { FIRST_ROUND_DELAY, spawnersOf, zombiesScript } from "@3d/shared/game/scripts/zombies.js";
+import { FIRST_ROUND_DELAY, spawnersOf, zombiesScript } from "@3d/shared/game/scripts/zombies/base.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
