@@ -26,8 +26,10 @@
 // which is the same number on both ends, since both read it from the catalogue.
 
 import { AIM_LIMIT, RUN_DIRECTIONS, type CharacterRole } from "./characterDef.js";
-import { UNIT } from "./ladder.js";
-import { LAND_RECOVERY, mantleDuration, type MovementState } from "./movement.js";
+import { mantleDuration } from "./mantle.js";
+import type { MovementState } from "./movement.js";
+import { LAND_RECOVERY } from "./stepSlide.js";
+import { UNIT } from "./units.js";
 import type { WeaponData } from "./weapon.js";
 
 /** How far the feet climb in one loop of the ladder clips (IW5's own rise and drop). */

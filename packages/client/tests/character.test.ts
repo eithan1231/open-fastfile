@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { createMovement, IDLE_SPEED, RUN_SPEED, type MovementState } from "@3d/shared/sim/movement.js";
+import { createMovement, RUN_SPEED, type MovementState } from "@3d/shared/sim/movement.js";
+import { IDLE_SPEED } from "@3d/shared/sim/gait.js";
 import type { WeaponData } from "@3d/shared/sim/weapon.js";
 import { restingKick, restingViewKick } from "@3d/shared/sim/recoil.js";
 import { buildCharacterRig, CharacterKit, readCharacterSet, type CharacterSet } from "../src/scene/character.js";

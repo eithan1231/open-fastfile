@@ -31,7 +31,8 @@ import type { ResolvedLadder, ResolvedMantle } from "@3d/shared/dsl/resolved.js"
 import { LadderVolumes, type LadderHit } from "@3d/shared/sim/ladder.js";
 import { MantleVolumes, type MantleTarget } from "@3d/shared/sim/mantle.js";
 import type { CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
-import { HEIGHT, ladderAhead, RADIUS, type MovementState } from "@3d/shared/sim/movement.js";
+import { HEIGHT, RADIUS, type MovementState } from "@3d/shared/sim/movement.js";
+import { ladderAhead } from "@3d/shared/sim/ladder.js";
 
 /** The 12 edges of a box as index pairs into the 8 corners `corners` produces. */
 const BOX_EDGES: readonly [number, number][] = [

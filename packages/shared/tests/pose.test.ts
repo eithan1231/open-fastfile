@@ -8,7 +8,10 @@
 // than the body on screen.
 
 import { describe, expect, it } from "vitest";
-import { createMovement, IDLE_SPEED, LAND_RECOVERY, mantleDuration, RUN_SPEED, type MovementState } from "../src/sim/movement.js";
+import { createMovement, RUN_SPEED, type MovementState } from "../src/sim/movement.js";
+import { IDLE_SPEED } from "../src/sim/gait.js";
+import { LAND_RECOVERY } from "../src/sim/stepSlide.js";
+import { mantleDuration } from "../src/sim/mantle.js";
 import { poseLayers, bodyYaw } from "../src/sim/pose.js";
 import { AIM_LIMIT } from "../src/sim/characterDef.js";
 import type { WeaponData } from "../src/sim/weapon.js";
@@ -38,7 +41,6 @@ function settled(s: MovementState): MovementState {
   s.travelRight = (s.velocity.x * cos - s.velocity.z * sin) / speed;
   return s;
 }
-
 
 /**
  * Moving, with the gait blend already all the way up.
@@ -190,7 +192,8 @@ describe("what a body is doing", () => {
   });
 
   it("poses a ladder from the feet's height, so a still climber holds a pose", () => {
-    const at = (y: number, vy: number) => poseLayers(movement({ ladder: { facing: 0 }, feet: { x: 0, y, z: 0 }, velocity: { x: 0, y: vy, z: 0 } }), weapon()).legs[0]!;
+    const at = (y: number, vy: number) =>
+      poseLayers(movement({ ladder: { facing: 0 }, feet: { x: 0, y, z: 0 }, velocity: { x: 0, y: vy, z: 0 } }), weapon()).legs[0]!;
     expect(at(0, 1).role).toBe("climbUp");
     expect(at(0, -1).role).toBe("climbDown");
     // The same height twice is the same pose: nothing is integrating.

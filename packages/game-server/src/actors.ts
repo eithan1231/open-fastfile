@@ -53,7 +53,8 @@ import type { CapsuleResolution, CapsuleWorld, Vec3 } from "@3d/shared/sim/capsu
 import { rayBox } from "@3d/shared/sim/hit.js";
 import type { HitLocation } from "@3d/shared/sim/hitLocations.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { createMovement, GRAVITY, horizontalSpeed, IDLE_SPEED, stepMovement, type MovementParams, type MovementState } from "@3d/shared/sim/movement.js";
+import { createMovement, GRAVITY, horizontalSpeed, stepMovement, type MovementParams, type MovementState } from "@3d/shared/sim/movement.js";
+import { IDLE_SPEED } from "@3d/shared/sim/gait.js";
 import type { NavGraph } from "@3d/shared/nav/graph.js";
 import { NO_INDEX_16 } from "@3d/shared/nav/format.js";
 import { TRAVERSAL_KINDS } from "@3d/shared/nav/vocab.js";

@@ -4,7 +4,7 @@ How the player is kept out of walls, and why there are three colliders rather
 than one.
 
 The code is in **`@3d/shared`**, not the client: `collision/world.ts` (queries),
-`collision/hulls.ts` (prop hulls) and `collision/source.ts` (a map's authored
+`collision/hulls.ts` and `collision/hullIndex.ts` (prop hulls and their grid) and `collision/source.ts` (a map's authored
 collision mesh). That is deliberate. The client predicts its own movement and
 the server re-simulates it to check, so both have to resolve the same capsule
 against the same triangles — two implementations would drift, and the drift
@@ -331,12 +331,12 @@ with. What stops a bullet stops everyone, so the shot tree serves both.
 ### One trace does not walk the hull grid like a capsule does
 
 Prop hulls are bucketed into 8 m cells. A capsule's step spans one to four of
-them, so `nearbyHulls` takes every cell in the step's bounding **rectangle**. A
+them, so `HullIndex.near` takes every cell in the step's bounding **rectangle**. A
 bullet is a long thin segment, and the same rule costs (length / 8 m)² cells: a
 200 m shot touches ~625 of them and collects most of a map's placements —
 interchange has 2,842 — which is slower than having no grid at all.
 
-`hullsAlongSegment` is a 2D DDA along the line instead: O(length) cells. On the
+`HullIndex.along` is a 2D DDA along the line instead: O(length) cells. On the
 test fixture it is the difference between 486 candidates and 80. Nothing about the
 answer changes, which is why `CollisionWorld.traceCandidates` exists — a count is
 the only thing that can see this go wrong.

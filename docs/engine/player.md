@@ -17,17 +17,21 @@ keyboard, mouse ─▶ FirstPersonControls ─▶ PlayerInput ─▶ Player.step
                                                                               that produced it (net/connection)
 ```
 
-| File                                      | What                                                                   |
-| ----------------------------------------- | ---------------------------------------------------------------------- |
-| `shared` `sim/input.ts`                   | `PlayerInput`: one step's command, and the sprint rule                 |
-| `shared` `sim/movement.ts`                | `MovementState` and `stepMovement`: walking, running, jumping, capsule |
-| `shared` `sim/weapon.ts`                  | `WeaponController` and `WeaponData`: the held weapon's state machine   |
-| `shared` `sim/weaponDef.ts`               | `WeaponDef`: what a weapon _is_, read off the exporter's GLB           |
-| `shared` `sim/weaponRegistry.ts`          | The catalogue: every weapon both ends can build, and its `hash`        |
-| `shared` `sim/player.ts`                  | `Player`: steps both on one input; `snapshot` / `restore`              |
-| `shared` `sim/capsule.ts`                 | `CapsuleWorld`: the three.js-free view of collision a step gets        |
-| `shared` `sim/mantle.ts`                  | The world's mantle volumes, and the one query a step makes of them     |
-| `client` `engine/controls/firstPerson.ts` | Devices → `PlayerInput`, the held pose, the camera                     |
+| File                                      | What                                                                  |
+| ----------------------------------------- | --------------------------------------------------------------------- |
+| `shared` `sim/input.ts`                   | `PlayerInput`: one step's command, and the sprint rule                |
+| `shared` `sim/movement.ts`                | `stepMovement`: walking, running, jumping, and which move owns a step |
+| `shared` `sim/movementState.ts`           | `MovementState`, the body, and the numbers more than one move reads   |
+| `shared` `sim/stepSlide.ts`               | The end of a free step: the capsule's move, `stepUp`, `stepDown`      |
+| `shared` `sim/gait.ts`                    | The stride clock and the pose blends                                  |
+| `shared` `sim/ladder.ts`                  | The world's ladders, the grab and the climb                           |
+| `shared` `sim/weapon.ts`                  | `WeaponController` and `WeaponData`: the held weapon's state machine  |
+| `shared` `sim/weaponDef.ts`               | `WeaponDef`: what a weapon _is_, read off the exporter's GLB          |
+| `shared` `sim/weaponRegistry.ts`          | The catalogue: every weapon both ends can build, and its `hash`       |
+| `shared` `sim/player.ts`                  | `Player`: steps both on one input; `snapshot` / `restore`             |
+| `shared` `sim/capsule.ts`                 | `CapsuleWorld`: the three.js-free view of collision a step gets       |
+| `shared` `sim/mantle.ts`                  | The world's mantle volumes, the query a step makes, and the climb     |
+| `client` `engine/controls/firstPerson.ts` | Devices → `PlayerInput`, the held pose, the camera                    |
 
 ## State for the network
 
@@ -348,7 +352,7 @@ The rest, including the two known reasons the two ends disagree today, is in
 
 Movement is Quake's, as CoD's is: keys add acceleration towards a target speed
 and friction takes it away, so speed carries through landings and stops take a
-moment. The numbers are at the top of `player/movement.ts`.
+moment. The numbers are at the top of `sim/movement.ts`.
 
 - **Walk** at 3.2 m/s in any direction. A diagonal is no faster.
 - **Run** at 5.8 m/s, only while holding run **and** moving forward (the sprint
@@ -531,8 +535,8 @@ climb it ([collision](collision.md#what-is-deliberately-not-a-collider)).
 Everything below is IW5's own code, read from `iw5mp.exe` —
 `PM_CheckLadderMove` (0x4230d0), `PM_LadderMove` (0x423380), the jump off
 (0x416780), the view cap (0x420990) — and BO1 runs the same code with the same
-numbers. The constants are in game units at the top of the ladder section of
-`sim/movement.ts`; `reverse/iw5-ladders/` has the derivation.
+numbers. The constants are in game units under "The climb" in
+`sim/ladder.ts`; `reverse/iw5-ladders/` has the derivation.
 
 **Grabbing** (`checkLadder`) is a box trace every step. The probe is the body
 with 6 units off each side and 8 off the bottom, swept 8 units ahead standing or

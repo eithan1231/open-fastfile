@@ -10,13 +10,14 @@
 // between the player and the ladder, which the maps do not build.
 //
 // What a ladder means is in dsl/resolved.ts's `ResolvedLadder`; how the grab
-// and the climb use this, in sim/movement.ts and docs/engine/player.md.
+// and the climb use this, under "The climb" below and in docs/engine/player.md.
 
 import type { ResolvedLadder } from "../dsl/resolved.js";
-import type { Vec3 } from "./capsule.js";
-
-/** One game unit (an inch), metres. The games' ladder numbers are all in these. */
-export const UNIT = 0.0254;
+import type { CapsuleWorld, Vec3 } from "./capsule.js";
+import type { PlayerInput } from "./input.js";
+import { JUMP_SPEED, PLAYER_MOVEMENT, type LadderState, type MovementParams, type MovementState } from "./movementState.js";
+import { integrate } from "./stepSlide.js";
+import { UNIT } from "./units.js";
 
 /**
  * The probe is the body with each horizontal half-width shrunk by this, and its
@@ -26,7 +27,7 @@ export const UNIT = 0.0254;
 const PROBE_INSET = 6 * UNIT;
 const PROBE_FLOOR = 8 * UNIT;
 
-/** The capsule a probe is cut from: sim/movement.ts's, passed in because that module imports this one. */
+/** The capsule a probe is cut from: the part of `MovementParams` a trace reads. */
 export interface LadderBody {
   radius: number;
   height: number;
@@ -148,3 +149,220 @@ export class LadderVolumes {
 
 /** A world with no ladders, so a caller always has one to hold. */
 export const NO_LADDERS = new LadderVolumes([]);
+
+// -- The climb ---------------------------------------------------------------------
+//
+// Every number here is IW5's own, read from `PM_CheckLadderMove` (0x4230d0),
+// `PM_LadderMove` (0x423380) and the jump-off (0x416780), in game units where the
+// game has them. BO1 runs the same code with the same numbers. The derivation is
+// in docs/engine/player.md#ladders.
+
+/** The speed a climb is a share of: the games' `g_speed`, 190 units/s, not our walk speed. */
+const LADDER_SPEED = 190 * UNIT;
+/** Of LADDER_SPEED: straight up or down at full pitch, and sideways. */
+const LADDER_CLIMB_SHARE = 0.5;
+const LADDER_STRAFE_SHARE = 0.2;
+/** Per second, this many times the wanted speed is added toward the wanted velocity. */
+const LADDER_ACCEL = 9;
+/** Off the ground, a mostly-vertical climb is held against the ladder at this speed: what carries a player over the top. */
+const LADDER_PUSH = 50 * UNIT;
+/** How far ahead a probe looks for a ladder, standing and in the air. */
+const LADDER_REACH_GROUND = 8 * UNIT;
+const LADDER_REACH_AIR = 30 * UNIT;
+/** No ladder is grabbed this soon after a jump, and one is only jumped off this long after the last. */
+const LADDER_GRAB_DELAY = 0.3; // s
+export const JUMP_OFF_REPEAT = 0.5; // s
+/** A jump off a ladder keeps this share of the jump's rise, and leaves at this speed along the ground. */
+const JUMP_OFF_RISE = 0.75;
+const JUMP_OFF_SPEED = 128 * UNIT;
+/** In the air on a ladder, the view may turn this far from facing it (`bg_ladder_yawcap`). */
+const LADDER_YAW_CAP = (100 * Math.PI) / 180;
+
+/** The outward normal a ladder's `facing` names, horizontal and unit. */
+export function ladderNormal(ladder: LadderState): { x: number; z: number } {
+  return { x: -Math.sin(ladder.facing), z: -Math.cos(ladder.facing) };
+}
+
+/**
+ * The yaw a player in state `s` may look along, asked for `yaw`: off the ground
+ * on a ladder, no further than LADDER_YAW_CAP from facing it. A step applies it
+ * to the input; the camera applies it to the mouse movement no step has spent
+ * yet (engine/controls/firstPerson.ts), as the game writes the overshoot into
+ * the view's delta angles.
+ */
+export function ladderYaw(s: Readonly<MovementState>, yaw: number): number {
+  if (!s.ladder || s.grounded) {
+    return yaw;
+  }
+  const toward = s.ladder.facing + Math.PI;
+  const delta = Math.atan2(Math.sin(yaw - toward), Math.cos(yaw - toward));
+  if (Math.abs(delta) <= LADDER_YAW_CAP) {
+    return yaw;
+  }
+  return toward + Math.sign(delta) * LADDER_YAW_CAP;
+}
+
+/** Leave the ladder, if on one, without a jump: no other ladder until the ground. */
+function letGo(s: MovementState): void {
+  if (s.ladder) {
+    s.ladder = null;
+    s.ladderLock = true;
+  }
+}
+
+function ladderReach(s: Readonly<MovementState>): number {
+  return s.grounded ? LADDER_REACH_GROUND : LADDER_REACH_AIR;
+}
+
+/**
+ * The ladder side the grab check's probe meets from `s`, or null: along the
+ * view, or straight back into the ladder when climbing one in the air. What the
+ * next step tests, before its other conditions (the lock, a jump's delay, the
+ * forward key), which is what the climb view (`M`) wants to show.
+ */
+export function ladderAhead(s: Readonly<MovementState>, ladders: LadderVolumes, body: MovementParams = PLAYER_MOVEMENT): LadderHit | null {
+  let dirX = -Math.sin(s.yaw);
+  let dirZ = -Math.cos(s.yaw);
+  if (s.ladder && !s.grounded) {
+    const normal = ladderNormal(s.ladder);
+    dirX = -normal.x;
+    dirZ = -normal.z;
+  }
+  return ladders.trace(s.feet, dirX, dirZ, ladderReach(s), body);
+}
+
+/**
+ * Grab a ladder, keep hold of one, or let go: IW5's `PM_CheckLadderMove`.
+ *
+ * A probe goes ahead of the player — along the view on the ground or on the way
+ * to a ladder, but straight back into the ladder once climbing it in the air, so
+ * looking away does not let go. Standing, only a player pushing forward holds
+ * on, which is how stepping off at the bottom works. A first grab checks a
+ * second probe straight in along the side's normal, as the game does.
+ */
+export function checkLadder(s: MovementState, input: PlayerInput, ladders: LadderVolumes, body: MovementParams): void {
+  if (s.ladderLock) {
+    return;
+  }
+  if (s.sinceJump < LADDER_GRAB_DELAY) {
+    letGo(s);
+    return;
+  }
+  const hit = ladderAhead(s, ladders, body);
+  if (hit && (!s.grounded || input.forward > 0)) {
+    if (s.ladder) {
+      return;
+    }
+    if (ladders.trace(s.feet, -hit.x, -hit.z, ladderReach(s), body)) {
+      s.ladder = { facing: Math.atan2(-hit.x, -hit.z) };
+      // Whatever jump brought them here is over; the next ground is not its landing.
+      s.jumped = false;
+      return;
+    }
+  }
+  letGo(s);
+}
+
+/**
+ * One step on a ladder: IW5's `PM_LadderMove`.
+ *
+ * The keys ask for a velocity and it is approached at LADDER_ACCEL. Forward
+ * climbs, and the pitch says which way and how fast: level is 0.625 of full
+ * speed up, about 14.5 degrees down is still, and past 40 degrees down forward
+ * climbs down at full speed. Strafing moves along the ladder. With a key let go,
+ * that half of the velocity stops. No gravity; collision still runs, because a
+ * ladder is steered, not a rail.
+ */
+export function climbLadder(s: MovementState, input: PlayerInput, dt: number, world: CapsuleWorld, body: MovementParams): void {
+  const v = s.velocity;
+  const normal = ladderNormal(s.ladder!);
+  const upScale = Math.max(-1, Math.min(1, (Math.sin(s.pitch) + 0.25) * 2.5));
+  // The view's flat right, laid onto the ladder's plane and left unnormalised:
+  // strafing at a ladder side-on is slower, as it is in the game.
+  const flatRightX = Math.cos(s.yaw);
+  const flatRightZ = -Math.sin(s.yaw);
+  const across = flatRightX * normal.x + flatRightZ * normal.z;
+  const rightX = flatRightX - normal.x * across;
+  const rightZ = flatRightZ - normal.z * across;
+
+  // The game's command scale: a diagonal is no faster than a straight push.
+  const held = Math.hypot(input.forward, input.right);
+  const scale = held > 0 ? (LADDER_SPEED * Math.max(Math.abs(input.forward), Math.abs(input.right))) / held : 0;
+  const wishX = input.right * scale * LADDER_STRAFE_SHARE * rightX;
+  const wishY = input.forward * upScale * LADDER_CLIMB_SHARE * scale;
+  const wishZ = input.right * scale * LADDER_STRAFE_SHARE * rightZ;
+  const wishSpeed = Math.hypot(wishX, wishY, wishZ);
+  if (wishSpeed > 0) {
+    const dx = wishX - v.x;
+    const dy = wishY - v.y;
+    const dz = wishZ - v.z;
+    const gap = Math.hypot(dx, dy, dz);
+    if (gap > 0) {
+      const add = Math.min(gap, LADDER_ACCEL * wishSpeed * dt) / gap;
+      v.x += dx * add;
+      v.y += dy * add;
+      v.z += dz * add;
+    }
+  }
+
+  // A key let go stops its half of the climb at once: no glide up the ladder
+  // or along it, which is how the game plays. Its code decays the two instead
+  // (vertical at gravity, 0.12 s from full speed; sideways at 16× a second);
+  // stopping outright also keeps a still climber exactly still at any tick rate.
+  if (input.forward === 0) {
+    v.y = 0;
+  }
+  if (input.right === 0) {
+    const length = Math.hypot(rightX, rightZ);
+    if (length > 0) {
+      const alongX = rightX / length;
+      const alongZ = rightZ / length;
+      const side = alongX * v.x + alongZ * v.z;
+      v.x -= alongX * side;
+      v.z -= alongZ * side;
+    }
+  }
+
+  if (!s.grounded) {
+    const out = v.x * normal.x + v.z * normal.z;
+    v.x -= normal.x * out;
+    v.z -= normal.z * out;
+    const moving = v.x !== 0 || v.y !== 0 || v.z !== 0;
+    if (moving && v.x * v.x + v.z * v.z <= v.y * v.y) {
+      v.x -= normal.x * LADDER_PUSH;
+      v.z -= normal.z * LADDER_PUSH;
+    }
+  }
+
+  // Standing, or climbing upward: the games step a climber onto the top.
+  integrate(s, dt, world, s.grounded || v.y > 0, body);
+}
+
+/**
+ * Jump away from the ladder: the ordinary takeoff, less a quarter of its rise,
+ * and JUMP_OFF_SPEED along the ground. Looking away from the ladder,
+ * that is where the view points; looking at it, the view is mirrored off it, so
+ * either way the jump leaves the ladder behind.
+ */
+export function jumpOffLadder(s: MovementState): void {
+  const normal = ladderNormal(s.ladder!);
+  let x = -Math.sin(s.yaw);
+  let z = -Math.cos(s.yaw);
+  const into = x * normal.x + z * normal.z;
+  if (into < 0) {
+    x -= 2 * into * normal.x;
+    z -= 2 * into * normal.z;
+    const length = Math.hypot(x, z);
+    x /= length;
+    z /= length;
+  }
+  s.velocity.x = x * JUMP_OFF_SPEED;
+  s.velocity.y = JUMP_SPEED * JUMP_OFF_RISE;
+  s.velocity.z = z * JUMP_OFF_SPEED;
+  s.ladder = null;
+  s.grounded = false;
+  s.coyote = 0;
+  s.jumpBuffer = 0;
+  s.jumped = true;
+  s.sinceJump = 0;
+}

@@ -12,7 +12,8 @@
 // ground, as a walker would find it. A drop one way is a rise the other way.
 
 import type { CapsuleWorld, Vec3 } from "../sim/capsule.js";
-import { RADIUS, STEP_HEIGHT } from "../sim/movement.js";
+import { RADIUS } from "../sim/movement.js";
+import { STEP_HEIGHT } from "../sim/stepSlide.js";
 import { LINK_REASON } from "./graph.js";
 import { bodyClear } from "./snap.js";
 

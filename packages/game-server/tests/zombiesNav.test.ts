@@ -475,7 +475,7 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
   }
 
   // Theater's foyer has a threshold a walker used to grind at for ten seconds
-  // (sim/movement.ts, `rideKerbs`), and a zombie chasing someone on the move used
+  // (sim/stepSlide.ts, `rideKerbs`), and a zombie chasing someone on the move used
   // to turn back and forth between two routes round the same pillar (bots/motor.ts,
   // `onward`). Before either: 38 stuck and 207 actor-seconds stalled for walkers,
   // 28 and 154 for runners.

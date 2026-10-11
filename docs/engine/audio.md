@@ -402,7 +402,7 @@ That only works if the derivation is **deterministic and shared**, which is what
 client:
 
 **The cadence already exists, and nothing new goes on the wire to get it.**
-`sim/movement.ts` keeps a `stride` clock: a 0→1 phase, advanced by
+`sim/gait.ts` keeps a `stride` clock: a 0→1 phase, advanced by
 `dt * rate / STRIDE_PERIOD` where `rate` is `speed / RUN_SPEED` clamped to
 `STRIDE_RATE_RANGE`, reset on a mantle or a ladder, and held — not zeroed — when
 a grounded player is below `IDLE_SPEED`. It is already `MovementState`, already

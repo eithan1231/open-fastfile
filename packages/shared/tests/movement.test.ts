@@ -1,4 +1,4 @@
-// Walking, running and jumping (engine/player/movement.ts) against real
+// Walking, running and jumping (sim/movement.ts) against real
 // collision: a jump under a ceiling ends at it, the air keeps the takeoff's
 // speed, a landing slows the player, and only a forward run sprints.
 
@@ -6,17 +6,8 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
 import { idleInput } from "../src/sim/input.js";
-import {
-  advanceBlends,
-  createMovement,
-  GAIT_BLEND,
-  horizontalSpeed,
-  IDLE_SPEED,
-  RUN_SPEED,
-  STRIDE_PERIOD,
-  stepMovement,
-  WALK_SPEED,
-} from "../src/sim/movement.js";
+import { createMovement, horizontalSpeed, RUN_SPEED, stepMovement, WALK_SPEED } from "../src/sim/movement.js";
+import { advanceBlends, GAIT_BLEND, IDLE_SPEED, STRIDE_PERIOD } from "../src/sim/gait.js";
 
 const DT = 1 / 60;
 

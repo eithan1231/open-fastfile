@@ -14,6 +14,8 @@
 
 import type { ResolvedMantle } from "../dsl/resolved.js";
 import type { CapsuleWorld, Vec3 } from "./capsule.js";
+import type { MovementState } from "./movementState.js";
+import { COYOTE_TIME } from "./stepSlide.js";
 
 /**
  * The tallest climb there is, metres.
@@ -68,7 +70,7 @@ const LANDING_MARGIN = 0.05;
  */
 const FACING_COSINE = 0.5;
 
-/** The capsule a climb has to fit: sim/movement.ts's, passed in because that module imports this one. */
+/** The capsule a climb has to fit: the part of `MovementParams` a query reads. */
 export interface MantleBody {
   radius: number;
   height: number;
@@ -321,7 +323,7 @@ export class MantleVolumes {
   /**
    * Whether the capsule can make the climb's path without sinking into
    * anything: straight up from `from` to the landing's height, then straight
-   * across to it — the path sim/movement.ts's `advanceMantle` moves along.
+   * across to it — the path `advanceMantle` moves along.
    *
    * Tested at intervals of half a radius. Between two capsules that far apart,
    * the most anything can reach into the swept shape unseen is under a
@@ -368,3 +370,102 @@ function cellKey(x: number, z: number): number {
 
 /** A world with no mantle volumes, so a caller always has one to hold. */
 export const NO_MANTLES = new MantleVolumes([]);
+
+// -- The climb ---------------------------------------------------------------------
+
+/**
+ * How long a climb takes, seconds, at MIN_CLIMB and at MAX_CLIMB.
+ *
+ * The games' own numbers: `mp_mantle_up_21` runs 0.33 s and `mp_mantle_up_57`
+ * runs 0.83 s, and the seven clips between them rise monotonically, so a climb
+ * is timed by interpolating between the two ends rather than by picking a clip.
+ * Named here rather than read from an animation because the simulation has to
+ * agree across a client and a server that may not have loaded the same models —
+ * and because making mantling faster than the original is a change to these two
+ * numbers and nothing else.
+ */
+const MANTLE_TIME_LOW = 0.33;
+const MANTLE_TIME_HIGH = 0.83;
+
+/** Seconds a climb of `rise` metres takes. */
+export function mantleDuration(rise: number): number {
+  const t = (rise - MIN_CLIMB) / (MAX_CLIMB - MIN_CLIMB);
+  return MANTLE_TIME_LOW + (MANTLE_TIME_HIGH - MANTLE_TIME_LOW) * Math.max(0, Math.min(1, t));
+}
+
+/** Begin a climb: from here the player is on rails until `advanceMantle` finishes it. */
+export function startMantle(s: MovementState, target: MantleTarget): void {
+  s.mantle = {
+    target: { x: target.feet.x, y: target.feet.y, z: target.feet.z },
+    left: mantleDuration(target.rise),
+    rise: target.rise,
+    over: target.over,
+  };
+  s.jumpBuffer = 0; // spent on the climb, or it jumps the moment the climb ends
+  s.coyote = 0;
+  s.jumped = false;
+  s.velocity.x = 0;
+  s.velocity.y = 0;
+  s.velocity.z = 0;
+  s.grounded = false;
+}
+
+/**
+ * Carry a climb forward by `dt`, and finish it when its time runs out.
+ *
+ * The path has two legs: straight up to the target's height, then straight
+ * across to it — the path `MantleVolumes` checked clear, and the only one that
+ * is: a straight line from the foot of a ledge to its top cuts through its
+ * corner. Which leg the player is on follows from their feet alone.
+ *
+ * Each step covers the share of what is left that `dt` is of the time left, so
+ * the whole trajectory is a function of (feet, target, left) and nothing else.
+ * That is what lets a server replaying the same inputs from the same state land
+ * in the same place, rather than approximately there.
+ */
+export function advanceMantle(s: MovementState, dt: number): void {
+  const mantle = s.mantle!;
+  if (dt >= mantle.left) {
+    s.feet.x = mantle.target.x;
+    s.feet.y = mantle.target.y;
+    s.feet.z = mantle.target.z;
+    s.velocity.x = 0;
+    s.velocity.y = 0;
+    s.velocity.z = 0;
+    s.mantle = null;
+    // Standing on what they climbed, with the ground's forgiveness armed: a
+    // player who holds jump through a mantle jumps as they arrive, as they
+    // would off any other landing. No `landing` slowdown — a climb is not a fall.
+    s.grounded = true;
+    s.coyote = COYOTE_TIME;
+    s.landing = 0;
+    return;
+  }
+
+  const { target } = mantle;
+  const up = Math.max(0, target.y - s.feet.y);
+  const acrossX = target.x - s.feet.x;
+  const acrossZ = target.z - s.feet.z;
+  const across = Math.hypot(acrossX, acrossZ);
+  const move = (up + across) * (dt / mantle.left);
+  let dx = 0;
+  let dy = move;
+  let dz = 0;
+  if (move >= up) {
+    // Round the corner: the rest of this step goes across. The height is set
+    // rather than added to, so the next step sees the corner as passed.
+    dy = target.y - s.feet.y;
+    const share = across > 0 ? Math.min(1, (move - up) / across) : 0;
+    dx = acrossX * share;
+    dz = acrossZ * share;
+  }
+  s.feet.x += dx;
+  s.feet.y = move >= up ? target.y : s.feet.y + dy;
+  s.feet.z += dz;
+  // The velocity the climb is making, so anything reading the state (a camera's
+  // snap test, a peer's animator) sees the motion rather than a still player.
+  s.velocity.x = dx / dt;
+  s.velocity.y = dy / dt;
+  s.velocity.z = dz / dt;
+  mantle.left -= dt;
+}

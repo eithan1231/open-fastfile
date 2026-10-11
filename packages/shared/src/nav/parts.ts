@@ -17,7 +17,8 @@
 // adds no link, since the bake saw a gap there.
 
 import type { CapsuleWorld, Vec3 } from "../sim/capsule.js";
-import { HEIGHT, RADIUS, STEP_HEIGHT } from "../sim/movement.js";
+import { HEIGHT, RADIUS } from "../sim/movement.js";
+import { STEP_HEIGHT } from "../sim/stepSlide.js";
 import { LINK_STATUS, type NavGraph } from "./graph.js";
 import { NavLinkGrid } from "./grid.js";
 import { PROBE_MAX_DROP, PROBE_SPACING } from "./probe.js";

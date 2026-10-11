@@ -288,7 +288,7 @@ describe("resolveCapsule — reusing the caller's resolution", () => {
  * collision/world.ts is the gate that fixes it; deleting it brings this back.
  */
 describe("resolveCapsule — no drift while standing still", () => {
-  /** The vertical part of engine/player/movement.ts's step, with no input. */
+  /** The vertical part of sim/movement.ts's step, with no input. */
   function standStill(collision: CollisionWorld, start: THREE.Vector3, frames: number): THREE.Vector3 {
     const feet = start.clone();
     const velocity = new THREE.Vector3();

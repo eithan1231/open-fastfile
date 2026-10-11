@@ -9,7 +9,8 @@ import { parseWorldFile } from "../src/dsl/parser.js";
 import { resolveWorld } from "../src/dsl/resolve.js";
 import { hasErrors } from "../src/dsl/diagnostics.js";
 import type { ResolvedLadder } from "../src/dsl/resolved.js";
-import { LadderVolumes, NO_LADDERS, UNIT } from "../src/sim/ladder.js";
+import { LadderVolumes, NO_LADDERS } from "../src/sim/ladder.js";
+import { UNIT } from "../src/sim/units.js";
 import { HEIGHT, RADIUS } from "../src/sim/movement.js";
 
 const BODY = { radius: RADIUS, height: HEIGHT };

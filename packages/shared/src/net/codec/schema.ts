@@ -78,7 +78,7 @@ export const bool: Codec<boolean> = {
  * the f64 the simulation runs in, hence `round`.
  *
  * Non-finite values are refused. The simulation's state is documented as having
- * no Infinity in it (movement.ts), and a NaN position that survived onto the
+ * no Infinity in it (sim/movementState.ts), and a NaN position that survived onto the
  * wire would spread silently through every client that decoded it.
  */
 export const f32: Codec<number> = {

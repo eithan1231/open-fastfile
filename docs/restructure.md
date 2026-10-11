@@ -131,12 +131,20 @@ public surface. Where it came out differently from the proposal:
 
 ### 5. Shared
 
-- `sim/movement.ts` (1,134 lines) is the one grab-bag: ladder steering and the
-  mantle move next to their volumes (`ladder.ts`, `mantle.ts`, whose header
-  already claims them), step-slide collision becomes `stepSlide.ts`, the gait
-  clocks `gait.ts`. Deterministic and replayed, so the existing tests and a
-  replay comparison guard it.
-- `collision/world.ts`: the prop-hull grid becomes `hullIndex.ts`.
+Built in stage 6.
+
+- `sim/movement.ts` was the one grab-bag (1,134 lines) and is now the step and
+  the walk (198). Ladder steering and the mantle moved next to their volumes
+  (`ladder.ts`, `mantle.ts`), the capsule's move with `stepUp` and `stepDown` is
+  `stepSlide.ts`, and the pose clocks are `gait.ts`.
+- **The state has a module of its own**, `movementState.ts`, which the plan did
+  not name: the moves need `MovementState` and `movement.ts` needs the moves, so
+  the state sits below both. `movement.ts` re-exports it, since nearly every
+  reader of a step wants the state with it; everything else is imported from
+  the module that owns it.
+- `UNIT` moved from `ladder.ts` to `units.ts`, for the same reason.
+- `collision/world.ts`: the prop-hull grid is `HullIndex` in `hullIndex.ts`
+  (`near`, `along`), and `world.ts` keeps the queries (1,041 → 838 lines).
 - `resolve.ts`, `schema.ts`, `player.ts`, `weapon.ts` and the large client debug
   views are long but cohesive, and stay.
 
@@ -224,7 +232,10 @@ compared with the stage before.
    before and after — 72,000 ticks, a zombies round on theater among them —
    produce byte-identical snapshots, per-player snapshots, scores and shots.
    Nothing the client runs changed, so its numbers are the stage before's.
-6. **Shared.** §5.
+6. **Shared** — done (§5). Code moved between modules and nothing else: the
+   same eleven suites replayed before and after, 72,161 ticks, byte-identical.
+   Frame rate measured back to back against the stage before on a loaded
+   machine: dome 160 → 146 fps, theater 53 → 55, one round each.
 7. **Then features again, placed:** clustered local lights (a fixed light loop,
    lights culled per screen cluster, switching a light is a data write, which is
    what power needs); and draw calls (1,260 for one view of theater — the biggest

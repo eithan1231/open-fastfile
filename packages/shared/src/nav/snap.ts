@@ -14,7 +14,8 @@
 // a large solid touches none and stands on whatever is below it.
 
 import type { CapsuleWorld, Vec3 } from "../sim/capsule.js";
-import { HEIGHT, RADIUS, STEP_HEIGHT } from "../sim/movement.js";
+import { HEIGHT, RADIUS } from "../sim/movement.js";
+import { STEP_HEIGHT } from "../sim/stepSlide.js";
 import type { NavNodes } from "./format.js";
 import { NODE_REASON, NODE_REASON_NAMES } from "./graph.js";
 import { NODE_FLAGS, NODE_TYPES } from "./vocab.js";

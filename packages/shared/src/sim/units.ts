@@ -17,3 +17,10 @@ export const UNITS_PER_M = 39.37;
 export function unitsToMetres(units: number): number {
   return units / UNITS_PER_M;
 }
+
+/**
+ * One game unit, metres: what the movement numbers read from the games are
+ * multiplied by. Not `1 / UNITS_PER_M` — that is 0.025400051, and a step both
+ * ends replay is pinned to this spelling bit for bit.
+ */
+export const UNIT = 0.0254;
