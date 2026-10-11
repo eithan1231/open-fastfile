@@ -62,7 +62,7 @@ const SWAY_GAIN = 0.14;
  */
 const SWAY_FOLLOW = 10;
 /** One bob cycle (two steps) per this many metres walked. */
-const BOB_METRES_PER_CYCLE = 1.6;
+const BOB_METRES_PER_CYCLE = 2.4;
 /** At walking speed: sideways and vertical travel (m) and roll (degrees). */
 const BOB_SIDE = 0.006;
 const BOB_DIP = 0.004;

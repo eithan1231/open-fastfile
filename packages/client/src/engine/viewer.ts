@@ -15,13 +15,17 @@ import { FrameTarget } from "./render/target.js";
 import { OutputPass } from "./render/output.js";
 import type { ResolvedGrade } from "@3d/shared/dsl/resolved.js";
 
-/** Vertical field of view, degrees. */
-const FOV = 70;
-
 /** `fov` (degrees) with the tangent of its half-angle scaled by `factor`: how a zoom, or a change of axis, scales it. */
 export function scaleFov(fov: number, factor: number): number {
   return 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) * factor));
 }
+
+/**
+ * Vertical field of view, degrees: 65 across a 4:3 frame, as the viewmodel's is
+ * (engine/viewmodel.ts), so a wider screen sees more to the sides. The speeds
+ * and the maps were made to be seen through this; a wider view reads as faster.
+ */
+const FOV = scaleFov(65, 3 / 4);
 
 export class Viewer {
   readonly renderer: THREE.WebGLRenderer;
