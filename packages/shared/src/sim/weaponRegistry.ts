@@ -7,7 +7,15 @@
 // and no glTF, so a game server can hold a weapon without loading a model.
 
 import type { ClipRole, WeaponDef } from "./weaponDef.js";
-import { WeaponController } from "./weapon.js";
+import { checkWeaponLimits, WeaponController } from "./weapon.js";
+
+/**
+ * The most weapons one catalogue may hold, because the wire names a weapon by
+ * its index in eight bits (net/messages/player.ts). A larger catalogue is
+ * refused when it is read, rather than throwing out of the first snapshot that
+ * has to name weapon 256.
+ */
+export const MAX_WEAPONS = 256;
 
 /**
  * A weapon's address in the catalogue: `<game>/<name>`, as `weaponKey` builds it.
@@ -344,6 +352,9 @@ export class WeaponRegistry {
   readonly hash: string;
 
   constructor(entries: readonly WeaponEntry[]) {
+    if (entries.length > MAX_WEAPONS) {
+      throw new Error(`the catalogue holds ${entries.length} weapons; the wire names ${MAX_WEAPONS}`);
+    }
     // Sorted, so two ends that fetched the catalogue at different moments, or
     // built one from a directory listing, still agree on every index.
     const sorted = [...entries].sort((a, b) => {
@@ -357,6 +368,10 @@ export class WeaponRegistry {
       }
       if (this.byId.has(key)) {
         throw new Error(`two weapons share the id "${key}"`);
+      }
+      checkWeaponLimits(entry.def, key);
+      for (const attachment of entry.attachments) {
+        checkWeaponLimits(attachment.overrides ?? {}, `${key}+${attachment.id}`);
       }
       this.byId.set(key, entry);
     }

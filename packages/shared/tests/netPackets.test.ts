@@ -15,11 +15,10 @@ import { CLASS_TIMINGS } from "../src/game/classes.js";
 import { CollisionWorld } from "../src/collision/world.js";
 import { RAGDOLL_SEGMENTS } from "../src/sim/ragdollBones.js";
 import { idleInput, type PlayerInput } from "../src/sim/input.js";
-import { createMovement } from "../src/sim/movement.js";
-import { Player } from "../src/sim/player.js";
+import { MAX_HEALTH, Player } from "../src/sim/player.js";
 import { WeaponController } from "../src/sim/weapon.js";
 import type { WeaponDef } from "../src/sim/weaponDef.js";
-import { MAX_ATTACHMENT_SLOTS, MAX_FITTED_ATTACHMENTS } from "../src/sim/weaponRegistry.js";
+import { MAX_ATTACHMENT_SLOTS, MAX_FITTED_ATTACHMENTS, WeaponRegistry, type WeaponEntry } from "../src/sim/weaponRegistry.js";
 import { weaponDef } from "../testing/weaponDef.js";
 
 /** A player with a weapon, on a floor, so a snapshot has something real in it. */
@@ -35,7 +34,7 @@ function setupPlayer(over: Partial<WeaponDef> = {}) {
   const weapon = new WeaponController(weaponDef(over));
   weapon.ready();
   player.equip(weapon);
-  return { player, weapon };
+  return { player, weapon, collision };
 }
 
 describe("packets", () => {
@@ -52,18 +51,16 @@ describe("packets", () => {
     expect(decodePacket(encodePacket(MessageType.join, join))).toEqual({ type: MessageType.join, message: join });
 
     const joined: JoinedMessage = {
-      you: "abc123",
-      world: "dome-mw3",
       tickRate: 60,
       gametype: "default",
-      rules: DEFAULT_COMBAT_RULES,
+      rules: { maxHealth: DEFAULT_COMBAT_RULES.maxHealth, timedRespawn: true },
       eventId: 4321,
       spawned: true,
       classes: false,
     };
     expect(decodePacket(encodePacket(MessageType.joined, joined))).toEqual({ type: MessageType.joined, message: joined });
-    // A gametype that brings the dead back itself sends no delay at all.
-    const scripted = { ...joined, rules: { ...DEFAULT_COMBAT_RULES, respawnDelay: null } };
+    // A gametype that brings the dead back itself, at the most health the wire carries.
+    const scripted = { ...joined, rules: { maxHealth: MAX_HEALTH, timedRespawn: false } };
     expect(decodePacket(encodePacket(MessageType.joined, scripted)).message).toEqual(scripted);
   });
 
@@ -77,10 +74,6 @@ describe("packets", () => {
   it("round-trips a refusal, so a join that will not be answered says why", () => {
     const message = { reason: 'it asked for game "g-7f3a", which we do not host' };
     expect(decodePacket(encodePacket(MessageType.refused, message)).message).toEqual(message);
-  });
-
-  it("round-trips a leave", () => {
-    expect(decodePacket(encodePacket(MessageType.leave, { id: "abc123" })).message).toEqual({ id: "abc123" });
   });
 
   it("round-trips an input within its quantization, and exactly once pre-rounded", () => {
@@ -97,10 +90,10 @@ describe("packets", () => {
       swap: false,
       use: true,
     };
-    const claim = createMovement({ x: 1.5, y: 2.25, z: -3.75 }, 1.2345678, -0.4);
-    // renderTick at the top of its range and a fraction that is not a round
-    // number: both are the moment a shot was aimed at, and both are quantized.
-    const message: InputPacket = { seq: 65535, dt: 1 / 60, input, claim, renderTick: 65534, renderFrac: roundRenderFrac(0.37), earlier: [] };
+    const claim = { x: 1.5, y: 2.25, z: -3.75 };
+    // A tick at the top of its range and a fraction that is not a round number:
+    // both are the moment a shot was aimed at, and both are quantized.
+    const message: InputPacket = { seq: 65535, dt: 1 / 60, input, claim, drawn: { tick: 65534, frac: roundRenderFrac(0.37) }, earlier: [] };
     const back = decodePacket(encodePacket(MessageType.input, message));
     expect(back.type).toBe(MessageType.input);
     expect(back.message).toMatchObject({ seq: 65535 });
@@ -110,8 +103,10 @@ describe("packets", () => {
     const decoded = back.message as InputPacket;
     expect(decoded.input.use).toBe(true);
     expect(decoded.input.swap).toBe(false);
-    expect(decoded.claim.feet.x).toBeCloseTo(claim.feet.x, 5);
-    expect(decoded.claim.feet.z).toBeCloseTo(claim.feet.z, 5);
+    expect(decoded.claim).toEqual(claim);
+    // An input that drew nobody says so in a bit, rather than naming tick 0.
+    const alone = decodePacket(encodePacket(MessageType.input, { ...message, drawn: null })).message as InputPacket;
+    expect(alone.drawn).toBeNull();
 
     // The symmetry rule: what a sender predicts with survives the wire untouched.
     const rounded = roundTrip(inputMessage, {
@@ -119,28 +114,26 @@ describe("packets", () => {
       dt: roundDt(1 / 60),
       input: roundInput(input),
       claim,
-      renderTick: 4242,
       // The rule reaches the moment a shot was aimed at too: a client tracing with
       // an unrounded fraction disagrees with the server about where the target was.
-      renderFrac: roundRenderFrac(0.37),
+      drawn: { tick: 4242, frac: roundRenderFrac(0.37) },
       earlier: [],
     });
     expect(decodePacket(encodePacket(MessageType.input, rounded)).message).toEqual(rounded);
   });
 
   it("repeats the inputs before the newest, each with its own moment, and numbers them", () => {
-    const claim = createMovement({ x: 1, y: 0, z: 2 }, 0.5, 0);
+    const claim = { x: 1, y: 0, z: 2 };
     // Across the wrap, so the implicit seqs are worked out the way `after` reads them.
     const packet = roundTrip(inputMessage, {
       seq: 1,
       dt: roundDt(1 / 60),
       input: roundInput({ ...idleInput(0.5, 0), forward: 1 }),
       claim,
-      renderTick: 902,
-      renderFrac: roundRenderFrac(0.25),
+      drawn: { tick: 902, frac: roundRenderFrac(0.25) },
       earlier: [
-        { dt: roundDt(1 / 60), input: roundInput({ ...idleInput(0.4, 0), fire: true }), renderTick: 900, renderFrac: roundRenderFrac(0.75) },
-        { dt: roundDt(1 / 50), input: roundInput(idleInput(0.45, 0.1)), renderTick: 901, renderFrac: roundRenderFrac(0.5) },
+        { dt: roundDt(1 / 60), input: roundInput({ ...idleInput(0.4, 0), fire: true }), drawn: { tick: 900, frac: roundRenderFrac(0.75) } },
+        { dt: roundDt(1 / 50), input: roundInput(idleInput(0.45, 0.1)), drawn: null },
       ],
     });
     const back = decodePacket(encodePacket(MessageType.input, packet)).message as InputPacket;
@@ -149,7 +142,8 @@ describe("packets", () => {
     const inputs = inputsOf(back);
     expect(inputs.map((i) => i.seq)).toEqual([65535, 0, 1]);
     // A fire inside a repeated input is judged at the moment *it* was built at.
-    expect(inputs[0]).toMatchObject({ renderTick: 900, renderFrac: packet.earlier[0]!.renderFrac, claim: null });
+    expect(inputs[0]).toMatchObject({ drawn: packet.earlier[0]!.drawn, claim: null });
+    expect(inputs[1]!.drawn).toBeNull();
     expect(inputs[0]!.input.fire).toBe(true);
     expect(inputs[1]!.dt).toBe(packet.earlier[1]!.dt);
     // Only the newest carries a claim: the others' were measured when they were.
@@ -183,7 +177,6 @@ describe("packets", () => {
             team: 1,
             health: 100,
             dead: false,
-            sinceDamage: 10,
             respawnIn: 0,
             points: 1_048_575,
           },
@@ -196,7 +189,7 @@ describe("packets", () => {
       // and id, so a reader that ignored the kind would decode the second from
       // the first one's bits and answer plausibly.
       events: [
-        { kind: "hit", id: 9, location: "head", lethal: true },
+        { kind: "hit", id: 9, lethal: true },
         { kind: "death", id: 10, victim: "b", killer: "a", cause: "bullet" },
         { kind: "death", id: 11, victim: "a", killer: null, cause: "outOfWorld" },
         // A script's own, whose fields are a string, two nullable numbers and a
@@ -311,14 +304,24 @@ describe("packets", () => {
   });
 
   it("is far smaller than JSON, which is the entire point", () => {
-    const { player } = setupPlayer();
+    // Armed out of a catalogue, as a player in a match is: both weapons then
+    // travel as an index, which a player holding a weapon no registry lists
+    // (`setupPlayer`) spends one bit on instead of nine.
+    const { collision } = setupPlayer();
+    const entry = (id: string): WeaponEntry => ({ id, game: "iw5", display: id, slot: "primary", def: weaponDef(), attachments: [] });
+    const player = new Player(collision, new WeaponRegistry([entry("one_mp"), entry("two_mp")]));
+    player.equipWeapons({ weapon: "iw5/one_mp", attachments: [] }, { weapon: "iw5/two_mp", attachments: [] });
+    // Long enough for the weapon to be up and its idle clip playing: the state a player spends most ticks in.
+    for (let i = 0; i < 240; i++) {
+      player.step(idleInput(1, 0.2), 1 / 60);
+    }
+    expect(player.snapshot()).toMatchObject({ weaponIndex: 0, spareIndex: 1, weapon: { state: "idle", clip: { role: "idle" } } });
     const input: InputPacket = {
       seq: 1,
       dt: 1 / 60,
       input: idleInput(1, 0.2),
-      claim: player.snapshot().movement,
-      renderTick: 900,
-      renderFrac: 0.5,
+      claim: player.snapshot().movement.feet,
+      drawn: { tick: 900, frac: 0.5 },
       earlier: [],
     };
     const snapshot: SnapshotMessage = {
@@ -398,13 +401,13 @@ describe("packets", () => {
     // rare and, when it happens, both ends wrap at the same place.
     //
     // Health is the last four bytes, and the only ones that have moved the
-    // snapshot since `fired`: ten bits of health, one for `dead`, and a byte each
-    // for the two combat clocks — time since the last hit, and time left of a
-    // respawn. Ten bits rather than a byte because `CombatRules.maxHealth` is a
-    // gametype's to set and 255 is a number a mode could plausibly want; the
-    // clocks are here rather than derived because a client cannot count a
-    // countdown it was never told the start of. An input carries none of it: a
-    // client never predicts its own health, so there is nothing to claim.
+    // snapshot since `fired`: ten bits of health, one for `dead`, and a byte for
+    // the time left of a respawn. Ten bits rather than a byte because
+    // `CombatRules.maxHealth` is a gametype's to set and 255 is a number a mode
+    // could plausibly want; the clock is here rather than derived because a
+    // client cannot count a countdown it was never told the start of. An input
+    // carries none of it: a client never predicts its own health, so there is
+    // nothing to claim.
     //
     // The snapshot's event tail is *not* in this number, and that is the point of
     // it: an empty tail is a three-bit count that fits in the padding this layout
@@ -427,9 +430,9 @@ describe("packets", () => {
     // where the server's was still falling. An input carries none of it, which is
     // the whole of C3 — a client sends its intent and never its aim.
     //
-    // An input is 9 bytes of command plus the same 37½ of claimed movement: the
-    // client's claim is most of what it sends, and the price of the server being
-    // able to check it at all.
+    // An input is 9 bytes of command plus 12 of claim: where the client's feet
+    // came to rest, three f32s, which is all the server measures its own answer
+    // against.
     //
     // One byte more for the weapon on a player's back and the count of times they
     // have been armed (`PlayerState.armed`): seven bits, so a weapon a server
@@ -438,8 +441,7 @@ describe("packets", () => {
     // And one byte for the actors' count, which is all they cost when there are
     // none: twelve bytes each when there are (net/messages/actors.ts).
     //
-    // The use key is one bit of an input, and the bit that tipped it into its
-    // fifty-third byte.
+    // The use key is one bit of an input.
     //
     // Twenty bits of a player's purse (`PlayerState.points`), a million, in
     // every snapshot for every player — state and not an event, so a price shown
@@ -449,18 +451,18 @@ describe("packets", () => {
     //
     // Two bits of an input's count of repeated inputs fit the slack of its last
     // byte, so a client with nothing outstanding sends what it did. In play it
-    // repeats `REDUNDANT_INPUTS` (two) of them, 91 bits each — twelve of `dt`, 55
-    // of command and 24 of the moment it was aimed at, with no seq and no claim —
+    // repeats `REDUNDANT_INPUTS` (two) of them, 92 bits each — twelve of `dt`, 55
+    // of command and 25 of the moment it was aimed at, with no seq and no claim —
     // which is 23 bytes more, the price of a lost datagram costing no input.
-    expect(encodePacket(MessageType.input, input).length).toBeLessThanOrEqual(53);
+    expect(encodePacket(MessageType.input, input).length).toBeLessThanOrEqual(27);
     const repeated = { ...input, earlier: Array.from({ length: REDUNDANT_INPUTS }, () => input) };
-    expect(encodePacket(MessageType.input, repeated).length).toBeLessThanOrEqual(76);
-    expect(encodePacket(MessageType.snapshot, snapshot).length).toBeLessThanOrEqual(93);
+    expect(encodePacket(MessageType.input, repeated).length).toBeLessThanOrEqual(50);
+    expect(encodePacket(MessageType.snapshot, snapshot).length).toBeLessThanOrEqual(94);
 
     // Still most of an order of magnitude, which is what justifies the machinery.
-    // An input's margin is the narrower of the two now that it carries a claim:
-    // that claim is six f32s, and JSON spends fewer characters on a round number
-    // than the wire spends bits on any number at all.
+    // An input's margin is the narrower of the two: its claim is three f32s, and
+    // JSON spends fewer characters on a round number than the wire spends bits
+    // on any number at all.
     expect(encodePacket(MessageType.input, input).length * 6).toBeLessThan(JSON.stringify(input).length);
     expect(encodePacket(MessageType.snapshot, snapshot).length * 5).toBeLessThan(JSON.stringify(snapshot).length);
   });
@@ -473,16 +475,15 @@ describe("packets", () => {
    *
    * What a tail costs when there is something in it is asserted here instead,
    * because it is variable and there is no single number to put a ceiling on. A
-   * hit marker is three bytes: a kind, an id and five bits of location. A death
+   * hit marker is nineteen bits — a kind, an id and whether it killed. A death
    * is twenty-one, and nearly all of it is the two player ids — the same ~72 bits a
    * snapshot already spends naming each player, and the same per-match slot
    * number would fix both at once.
    *
    * The seven the count can express cost 146 bytes over a quiet one. That is not
    * near anything: a datagram has well over a kilobyte, and a twelve-player
-   * snapshot is about 767 bytes with no tail at all. The kind field is three bits now
-   * that a script's announcement is a fifth kind, which is where the two bits a
-   * fourth kind had already cost went.
+   * snapshot is about 1,012 bytes with no tail at all. The kind field is two
+   * bits, which is the four kinds there are.
    *
    * **An announcement is the cheap one**, which is what lets it be repeated for
    * twice a death's window: five bytes for a bare name, fifteen for a nine-letter
@@ -494,7 +495,7 @@ describe("packets", () => {
    * against twenty-one for the death that caused it. That is what
    * `MAX_SPAWNS_PER_SNAPSHOT` is for and why deaths have no such cap: two spawns
    * and five deaths is 314 bytes of tail, so a twelve-player snapshot on the worst
-   * tick a match can have is about 1,080 — still inside a datagram, and
+   * tick a match can have is about 1,330 — still inside a datagram, and
    * deliberately measured rather than assumed.
    *
    * The two worst-case figures are bounds rather than equalities, and that is not
@@ -502,7 +503,7 @@ describe("packets", () => {
    * — and therefore whether it needs one more byte — depends on how many players
    * the snapshot carried.
    */
-  it("costs nothing for a quiet tail, three bytes for a hit marker and twenty-one for a death", () => {
+  it("costs nothing for a quiet tail, two bytes for a hit marker and twenty-one for a death", () => {
     const { player } = setupPlayer();
     const state = player.snapshot();
     const quiet: SnapshotMessage = { tick: 1, ack: 1, presence: null, players: [{ id: "abc12345", state }], actors: [], counters: [], events: [] };
@@ -511,7 +512,6 @@ describe("packets", () => {
     // The ids are eight characters because that is what the api mints
     // (api/src/matchmaking/ids.ts); a death's cost is mostly them.
     const death: GameEvent = { kind: "death", id: 2, victim: "abc12345", killer: "zyx54321", cause: "bullet" };
-    const despawn: GameEvent = { kind: "despawn", id: 3, entity: 7, tick: 900 };
     const spawn: GameEvent = {
       kind: "spawn",
       id: 4,
@@ -530,10 +530,10 @@ describe("packets", () => {
     };
 
     expect(size([])).toBe(encodePacket(MessageType.snapshot, quiet).length);
-    expect(size([{ kind: "hit", id: 1, location: "torsoUpper", lethal: false }])).toBe(size([]) + 3);
+    // Two or three, by where the tail starts. Here it is two.
+    expect(size([{ kind: "hit", id: 1, lethal: false }])).toBe(size([]) + 2);
     // Twenty-one: the two ids, and three bits of cause.
     expect(size([death])).toBe(size([]) + 21);
-    expect(size([despawn])).toBe(size([]) + 6);
     expect(size([{ kind: "announce", id: 5, what: "go", team: null, value: null, player: null }])).toBe(size([]) + 5);
     // Fourteen or fifteen, by where the tail starts: a name is bytes and
     // everything around it is bits, 117 of them. Here it is fifteen.

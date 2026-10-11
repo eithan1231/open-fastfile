@@ -61,13 +61,13 @@ export const VOCAL_GAP: readonly [number, number] = [3, 8];
  */
 export function actorSoundsBetween(before: ActorState | undefined, after: ActorState, spawned = false): ActorSoundRole[] {
   if (before === undefined) {
-    return spawned && !after.dead ? ["spawn"] : [];
+    return spawned && after.action !== "die" ? ["spawn"] : [];
   }
   const out: ActorSoundRole[] = [];
   if (after.action === "attack" && (before.action !== "attack" || after.phase < before.phase)) {
     out.push("attack", "swing");
   }
-  if (after.dead && !before.dead) {
+  if (after.action === "die" && before.action !== "die") {
     out.push("death");
   }
   return out;
@@ -75,7 +75,7 @@ export function actorSoundsBetween(before: ActorState | undefined, after: ActorS
 
 /** The noise a living actor makes on its own: its gait's, or none once it is dead. */
 export function vocalRole(state: ActorState): ActorSoundRole | undefined {
-  if (state.dead) {
+  if (state.action === "die") {
     return undefined;
   }
   return state.gait === "walk" ? "ambient" : "sprint";

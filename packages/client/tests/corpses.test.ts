@@ -57,7 +57,6 @@ function at(id: string, dead = false): PlayerSnapshot {
       team: null,
       health: dead ? 0 : 100,
       dead,
-      sinceDamage: 0,
       respawnIn: dead ? 3 : 0,
       points: 0,
     },

@@ -111,8 +111,6 @@ export class RemotePlayers {
   /** Milliseconds between snapshots, which is the server's tick. */
   private snapshotInterval = 1000 / TICK_RATE;
   private lastFrame = 0;
-  /** The newest server tick any snapshot has carried, so a shot can be placed behind it. */
-  private newestTick = 0;
   /** Where the last frame was drawn, in the server's clock. Undefined before anyone is drawn. */
   private drawnAt: { tick: number; frac: number } | undefined;
 
@@ -154,11 +152,10 @@ export class RemotePlayers {
 
   /**
    * Take one tick's worth of other players. Membership follows the snapshot:
-   * anyone missing from it is gone, which is what lets a lost `leave` heal
-   * itself rather than leave a body standing in the map.
+   * anyone missing from it is gone, and nothing else says so, so there is no
+   * message whose loss would leave a body standing in the map.
    */
   apply(players: PlayerSnapshot[], tick: number, now: number): void {
-    this.newestTick = Math.max(this.newestTick, tick);
     for (const { id, state } of players) {
       // Their body is on the floor. **A dead player keeps arriving in every
       // snapshot** — frozen where they fell, counting down to a respawn — so
@@ -256,11 +253,6 @@ export class RemotePlayers {
     return this.drawnAt;
   }
 
-  /** The newest tick seen on the wire, which is the ceiling on any rewind we may ask for. */
-  get tick(): number {
-    return this.newestTick;
-  }
-
   /**
    * Everyone wearing a body right now, as the last `update` posed them.
    *
@@ -331,7 +323,6 @@ export class RemotePlayers {
     this.players.clear();
     this.handedOver.clear();
     this.drawnAt = undefined;
-    this.newestTick = 0;
   }
 
   dispose(): void {
@@ -351,10 +342,10 @@ export class RemotePlayers {
    * body has its own box sizes — a head derived from a ghillie hood is 0.49 m across
    * against 0.29 for an ordinary one.
    *
-   * A snapshot carries `team` now, so this *could* narrow the cast by side — and
-   * deliberately does not yet. The gametype does not reach the browser until the
-   * `joined` handshake carries it, and until both ends resolve the same cast from
-   * the same gametype, dressing by side here would disagree with the server.
+   * A snapshot carries `team` and `joined` names the gametype, so this *could*
+   * narrow the cast by side — and deliberately does not: the game server asks
+   * with no side either (`MatchCast.bodyOf`), and dressing by side on one end
+   * alone is a hit box on another body's skeleton.
    */
   private spawn(id: string): { object: THREE.Object3D; rig?: { rig: CharacterRig; animator: CharacterAnimator } } {
     if (this.kit) {

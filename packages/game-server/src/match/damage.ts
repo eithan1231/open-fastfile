@@ -11,6 +11,7 @@ import { poseFromRig } from "@3d/shared/rig/ragdollPose.js";
 import type { Vec3 } from "@3d/shared/sim/capsule.js";
 import type { HitLocation } from "@3d/shared/sim/hitLocations.js";
 import type { MovementState } from "@3d/shared/sim/movement.js";
+import { MAX_HEALTH } from "@3d/shared/sim/player.js";
 import { bodyKnock, localKnock, RAGDOLL_SEGMENTS, SEGMENT_FOR_LOCATION } from "@3d/shared/sim/ragdollBones.js";
 import type { Actors } from "../actors.js";
 import { poseBody } from "../bodies.js";
@@ -90,11 +91,17 @@ export class Damage {
    * Ask the gametype's scripts for the rules, once. The first with an opinion
    * wins, over the defaults. At match start, which for a match is the moment it
    * exists: the rules reach every client in `joined` and are read on every hit,
-   * so there is no later point at which asking again would be safe.
+   * so there is no later point at which asking again would be safe. A full
+   * health the wire cannot carry throws here, where the match is made, rather
+   * than out of the first snapshot of somebody who has it.
    */
   askRules(): void {
     const wanted = this.scripts.first((hooks, ctx) => hooks.combatRules?.(ctx));
-    this.ruled = wanted ? { ...DEFAULT_COMBAT_RULES, ...wanted } : DEFAULT_COMBAT_RULES;
+    const rules = wanted ? { ...DEFAULT_COMBAT_RULES, ...wanted } : DEFAULT_COMBAT_RULES;
+    if (!Number.isInteger(rules.maxHealth) || rules.maxHealth < 1 || rules.maxHealth > MAX_HEALTH) {
+      throw new Error(`a script's combatRules set maxHealth to ${rules.maxHealth}: it has to be a whole number from 1 to ${MAX_HEALTH}`);
+    }
+    this.ruled = rules;
   }
 
   /**
@@ -309,7 +316,8 @@ export class Damage {
           victim: hit.id,
           origin: pose[0]!.position,
           rotations: pose.map((at) => at.rotation),
-          velocity: movement.velocity,
+          // A copy: this event is held and re-sent for half a second, and what it says must not move.
+          velocity: { ...movement.velocity },
           knock: along ? { x: along.x * carry, y: along.y * carry, z: along.z * carry } : { x: 0, y: 0, z: 0 },
           segment: RAGDOLL_SEGMENTS.indexOf(segment),
           impulse: along ? { x: along.x * push, y: along.y * push, z: along.z * push } : { x: 0, y: 0, z: 0 },

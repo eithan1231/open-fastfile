@@ -7,7 +7,7 @@
 // The claim being tested is precise. A client draws other players one tick behind
 // the newest snapshot, interpolated between the last two it received, so when it
 // puts a crosshair on someone it is aiming at where they *were*. It reports that
-// moment as a server tick plus a fraction (`InputMessage.renderTick/renderFrac`).
+// moment as a server tick plus a fraction (`InputStep.drawn`).
 // Given those two numbers, this server must reproduce the position the client
 // drew — not approximately, but by running the same interpolation over the same
 // recorded states.
@@ -70,7 +70,7 @@ function world(): ResolvedWorld {
 const forward: PlayerInput = { ...idleInput(0, 0), forward: 1, run: true };
 
 function input(seq: number, command: PlayerInput, renderTick = 0, renderFrac = 0): InputMessage {
-  return { seq, dt: DT, input: command, claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick, renderFrac };
+  return { seq, dt: DT, input: command, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: renderTick, frac: renderFrac } };
 }
 
 const scratch = (): MovementState => createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
@@ -97,7 +97,7 @@ function played(ticks: number) {
     m.snapshotFor("shooter", snapshot.players);
     m.snapshotFor("runner", snapshot.players);
     const runner = snapshot.players.find((p) => p.id === "runner")!;
-    seen.push({ tick: snapshot.tick, runner: runner.state.movement });
+    seen.push({ tick: m.tick, runner: runner.state.movement });
   }
   return { m, seen };
 }
@@ -195,8 +195,8 @@ describe("a rewind that cannot be honoured as asked", () => {
 
   it("reads a tick ahead of its own clock as ancient, and clamps it as such", () => {
     // Worth pinning, because it is a property of the encoding rather than a
-    // decision. `renderTick` is 16 bits of an *always past* number, recovered as
-    // `current - ((current - renderTick) & 0xffff)` — so a client naming a tick
+    // decision. `drawn.tick` is 16 bits of an *always past* number, recovered as
+    // `current - ((current - tick) & 0xffff)` — so a client naming a tick
     // ahead of the clock does not come out ahead, it comes out ~65536 behind, and
     // the window catches it. There is no way to express "the future" at all, which
     // is a better guarantee than a check.
@@ -238,6 +238,21 @@ describe("a rewind that cannot be honoured as asked", () => {
     }
   });
 
+  it("judges a shooter who drew nobody one tick back, and counts nothing against them", () => {
+    // No moment to rewind to is not a bad moment: a client with one snapshot, or
+    // alone until now, has nothing to name and is neither clamped nor implausible.
+    const { m, seen } = played(20);
+    const newest = seen[seen.length - 1]!.tick;
+    const before = m.rewindReport();
+
+    const unnamed = m.rewind("runner", { ...input(99, forward), drawn: null }, "shooter", scratch())!;
+    expect(m.rewindReport()).toEqual(before);
+
+    const named = m.rewind("runner", input(99, forward, (newest - 1) & 0xffff, 0), "shooter", scratch())!;
+    expect(unnamed.feet.z).toBe(named.feet.z);
+    expect(unnamed.feet.z).not.toBe(seen[seen.length - 1]!.runner.feet.z);
+  });
+
   it("gives nothing for a player who is not here", () => {
     const { m } = played(10);
     expect(m.rewind("nobody", input(99, forward, 5, 0), "shooter", scratch())).toBeNull();
@@ -259,7 +274,7 @@ describe("a rewind that cannot be honoured as asked", () => {
 
 describe("the 16 bits a render tick travels in", () => {
   it("survives the wrap, so a long match does not aim into the far past", () => {
-    // `renderTick` is the low 16 bits and the server recovers the rest from its own
+    // `drawn.tick` is the low 16 bits and the server recovers the rest from its own
     // clock. A plain comparison is right for eighteen minutes and then points at a
     // tick 65536 in the past — which the window would clamp, silently turning every
     // shot in the match into a clamped one.

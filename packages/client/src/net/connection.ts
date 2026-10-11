@@ -19,10 +19,10 @@
 
 import geckos, { type ClientChannel } from "@geckos.io/client";
 import { decodePacket, encodePacket, MessageType, PROTOCOL_VERSION } from "@3d/shared/net/packet.js";
-import { REDUNDANT_INPUTS, roundRenderFrac, type InputStep } from "@3d/shared/net/messages/input.js";
+import { REDUNDANT_INPUTS, roundRenderFrac, type InputStep, type RenderMoment } from "@3d/shared/net/messages/input.js";
 import { after } from "@3d/shared/net/seq.js";
 import type { PlayerInput } from "@3d/shared/sim/input.js";
-import type { MovementState } from "@3d/shared/sim/movement.js";
+import type { Vec3 } from "@3d/shared/sim/movement.js";
 import type { PlayerState } from "@3d/shared/sim/player.js";
 import type { GameEvent } from "@3d/shared/net/messages/events.js";
 // SHOTTRACE (docs/engine/diagnostics-shottrace.md)
@@ -97,9 +97,7 @@ export interface SentInput extends InputStep {
 /** One authoritative tick, as the client is given it. */
 export interface Correction {
   tick: number;
-  /** The last input of ours this server had applied. Everything after it is still ours to replay. */
-  ack: number;
-  /** Our own state, authoritative. Undefined before `joined`, or if the server has forgotten us. */
+  /** Our own state, authoritative. Undefined while we are seated and not yet in the match. */
   self: PlayerState | undefined;
   /** Everyone else, to be drawn. */
   others: PlayerSnapshot[];
@@ -112,9 +110,9 @@ export interface Correction {
   /** The gametype's counters, in its declaration's order. */
   counters: number[];
   /**
-   * What happened since the last snapshot, and only what *this* client has not
-   * been told yet: a death rides in the tail of every snapshot for half a second,
-   * so the same event arrives about thirty times and is passed on once.
+   * What happened, and only what *this* client has not been told yet: a death
+   * rides in the tails of half a second of snapshots, so the same event arrives
+   * about thirty times and is passed on once.
    */
   events: readonly GameEvent[];
 }
@@ -130,7 +128,10 @@ export interface MatchTicket {
 
 export class Connection {
   private channel: ClientChannel | undefined;
+  /** Who we are in this match: the ticket's id, which is how a snapshot names us. */
   private id: string | undefined;
+  /** The server has answered the join. Nothing is sent, and no snapshot is taken, before it has. */
+  private joined = false;
   private joinTimer: ReturnType<typeof setInterval> | undefined;
   private joinDeadline = 0;
   /** Wraps at 16 bits, which is what the wire carries. */
@@ -143,11 +144,14 @@ export class Connection {
    * Replaying more than that would cost more than the correction is worth.
    */
   private readonly sent: SentInput[] = [];
+  /** Which events have been passed on, from the counter `joined` named. Undefined before it has. */
+  private seen: SeenEvents | undefined;
   /**
-   * The newest event id seen, which starts as the counter `joined` named. Nothing
-   * at or below it is passed on again.
+   * The tick of the newest snapshot taken. The channel is unordered, and one that
+   * arrives behind a newer one is dropped whole: its ack is older than inputs
+   * already let go of, and its peers are older than the ones being drawn.
    */
-  private lastEvent: number | undefined;
+  private lastTick = -1;
   private closed = false;
   /** The class asked for and not yet answered, and the timer asking again. */
   private choosing: { index: number; timer: ReturnType<typeof setInterval> } | undefined;
@@ -164,10 +168,6 @@ export class Connection {
     /** `worldHash` of the world this client mounted: a server holding other text refuses the join. */
     private readonly worldHash = "",
   ) {}
-
-  get connected(): boolean {
-    return this.id !== undefined;
-  }
 
   /**
    * Join the match this ticket names. Resolves either way: a false return is
@@ -193,6 +193,7 @@ export class Connection {
 
     const channel = geckos({ url: `${url.protocol}//${url.hostname}`, port });
     this.channel = channel;
+    this.id = ticket.playerId;
 
     channel.onConnect((error) => {
       if (error || this.closed) {
@@ -210,35 +211,34 @@ export class Connection {
   }
 
   /**
-   * One tick's command, the state it produced, and the moment it was aimed at.
+   * One tick's command, where it left the feet, and the moment it was aimed at.
    *
    * `drawnAt` is where this client had other players when it built this input —
    * `RemotePlayers.renderTick()`. Without it the server has no way to judge a shot
    * except against the present, which at any ping is not where the shooter was
    * looking. Undefined when nobody has been drawn yet (no peers, or no snapshot),
-   * and then there is nothing to compensate for anyway.
+   * which travels as no moment at all: there is nothing to compensate for.
    */
-  send(input: PlayerInput, dt: number, claim: MovementState, drawnAt?: { tick: number; frac: number }): void {
-    if (!this.channel || this.id === undefined) {
+  send(input: PlayerInput, dt: number, feet: Readonly<Vec3>, drawnAt?: RenderMoment): void {
+    if (!this.channel || !this.joined) {
       return;
     }
     this.seq = (this.seq + 1) & 0xffff;
     // The symmetry rule: the fraction the server will decode, not the one this
     // frame measured, so both ends place the target identically.
-    const renderTick = (drawnAt?.tick ?? 0) & 0xffff;
-    const renderFrac = roundRenderFrac(drawnAt?.frac ?? 0);
+    const drawn = drawnAt ? { tick: drawnAt.tick & 0xffff, frac: roundRenderFrac(drawnAt.frac) } : null;
     // Before this one is pushed, and from the ring itself: everything in it is
     // unacknowledged as of the last snapshot, and its seqs are consecutive, which
     // is what lets the packet leave them out.
-    const earlier = this.sent.slice(-REDUNDANT_INPUTS).map(({ dt, input, renderTick, renderFrac }) => ({ dt, input, renderTick, renderFrac }));
+    const earlier = this.sent.slice(-REDUNDANT_INPUTS).map(({ dt, input, drawn }) => ({ dt, input, drawn }));
     // Copied, not referenced: `FirstPersonControls` refills one `PlayerInput` in
     // place every tick, so keeping the reference would keep the newest input
     // MAX_SENT times over and replay the same command for every unacked step.
-    this.sent.push({ seq: this.seq, input: { ...input }, dt, renderTick, renderFrac });
+    this.sent.push({ seq: this.seq, input: { ...input }, dt, drawn });
     if (this.sent.length > MAX_SENT) {
       this.sent.shift();
     }
-    this.emit(encodePacket(MessageType.input, { seq: this.seq, dt, input, claim, renderTick, renderFrac, earlier }));
+    this.emit(encodePacket(MessageType.input, { seq: this.seq, dt, input, claim: feet, drawn, earlier }));
   }
 
   /**
@@ -247,7 +247,7 @@ export class Connection {
    * later choice replaces an unanswered one.
    */
   chooseClass(index: number): void {
-    if (this.id === undefined) {
+    if (!this.joined) {
       return;
     }
     this.stopChoosing();
@@ -267,7 +267,7 @@ export class Connection {
     this.closed = true;
     this.stopJoining();
     this.stopChoosing();
-    this.id = undefined;
+    this.joined = false;
     this.sent.length = 0;
     // geckos' close assumes a peer connection that came up, and throws on one
     // that never did — a refused handshake, an unreachable server. Thrown from
@@ -290,7 +290,7 @@ export class Connection {
     this.stopJoining();
     this.joinDeadline = Date.now() + JOIN_TIMEOUT_MS;
     const ask = (): void => {
-      if (this.id !== undefined) {
+      if (this.joined) {
         this.stopJoining();
         return;
       }
@@ -333,19 +333,20 @@ export class Connection {
 
     switch (packet.type) {
       case MessageType.joined:
-        if (this.id === undefined) {
-          this.id = packet.message.you;
-          this.lastEvent = packet.message.eventId;
+        if (!this.joined) {
+          this.joined = true;
+          this.seen = new SeenEvents(packet.message.eventId);
           this.stopJoining();
           this.events.onJoined(packet.message);
         }
         return;
       case MessageType.snapshot:
-        this.events.onSnapshot(this.correction(packet.message));
-        return;
-      case MessageType.leave:
-        // A hint only. Snapshot membership is what actually removes a player, so
-        // a lost leave heals on the next tick instead of leaving a body behind.
+        // One that overtook the `joined` it follows is dropped: there is no tick
+        // rate to step it at yet and no counter to read its events against.
+        if (this.joined && packet.message.tick > this.lastTick) {
+          this.lastTick = packet.message.tick;
+          this.events.onSnapshot(this.correction(packet.message));
+        }
         return;
       case MessageType.shotTrace:
         // SHOTTRACE
@@ -385,18 +386,15 @@ export class Connection {
     while (this.sent.length > 0 && !after(this.sent[0]!.seq, ack)) {
       this.sent.shift();
     }
-    const self = this.id === undefined ? undefined : message.players.find((p) => p.id === this.id)?.state;
-    const others = this.id === undefined ? message.players : message.players.filter((p) => p.id !== this.id);
-    const fresh = unseenEvents(message.events, this.lastEvent);
-    this.lastEvent = fresh.seen;
+    const self = message.players.find((p) => p.id === this.id)?.state;
+    const others = message.players.filter((p) => p.id !== this.id);
     return {
       tick: message.tick,
-      ack,
       self,
       others,
       actors: message.actors,
       pending: this.sent,
-      events: fresh.events,
+      events: this.seen?.unseen(message.events) ?? [],
       presence: message.presence,
       counters: message.counters,
     };
@@ -405,7 +403,7 @@ export class Connection {
   private handleClosed(): void {
     this.stopJoining();
     this.stopChoosing();
-    this.id = undefined;
+    this.joined = false;
     this.events.onClosed();
   }
 
@@ -415,30 +413,69 @@ export class Connection {
 }
 
 /**
- * The events of one tail this client has not seen, and the watermark to keep.
+ * How far behind the newest id an event may arrive and still be news. Far more
+ * ids than a match issues in the second an event is repeated for, and well
+ * inside the half of the counter `after` can order.
+ */
+const EVENT_WINDOW = 4096;
+
+/**
+ * Which events this client has already passed on.
  *
  * The de-dupe is the whole of what makes a repeated tail safe, so it is here
  * rather than in the app, beside the other thing this file drops as already
- * accounted for (an acked input). `seen` is undefined before `joined`, and then
- * there is no watermark to compare against and nothing to report: an event from
- * before we were in the game is not news.
+ * accounted for (an acked input). It remembers the ids themselves rather than
+ * the newest of them, because a full tail carries what it holds in turns
+ * (`EventOutbox.for` on the game server) and an older id can arrive after a
+ * newer one. Bounded by a floor: nothing at or before it is news, it starts at
+ * the counter `joined` named — an event from before we were in the game is not
+ * news — and it follows `EVENT_WINDOW` behind the newest id taken.
  *
  * Exported for its test — and it is `after` (@3d/shared/net/seq.ts) that makes it
  * sound over a counter that wraps, which is the case nobody reproduces by hand.
  */
-export function unseenEvents(tail: readonly GameEvent[], seen: number | undefined): { events: GameEvent[]; seen: number | undefined } {
-  if (seen === undefined) {
-    return { events: [], seen };
+export class SeenEvents {
+  private readonly taken = new Set<number>();
+  private floor: number;
+  private newest: number;
+
+  constructor(cursor: number) {
+    this.floor = cursor;
+    this.newest = cursor;
   }
-  const events: GameEvent[] = [];
-  let newest = seen;
-  for (const event of tail) {
-    if (after(event.id, newest)) {
+
+  /** The events of one tail that have not been passed on before, in the tail's order. */
+  unseen(tail: readonly GameEvent[]): GameEvent[] {
+    const events: GameEvent[] = [];
+    for (const event of tail) {
+      if (!after(event.id, this.floor) || this.taken.has(event.id)) {
+        continue;
+      }
+      this.taken.add(event.id);
       events.push(event);
-      newest = event.id;
+      if (after(event.id, this.newest)) {
+        this.newest = event.id;
+      }
+    }
+    if (events.length > 0) {
+      this.raiseFloor();
+    }
+    return events;
+  }
+
+  /** Bring the floor up behind the newest id, and forget what it has passed. */
+  private raiseFloor(): void {
+    const floor = (this.newest - EVENT_WINDOW) & 0xffff;
+    if (!after(floor, this.floor)) {
+      return;
+    }
+    this.floor = floor;
+    for (const id of this.taken) {
+      if (!after(id, floor)) {
+        this.taken.delete(id);
+      }
     }
   }
-  return { events, seen: newest };
 }
 
 function toBytes(data: unknown): Uint8Array {

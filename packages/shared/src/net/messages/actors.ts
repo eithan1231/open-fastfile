@@ -31,7 +31,7 @@ const actorFeet: Codec<Vec3> = struct({
 /**
  * 16 id + 4 kind + 49 feet + 8 yaw + 2 gait + 3 action + 6 speed + 8 phase = 96
  * bits, exactly twelve bytes, so a snapshot's actors never shift what follows them
- * off a byte boundary. `dead` is not sent: it is exactly `action === "die"`.
+ * off a byte boundary. Nothing says an actor is dead but `action === "die"`.
  *
  * **The speed's six bits carry the traversal clip while a body traverses.** A
  * speed only fades a moving body into its gait, which a traverse never reads, and
@@ -70,7 +70,7 @@ export const actorStateSchema: Codec<ActorState> = {
     const traversing = h.action === "traverse";
     const moved = traversing ? 0 : speed.read(r);
     const clip = traversing ? traversal.read(r) : 0;
-    return { ...h, speed: moved, traversal: clip, phase: phase.read(r), dead: h.action === "die" };
+    return { ...h, speed: moved, traversal: clip, phase: phase.read(r) };
   },
 };
 

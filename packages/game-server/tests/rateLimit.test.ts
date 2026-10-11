@@ -21,7 +21,7 @@ import type { PlayerId } from "@3d/shared/net/messages/fields.js";
 import type { PlayerSnapshot } from "@3d/shared/net/messages/snapshot.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
-import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import type { WeaponData, WeaponState } from "@3d/shared/sim/weapon.js";
 import type { WeaponDef } from "@3d/shared/sim/weaponDef.js";
@@ -90,7 +90,7 @@ function carrying(weapon: string | null, second: string | null = null): Loadout 
 const holdingFire: PlayerInput = { ...idleInput(0, 0), fire: true };
 
 function message(seq: number, input: PlayerInput): InputMessage {
-  return { seq, dt: DT, input, claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick: 0, renderFrac: 0 };
+  return { seq, dt: DT, input, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: 0, frac: 0 } };
 }
 
 /** A match with one or more players, driven a tick at a time with the shots each tick fired counted. */

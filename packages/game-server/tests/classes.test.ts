@@ -18,7 +18,6 @@ import type { PlayerId } from "@3d/shared/net/messages/fields.js";
 import type { PlayerSnapshot } from "@3d/shared/net/messages/snapshot.js";
 import { idleInput } from "@3d/shared/sim/input.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
-import { createMovement } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
 import * as THREE from "three";
@@ -138,7 +137,7 @@ function game(options: { rules?: Partial<ClassRules>; hooks?: ServerHooks; playe
   const tick = (ticks = 1) => {
     for (let i = 0; i < ticks; i++) {
       for (const { id } of match.report()) {
-        match.receive(id, { seq: ++seq, dt: DT, input: idleInput(0, 0), claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick: 0, renderFrac: 0 });
+        match.receive(id, { seq: ++seq, dt: DT, input: idleInput(0, 0), claim: { x: 0, y: 0, z: 0 }, drawn: { tick: 0, frac: 0 } });
       }
       latest = match.step().players;
       const first = latest[0];

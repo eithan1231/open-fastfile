@@ -30,7 +30,6 @@ function at(id: string, x: number, z: number, yaw = 0): PlayerSnapshot {
       team: null,
       health: 100,
       dead: false,
-      sinceDamage: 10,
       respawnIn: 0,
       points: 0,
     },
@@ -38,7 +37,7 @@ function at(id: string, x: number, z: number, yaw = 0): PlayerSnapshot {
 }
 
 function zombie(z: number): ActorState {
-  return { id: 1, kind: 0, feet: { x: 0, y: 0, z }, yaw: 0, speed: 1, gait: "walk", action: "move", phase: 0, traversal: 0, dead: false };
+  return { id: 1, kind: 0, feet: { x: 0, y: 0, z }, yaw: 0, speed: 1, gait: "walk", action: "move", phase: 0, traversal: 0 };
 }
 
 describe("remote players", () => {
@@ -47,8 +46,8 @@ describe("remote players", () => {
     remotes.apply([at("a", 0, 0), at("b", 1, 1)], 1, 0);
     expect(remotes.root.children).toHaveLength(2);
 
-    // Snapshot membership is authoritative, which is what makes a lost `leave`
-    // heal itself instead of leaving a body standing in the map.
+    // Snapshot membership is authoritative, and the only thing that says a
+    // player has gone.
     remotes.apply([at("a", 0, 0)], 2, 100);
     expect(remotes.root.children).toHaveLength(1);
 
@@ -156,7 +155,7 @@ describe("remote players", () => {
     expect(at1.frac).toBeGreaterThan(0);
     expect(at1.frac).toBeLessThan(1);
     // And never past what the server has actually sent.
-    expect(at1.tick + at1.frac).toBeLessThanOrEqual(remotes.tick);
+    expect(at1.tick + at1.frac).toBeLessThanOrEqual(105);
     remotes.dispose();
   });
 
@@ -193,7 +192,6 @@ describe("remote players", () => {
     actors.clear();
     expect(remotes.renderTick()).toBeUndefined();
     expect(actors.renderTick()).toBeUndefined();
-    expect(remotes.tick).toBe(0);
     remotes.dispose();
     actors.dispose();
   });
@@ -223,7 +221,6 @@ describe("remote players", () => {
             team: null,
             health: 100,
             dead: false,
-            sinceDamage: 10,
             respawnIn: 0,
             points: 0,
           },
@@ -250,7 +247,6 @@ describe("remote players", () => {
             team: null,
             health: 100,
             dead: false,
-            sinceDamage: 10,
             respawnIn: 0,
             points: 0,
           },

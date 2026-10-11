@@ -53,9 +53,9 @@ export class ActorTick {
     this.states = this.actors.snapshot(this.clock.tick);
   }
 
-  /** The actors a snapshot addressed to nobody carries: the oldest, up to the cap. */
-  get oldest(): ActorState[] {
-    return this.states.slice(0, MAX_SNAPSHOT_ACTORS);
+  /** How many actors the last tick left: none means there is nothing to tell anyone about them. */
+  get count(): number {
+    return this.states.length;
   }
 
   /**
@@ -70,7 +70,7 @@ export class ActorTick {
     }
     const feet = this.roster.get(id)?.player.movement.feet;
     if (!feet) {
-      return this.oldest;
+      return all.slice(0, MAX_SNAPSHOT_ACTORS);
     }
     const away = (a: ActorState) => (a.feet.x - feet.x) ** 2 + (a.feet.y - feet.y) ** 2 + (a.feet.z - feet.z) ** 2;
     return all

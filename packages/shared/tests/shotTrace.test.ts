@@ -9,7 +9,7 @@
 // the first case here is for.
 
 import { describe, expect, it } from "vitest";
-import { decodePacket, encodePacket, MessageType, UNRELIABLE } from "../src/net/packet.js";
+import { decodePacket, encodePacket, MessageType } from "../src/net/packet.js";
 import { shotTraceMessage, type ShotTraceMessage } from "../src/net/messages/shotTrace.js";
 import { BitReader, BitWriter } from "../src/net/codec/bits.js";
 
@@ -20,7 +20,6 @@ const LANDED: ShotTraceMessage = {
   direction: { x: -0.5, y: 0.25, z: -0.828125 },
   distance: 37.5,
   met: "player",
-  target: "gTq1-9",
 };
 
 function roundTrip(message: ShotTraceMessage): ShotTraceMessage {
@@ -31,11 +30,8 @@ function roundTrip(message: ShotTraceMessage): ShotTraceMessage {
 
 describe("the shot trace message", () => {
   it("was appended, so every message that existed before it kept its number", () => {
-    expect(MessageType).toEqual({ join: 0, joined: 1, input: 2, snapshot: 3, leave: 4, refused: 5, shotTrace: 6, chooseClass: 7, classChosen: 8 });
-  });
-
-  it("is unreliable: a lost diagnostic is a line that is not drawn, never a wrong one", () => {
-    expect(UNRELIABLE.has(MessageType.shotTrace)).toBe(true);
+    // 4 is unassigned: a number is never reused.
+    expect(MessageType).toEqual({ join: 0, joined: 1, input: 2, snapshot: 3, refused: 5, shotTrace: 6, chooseClass: 7, classChosen: 8 });
   });
 
   it("carries every field back, and the fields are distinguishable from each other", () => {
@@ -47,9 +43,9 @@ describe("the shot trace message", () => {
   });
 
   it("carries a miss, which is the case a hit marker cannot express at all", () => {
-    const missed: ShotTraceMessage = { ...LANDED, distance: 208.03125, met: "none", target: null };
+    const missed: ShotTraceMessage = { ...LANDED, distance: 208.03125, met: "none" };
     expect(roundTrip(missed)).toEqual(missed);
-    expect(roundTrip({ ...LANDED, met: "world", target: null })).toMatchObject({ met: "world", target: null });
+    expect(roundTrip({ ...LANDED, met: "world" })).toMatchObject({ met: "world" });
   });
 
   it("goes through the packet table under its own type byte", () => {

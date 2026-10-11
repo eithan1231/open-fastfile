@@ -37,7 +37,6 @@ import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import type { PlayerSnapshot, SnapshotMessage } from "@3d/shared/net/messages/snapshot.js";
 import type { PhysicsWorld } from "@3d/shared/physics/world.js";
 import type { CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
-import type { EntityKindId } from "@3d/shared/sim/entityKinds.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
 import type { MovementState } from "@3d/shared/sim/movement.js";
 import { Player } from "@3d/shared/sim/player.js";
@@ -58,7 +57,7 @@ import { BrainContexts, gameView, serverContext } from "./context.js";
 import { Damage } from "./damage.js";
 import { InputDrain } from "./drain.js";
 import { Dynamics } from "./dynamics.js";
-import { InputQueue, type DriftReport } from "./inputs.js";
+import { InputQueue, UnspawnedInputs, type DriftReport } from "./inputs.js";
 import { MatchNav } from "./nav.js";
 import { Announcements, EventOutbox } from "./outbox.js";
 import { TickPhases } from "./phases.js";
@@ -94,6 +93,8 @@ export class Match {
   private readonly actorTick: ActorTick;
   private readonly dynamics: Dynamics;
   private readonly phases = new TickPhases();
+  /** What has been heard from players who are seated and not yet in the match. */
+  private readonly unspawned = new UnspawnedInputs();
   /** Why a script ended the match (`ServerContext.endMatch`), once one has. `Games` stops hosting it. */
   private endedBy: string | undefined;
   private failure: string | undefined;
@@ -243,7 +244,7 @@ export class Match {
     return this.playing.gametype;
   }
 
-  /** What combat costs here, as the wire carries it to a client in `joined`. */
+  /** What combat costs here. The part a client acts on reaches it in `joined` (`JoinedRules`). */
   get rules(): CombatRules {
     return this.damage.rules;
   }
@@ -358,7 +359,7 @@ export class Match {
     const member: Member = {
       id,
       player,
-      inputs: new InputQueue(),
+      inputs: new InputQueue(this.unspawned.take(id)),
       history: new PlayerHistory(this.rewinder.historyLength),
       sentTick: -1,
       engine,
@@ -398,37 +399,40 @@ export class Match {
 
   /**
    * Queue one input. Deliberately does not step: the tick owns the clock, so a
-   * client cannot advance itself by sending faster.
+   * client cannot advance itself by sending faster. One from somebody not in the
+   * match — seated, still choosing a class — is stepped by nothing and
+   * acknowledged all the same (`UnspawnedInputs`).
    */
   receive(id: PlayerId, message: InputMessage): void {
-    this.roster.get(id)?.inputs.receive(message);
+    const member = this.roster.get(id);
+    if (member) {
+      member.inputs.receive(message);
+    } else {
+      this.unspawned.receive(id, message.seq);
+    }
   }
 
   /**
    * Forget which seqs this player has sent: a new connection for a seated player
    * counts from the start again, and every one of its inputs would read as old.
+   * Also what a seat going away calls, so nothing is kept for somebody who left
+   * before they spawned.
    */
   resetInputs(id: PlayerId): void {
     this.roster.get(id)?.inputs.reset();
+    this.unspawned.take(id);
   }
 
   /**
-   * Advance every player by the inputs they have sent, and return the
-   * authoritative state. The returned message's `ack` is meaningless on its own
-   * — `snapshotFor` sets each player's own.
+   * Advance every player by the inputs they have sent, and return everyone's
+   * authoritative state — the part of a snapshot that is the same for all of
+   * them, which `snapshotFor` is handed back — and how many actors there are to
+   * tell anyone about.
    */
-  step(): SnapshotMessage {
+  step(): { players: PlayerSnapshot[]; actors: number } {
     this.clock.tick++;
     this.phases.run();
-    return {
-      tick: this.clock.tick,
-      ack: 0,
-      presence: this.parts.snapshot,
-      players: this.roster.snapshot(),
-      actors: this.actorTick.oldest,
-      counters: this.tally.countersNow(),
-      events: [],
-    };
+    return { players: this.roster.snapshot(), actors: this.actorTick.count };
   }
 
   /**
@@ -445,7 +449,7 @@ export class Match {
     }
     return {
       tick: this.clock.tick,
-      ack: member?.inputs.ack ?? 0,
+      ack: member?.inputs.ack ?? this.unspawned.ack(id) ?? 0,
       presence: this.parts.snapshot,
       players,
       actors: this.actorTick.for(id),
@@ -513,11 +517,6 @@ export class Match {
   /** How this match may build a physics world, should anything need one (`Dynamics.setFactory`). */
   setPhysicsFactory(factory: () => PhysicsWorld | undefined): void {
     this.dynamics.setFactory(factory);
-  }
-
-  /** Queue a spawn in this match's own physics world, building the world if this is the first thing to need it. */
-  spawnEntity(id: number, kind: EntityKindId, build: Parameters<PhysicsWorld["spawn"]>[3]): void {
-    this.dynamics.spawn(id, kind, build);
   }
 
   /** What this match is simulating, for `/healthz`. Zeroes where it is simulating nothing. */

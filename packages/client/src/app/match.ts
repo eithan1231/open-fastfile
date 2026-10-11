@@ -76,7 +76,7 @@ export class MatchController {
     // shot against what the shooter actually saw rather than against the present.
     // Peers first; with none, the actors, which are drawn at the same moment.
     const { firstPerson, remotes, actors } = systems;
-    firstPerson.onTick = (input, dt, claim) => this.connection?.send(input, dt, claim, remotes.renderTick() ?? actors.renderTick());
+    firstPerson.onTick = (input, dt, feet) => this.connection?.send(input, dt, feet, remotes.renderTick() ?? actors.renderTick());
   }
 
   /** Whether this player holds a ticket to a match, connected or not. */
@@ -316,8 +316,8 @@ export class MatchController {
    * The two sounds the event tail raises: a hit marker for this player, and a
    * body arriving for whoever fell.
    *
-   * `events` is already de-duplicated by `unseenEvents`, which is what makes
-   * this safe to raise on: a death is repeated for sixty datagrams and a marker
+   * `events` is already de-duplicated by `SeenEvents`, which is what makes
+   * this safe to raise on: a death is repeated for thirty datagrams and a marker
    * is sent once, and neither is heard twice. A `hit` names nobody — the marker
    * is only ever this player's own — and a `death` names the victim, whose feet
    * are wherever the same snapshot already put them.
@@ -339,7 +339,7 @@ export class MatchController {
   /**
    * The announcements in one tail, handed to the gametype's client scripts.
    *
-   * De-duplicated by `unseenEvents` before it gets here, which is what makes a
+   * De-duplicated by `SeenEvents` before it gets here, which is what makes a
    * kind that is repeated for a second safe to act on: the countdown is heard
    * once however many datagrams carried it.
    *

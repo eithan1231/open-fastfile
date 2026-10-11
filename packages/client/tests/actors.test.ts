@@ -23,7 +23,6 @@ const actor = (id: number, z: number, overrides: Partial<ActorState> = {}): Acto
   action: "move",
   phase: 0,
   traversal: 0,
-  dead: false,
   ...overrides,
 });
 
@@ -54,7 +53,7 @@ describe("ActorsView", () => {
 
   it("lays a dead capsule down", () => {
     const view = new ActorsView();
-    view.apply([actor(1, 0, { dead: true, action: "die" })], 1, 0);
+    view.apply([actor(1, 0, { action: "die" })], 1, 0);
     view.update(TICK_MS);
     const capsule = view.root.children[0]!;
     expect(capsule.position.y).toBeCloseTo(ZOMBIE_KIND.radius, 6);

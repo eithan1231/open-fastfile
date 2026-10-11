@@ -48,7 +48,7 @@ export class GameTick {
     // Still step an empty game: the tick counter is the clock, and a player
     // joining mid-game should not see it restart.
     const { players, actors } = game.match.step();
-    if (players.length === 0 && actors.length === 0) {
+    if (players.length === 0 && actors === 0) {
       return;
     }
     this.net.sendEach(game.id, (id) => encodePacket(MessageType.snapshot, game.match.snapshotFor(id, players)));

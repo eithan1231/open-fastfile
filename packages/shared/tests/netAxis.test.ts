@@ -12,7 +12,6 @@ import { decodePacket, encodePacket, MessageType } from "../src/net/packet.js";
 import { roundDt, roundInput, type InputPacket } from "../src/net/messages/input.js";
 import { CollisionWorld } from "../src/collision/world.js";
 import { idleInput } from "../src/sim/input.js";
-import { createMovement } from "../src/sim/movement.js";
 import { Player } from "../src/sim/player.js";
 
 /** A player on a floor wide enough to crawl about on. */
@@ -35,8 +34,7 @@ describe("a strafe axis", () => {
     expect(still.forward).toBe(0);
     expect(still.right).toBe(0);
 
-    const claim = createMovement({ x: 0, y: 0, z: 0 }, 1.2345678, -0.4);
-    const message: InputPacket = { seq: 3, dt: roundDt(1 / 60), input: still, claim, renderTick: 0, renderFrac: 0, earlier: [] };
+    const message: InputPacket = { seq: 3, dt: roundDt(1 / 60), input: still, claim: { x: 0, y: 0, z: 0 }, drawn: null, earlier: [] };
     const back = decodePacket(encodePacket(MessageType.input, message)).message as InputPacket;
     expect(back.input.forward).toBe(0);
     expect(back.input.right).toBe(0);

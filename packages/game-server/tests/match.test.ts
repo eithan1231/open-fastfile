@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { createMovement, EYE_HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { Player } from "@3d/shared/sim/player.js";
 import { Match } from "../src/match/match.js";
 import { decodePacket, encodePacket, MessageType } from "@3d/shared/net/packet.js";
@@ -94,9 +94,9 @@ function worldWithSpawns(xs: number[]): ResolvedWorld {
 /** An input plus the claim a perfectly honest client would make: the same step, run locally. */
 function honest(seq: number, input: PlayerInput, shadow: Player): InputMessage {
   shadow.step(input, DT);
-  // renderTick 0 with no history yet clamps to the oldest tick we have, which is
-  // what an honest client that has not been sent a snapshot would also get.
-  return { seq, dt: DT, input, claim: structuredClone(shadow.movement) as MovementState, renderTick: 0, renderFrac: 0 };
+  // Tick 0 with no history yet clamps to the oldest tick we have, which is what
+  // an honest client that has not been sent a snapshot would also get.
+  return { seq, dt: DT, input, claim: { ...shadow.movement.feet }, drawn: { tick: 0, frac: 0 } };
 }
 
 const forward: PlayerInput = { ...idleInput(0, 0), forward: 1 };
@@ -148,7 +148,7 @@ describe("a match", () => {
     for (let i = 1; i <= 60; i++) {
       const message = honest(i, forward, shadow);
       if (i > 1) {
-        message.claim!.feet.x += 5; // it teleports sideways, and stays there
+        message.claim!.x += 5; // it teleports sideways, and stays there
       }
       m.receive("a", message);
       m.step();
@@ -175,7 +175,7 @@ describe("a match", () => {
     for (let i = 1; i <= 60; i++) {
       const message = honest(i, forward, shadow);
       if (i === 30) {
-        message.claim!.feet.x += 2; // one bad step, and honest either side of it
+        message.claim!.x += 2; // one bad step, and honest either side of it
       }
       m.receive("a", message);
       m.step();
@@ -200,7 +200,7 @@ describe("a match", () => {
     // Ten ticks' worth into a single tick. Sixteen is the queue's ceiling, so
     // the rest never even lands.
     for (let i = 1; i <= 40; i++) {
-      m.receive("a", { seq: i, dt: DT, input: forward, claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick: 0, renderFrac: 0 });
+      m.receive("a", { seq: i, dt: DT, input: forward, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: 0, frac: 0 } });
     }
     m.step();
 
@@ -214,8 +214,8 @@ describe("a match", () => {
     const m = match();
     m.join("a");
     m.join("b");
-    m.receive("a", { seq: 7, dt: DT, input: forward, claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick: 0, renderFrac: 0 });
-    m.receive("b", { seq: 99, dt: DT, input: forward, claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick: 0, renderFrac: 0 });
+    m.receive("a", { seq: 7, dt: DT, input: forward, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: 0, frac: 0 } });
+    m.receive("b", { seq: 99, dt: DT, input: forward, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: 0, frac: 0 } });
     const players = m.step().players;
 
     expect(m.snapshotFor("a", players).ack).toBe(7);
@@ -253,7 +253,7 @@ describe("a match", () => {
   it("orders inputs across the 16-bit wrap", () => {
     const m = match();
     m.join("a");
-    const input = (seq: number): InputMessage => ({ seq, dt: DT, input: forward, claim: null, renderTick: 0, renderFrac: 0 });
+    const input = (seq: number): InputMessage => ({ seq, dt: DT, input: forward, claim: null, drawn: { tick: 0, frac: 0 } });
     m.receive("a", input(65535));
     m.receive("a", input(0));
     m.receive("a", input(65534)); // before both: dropped
@@ -264,15 +264,43 @@ describe("a match", () => {
   it("counts from the start again for a new connection, once told to", () => {
     const m = match();
     m.join("a");
-    const input = (seq: number): InputMessage => ({ seq, dt: DT, input: forward, claim: null, renderTick: 0, renderFrac: 0 });
+    const input = (seq: number): InputMessage => ({ seq, dt: DT, input: forward, claim: null, drawn: { tick: 0, frac: 0 } });
     m.receive("a", input(5000));
     m.step();
     // A fresh client starts at 1, which reads as 4999 inputs old.
     m.receive("a", input(1));
     expect(m.snapshotFor("a", m.step().players).ack).toBe(5000);
     m.resetInputs("a");
+    // Nothing of the new connection's is applied yet, so nothing of it is acked:
+    // an ack of 5000 would read to the new client as every input it will send.
+    expect(m.snapshotFor("a", m.step().players).ack).toBe(0);
     m.receive("a", input(2));
     expect(m.snapshotFor("a", m.step().players).ack).toBe(2);
+  });
+
+  it("acknowledges the inputs of a seated player who has not spawned, and carries on from them", () => {
+    // Somebody choosing a class sends inputs that nothing steps. Unacknowledged,
+    // the client would keep every one and replay the lot onto its spawn.
+    const m = match();
+    m.join("a");
+    const input = (seq: number): InputMessage => ({ seq, dt: DT, input: forward, claim: null, drawn: null });
+    m.receive("b", input(40));
+    m.receive("b", input(42));
+    m.receive("b", input(41)); // late, and it does not take the ack back
+    expect(m.snapshotFor("b", m.step().players).ack).toBe(42);
+    expect(m.has("b")).toBe(false);
+
+    // Spawning starts the queue where they had got to: 42 is old, 43 is not.
+    m.join("b");
+    m.receive("b", input(42));
+    m.receive("b", input(43));
+    const players = m.step().players;
+    expect(m.snapshotFor("b", players).ack).toBe(43);
+
+    // And a seat that goes away takes its count with it.
+    m.receive("c", input(9));
+    m.resetInputs("c");
+    expect(m.snapshotFor("c", m.step().players).ack).toBe(0);
   });
 
   it("clamps the dt a client claims, so a long step cannot be bought", () => {
@@ -283,7 +311,7 @@ describe("a match", () => {
       const shadow = new Player(new FlatGround());
       shadow.place({ x: 0, y: 0, z: 0 }, 0, 0);
       shadow.step(forward, dt);
-      return structuredClone(shadow.movement) as MovementState;
+      return { ...shadow.movement.feet };
     };
 
     // Asking for a quarter-second buys two ticks, and the gap between what was
@@ -292,7 +320,7 @@ describe("a match", () => {
     // what is left is the ~0.1 m of extra walking a client tried to buy.
     const clamped = match();
     clamped.join("a");
-    clamped.receive("a", { seq: 1, dt: 0.25, input: forward, claim: where(0.25), renderTick: 0, renderFrac: 0 });
+    clamped.receive("a", { seq: 1, dt: 0.25, input: forward, claim: where(0.25), drawn: { tick: 0, frac: 0 } });
     clamped.step();
     expect(clamped.drift("a")!.current).toBeGreaterThan(0.09);
 
@@ -300,7 +328,7 @@ describe("a match", () => {
     // it, which is what makes the figure above the clamp and not a coincidence.
     const honestDt = match();
     honestDt.join("a");
-    honestDt.receive("a", { seq: 1, dt: 2 * DT, input: forward, claim: where(2 * DT), renderTick: 0, renderFrac: 0 });
+    honestDt.receive("a", { seq: 1, dt: 2 * DT, input: forward, claim: where(2 * DT), drawn: { tick: 0, frac: 0 } });
     honestDt.step();
     expect(honestDt.drift("a")!.current).toBeLessThan(0.001);
   });
@@ -436,7 +464,7 @@ describe("sides", () => {
     const m = match();
     m.join("a");
     m.join("b");
-    const snapshot = m.step();
+    const snapshot = m.snapshotFor("a", m.step().players);
     const back = decodePacket(encodePacket(MessageType.snapshot, snapshot));
     expect(back.type).toBe(MessageType.snapshot);
     if (back.type === MessageType.snapshot) {

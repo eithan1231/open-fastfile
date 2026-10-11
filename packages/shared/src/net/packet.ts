@@ -51,13 +51,11 @@ import {
   classChosenMessage,
   joinedMessage,
   joinMessage,
-  leaveMessage,
   refusedMessage,
   type ChooseClassMessage,
   type ClassChosenMessage,
   type JoinedMessage,
   type JoinMessage,
-  type LeaveMessage,
   type RefusedMessage,
 } from "./messages/session.js";
 
@@ -67,7 +65,7 @@ import {
  * disagree must refuse each other rather than guess: JSON failed a mismatch
  * loudly, and this does not. A wrong version decodes into plausible nonsense.
  */
-export const PROTOCOL_VERSION = 33;
+export const PROTOCOL_VERSION = 34;
 
 /**
  * The leading byte of every packet. These are the old channel names: a raw
@@ -80,7 +78,7 @@ export const MessageType = {
   joined: 1,
   input: 2,
   snapshot: 3,
-  leave: 4,
+  // 4 is unassigned, and stays so: a number is never reused.
   refused: 5,
   // SHOTTRACE: appended, so every number above is the one it has always been.
   shotTrace: 6,
@@ -90,16 +88,11 @@ export const MessageType = {
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
-/** Which messages want unreliable delivery: the hot path, where the next tick supersedes a lost one anyway. */
-// SHOTTRACE: a lost diagnostic packet is a line that is not drawn, not a wrong one.
-export const UNRELIABLE: ReadonlySet<MessageType> = new Set([MessageType.input, MessageType.snapshot, MessageType.shotTrace]);
-
 interface Messages {
   [MessageType.join]: JoinMessage;
   [MessageType.joined]: JoinedMessage;
   [MessageType.input]: InputPacket;
   [MessageType.snapshot]: SnapshotMessage;
-  [MessageType.leave]: LeaveMessage;
   [MessageType.refused]: RefusedMessage;
   [MessageType.shotTrace]: ShotTraceMessage; // SHOTTRACE
   [MessageType.chooseClass]: ChooseClassMessage;
@@ -111,7 +104,6 @@ const SCHEMAS = {
   [MessageType.joined]: joinedMessage,
   [MessageType.input]: inputMessage,
   [MessageType.snapshot]: snapshotMessage,
-  [MessageType.leave]: leaveMessage,
   [MessageType.refused]: refusedMessage,
   [MessageType.shotTrace]: shotTraceMessage, // SHOTTRACE
   [MessageType.chooseClass]: chooseClassMessage,

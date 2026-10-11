@@ -56,16 +56,16 @@ export class InputDrain {
       const heldWith = held ? { spread: held.data.spread, ads: held.data.ads } : null;
       player.step(message.input, dt);
       // Per input, because this is the only scope holding both the input that
-      // fired and the `renderTick`/`renderFrac` naming the moment its sender was
-      // drawing: four queued inputs are four different moments.
+      // fired and the `drawn` naming the moment its sender was drawing: four
+      // queued inputs are four different moments.
       this.shots.fire(member, held, firedBefore, aimedWith, heldWith, message);
 
       // Measured, and then **not** acted on: the claim is evidence about what the
       // client predicted, and our own answer is what anybody gets told. A bot has
       // no client and claims nothing; nor does an input recovered from a later
       // datagram.
-      if (!member.bot && message.claim) {
-        inputs.measure(player.movement.feet, message.claim.feet);
+      if (message.claim) {
+        inputs.measure(player.movement.feet, message.claim);
       }
     }
   }

@@ -1,7 +1,7 @@
 // Lag compensation: the moment a shooter was drawing, clamped to one this server
 // can answer, and where somebody was at it.
 
-import type { InputMessage } from "@3d/shared/net/messages/input.js";
+import type { InputStep } from "@3d/shared/net/messages/input.js";
 import type { MovementState } from "@3d/shared/sim/movement.js";
 import type { PlayerHistory } from "../history.js";
 import type { MatchClock } from "./clock.js";
@@ -35,7 +35,8 @@ const MAX_REWIND_SECONDS = 0.25;
  * naming a tick we never sent it, `clamped` is one reaching further back than
  * `MAX_REWIND_SECONDS` allows. Neither refuses the shot. Both being zero is the
  * expected state, and either being nonzero says something specific — a clock that
- * has drifted, or a client that is lying.
+ * has drifted, or a client that is lying. A shot whose sender was drawing nobody
+ * names no moment and counts as neither.
  */
 export interface RewindReport {
   implausible: number;
@@ -68,23 +69,31 @@ export class Rewinder {
   }
 
   /**
-   * The absolute tick a client's `renderTick` names, clamped to something this
-   * server can actually answer, and counted where it had to be. `sent` is the
-   * newest tick sent to the shooter, or -1 for none.
+   * The absolute tick the moment an input was `drawn` at names, clamped to
+   * something this server can actually answer, and counted where it had to be.
+   * `sent` is the newest tick sent to the shooter, or -1 for none.
    *
-   * `renderTick` is the low 16 bits, so the rest is recovered from our own clock:
+   * `drawn.tick` is the low 16 bits, so the rest is recovered from our own clock:
    * the tick named is in the recent past, and the masked difference is how far
    * back. That is wrap-safe for anything inside 32768 ticks, against a window of
    * sixty.
+   *
+   * An input that drew nobody — a player alone on their screen, or a bot — is
+   * judged against the world as the last tick left it, which is the newest state
+   * a drain can sample: this tick's is not recorded until its inputs are spent.
    *
    * Never refuses. A refused shot is indistinguishable from a miss to the player
    * who fired it and impossible to account for afterwards, while a clamped one is
    * resolved against a *more current* world, which is the conservative direction.
    */
-  target(sent: number, message: InputMessage): RewindTarget {
+  target(sent: number, message: InputStep): RewindTarget {
     const now = this.clock.tick;
-    let tick = now - ((now - message.renderTick) & 0xffff);
-    let frac = Math.min(Math.max(message.renderFrac, 0), 1);
+    const drawn = message.drawn;
+    if (drawn === null) {
+      return { tick: now - 1, frac: 0 };
+    }
+    let tick = now - ((now - drawn.tick) & 0xffff);
+    let frac = Math.min(Math.max(drawn.frac, 0), 1);
     if (sent >= 0 && tick > sent) {
       // They cannot have drawn a snapshot we never sent.
       tick = sent;

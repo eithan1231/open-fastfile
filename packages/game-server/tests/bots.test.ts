@@ -20,11 +20,11 @@ import { DEFAULT_GAMETYPE } from "@3d/shared/game/gametypes/registry.js";
 import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
 import { createPath, NavSearch } from "@3d/shared/nav/astar.js";
 import type { NavGraph } from "@3d/shared/nav/graph.js";
-import { createMovement, EYE_HEIGHT, type Vec3 } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT, type Vec3 } from "@3d/shared/sim/movement.js";
 import { idleInput } from "@3d/shared/sim/input.js";
 import { chaseGametype, CHASE_GAMETYPE } from "@3d/shared/game/gametypes/chase.js";
 import type { Script } from "@3d/shared/game/hooks.js";
-import type { SnapshotMessage } from "@3d/shared/net/messages/snapshot.js";
+import type { PlayerSnapshot } from "@3d/shared/net/messages/snapshot.js";
 import { scriptsFor } from "@3d/shared/game/registry.js";
 import { HORDE_SIZE } from "@3d/shared/game/scripts/chase.js";
 import { isBotId } from "@3d/shared/net/messages/fields.js";
@@ -185,16 +185,15 @@ function hordeOf(m: Match): string[] {
 class Stander {
   private seq = 0;
   constructor(private readonly m: Match) {}
-  step(): SnapshotMessage {
+  step(): PlayerSnapshot[] {
     this.m.receive(HUMAN, {
       seq: ++this.seq,
       dt: 1 / TICK_RATE,
       input: idleInput(0, 0),
-      claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-      renderTick: this.m.tick & 0xffff,
-      renderFrac: 0,
+      claim: { x: 0, y: 0, z: 0 },
+      drawn: { tick: this.m.tick & 0xffff, frac: 0 },
     });
-    return this.m.step();
+    return this.m.step().players;
   }
 }
 
@@ -207,7 +206,7 @@ function chase(seconds = CHASE_SECONDS) {
   m.join(HUMAN);
   const person = new Stander(m);
   const ids = horde.map((p) => p.id);
-  const at = (snapshot: SnapshotMessage, id: string) => snapshot.players.find((p) => p.id === id)!.state;
+  const at = (players: PlayerSnapshot[], id: string) => players.find((p) => p.id === id)!.state;
   const joined = person.step();
   expect(at(joined, HUMAN).team).toBe(chaseGametype.teams.indexOf("survivors"));
   const startDistance = Math.min(...ids.map((id) => horizontal(at(joined, id).movement.feet, at(joined, HUMAN).movement.feet)));

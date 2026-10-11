@@ -18,7 +18,6 @@ import type { AnnounceEvent, GameEvent } from "@3d/shared/net/messages/events.js
 import { MAX_ANNOUNCE_NAME_BYTES } from "@3d/shared/net/messages/events.js";
 import type { PlayerSnapshot } from "@3d/shared/net/messages/snapshot.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { createMovement } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
 import { Match } from "../src/match/match.js";
@@ -91,7 +90,7 @@ function game(options: Options = {}) {
   /** One tick, with everybody's input drained, and the tail each player was sent. */
   const tick = (): Map<string, GameEvent[]> => {
     for (const id of players.filter((p) => match.has(p))) {
-      match.receive(id, { seq: ++seq, dt: DT, input: idleInput(0, 0), claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick: 0, renderFrac: 0 });
+      match.receive(id, { seq: ++seq, dt: DT, input: idleInput(0, 0), claim: { x: 0, y: 0, z: 0 }, drawn: { tick: 0, frac: 0 } });
     }
     const snapshot = match.step();
     latest = snapshot.players;

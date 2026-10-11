@@ -2,7 +2,7 @@
 // tick, before the drain, shaped as a client's so nothing downstream has to know.
 
 import { botId, type PlayerId } from "@3d/shared/net/messages/fields.js";
-import { roundInput } from "@3d/shared/net/messages/input.js";
+import { roundDt, roundInput } from "@3d/shared/net/messages/input.js";
 import { BotDriver, type BotTurn } from "@3d/shared/game/bots/driver.js";
 import type { BrainContext } from "@3d/shared/game/bots/brain.js";
 import { NO_OBJECTIVE, type BotSpec, type Objective } from "@3d/shared/game/bots/objective.js";
@@ -22,8 +22,6 @@ export interface BotState {
   readonly controller: BotController;
   /** Its place among the match's bots, from 1: what spreads their thinks over the ticks. */
   readonly index: number;
-  /** The last input's `seq`, counting as a client's does. */
-  seq: number;
   /** Its controller threw once: said then, and not asked again. It stands still. */
   failed: boolean;
   /** What a script last said it is for (`bots.order`, `botObjective`), kept here so a script need not. */
@@ -33,7 +31,7 @@ export interface BotState {
 }
 
 /** How a bot joins the match: as a player does, on `side` where one is given. */
-export type AdmitBot = (id: PlayerId, loadout: Loadout | undefined, side: number | undefined, bot: BotState) => void;
+type AdmitBot = (id: PlayerId, loadout: Loadout | undefined, side: number | undefined, bot: BotState) => void;
 
 export class MatchBots {
   /** Bots this match has ever added, which is what the next one's id counts from: an id is never reused. */
@@ -62,7 +60,6 @@ export class MatchBots {
     this.admit(id, spec.loadout, side, {
       controller: spec.controller,
       index,
-      seq: 0,
       failed: false,
       objective: spec.objective ?? NO_OBJECTIVE,
       ordered: 0,
@@ -105,12 +102,11 @@ export class MatchBots {
    * One input per bot, queued for this tick's drain as a client's would be.
    *
    * Shaped as a client's so that nothing downstream has to know: `dt` is one
-   * tick, the input is rounded as the wire would round it, and `renderTick` names
-   * the last tick stepped — what a bot "sees" is the world as the previous tick
-   * left it, and a shot it fires is judged there. A client's is a tick or more
-   * older, and a bot's zero would be clamped to the rewind floor, a quarter of a
-   * second back. `claim` is its own state, which nothing reads: drift is not
-   * measured for a bot.
+   * tick and the input is what a client's would be, both rounded as the wire
+   * would round them. It names no moment it was `drawn` at — what a bot "sees"
+   * is the world as the previous tick left it, which is where a shot with none
+   * is judged (`Rewinder.target`) — and it has no seq and claims nothing, so
+   * neither an ack nor a drift is kept for it.
    *
    * Idle, without asking the controller, until the world's graph is baked: a bot
    * stands still until it has somewhere to plan. Queued even then, because a
@@ -123,6 +119,7 @@ export class MatchBots {
     }
     const nav = this.nav.planner;
     const tick = this.clock.tick;
+    const dt = roundDt(this.clock.dt);
     // Built at most once this tick, and only if some bot thinks on it: most ticks
     // none does, and a view walks the roster.
     let brains: BrainContext | undefined;
@@ -158,15 +155,7 @@ export class MatchBots {
         };
         bot.failed = !thinkOrStand(bot.controller, turn, input, `bot ${id}'s controller`);
       }
-      bot.seq = (bot.seq + 1) & 0xffff;
-      member.inputs.push({
-        seq: bot.seq,
-        dt: this.clock.dt,
-        input: roundInput(input),
-        claim: movement,
-        renderTick: (tick - 1) & 0xffff,
-        renderFrac: 0,
-      });
+      member.inputs.push({ dt, input: roundInput(input), drawn: null });
     }
   }
 }

@@ -19,7 +19,7 @@ export interface PlayerSnapshot {
  * Which of the world's solids are present (worlds/presence.ts), as state: sent
  * whole on every snapshot of a world that has any, so a late joiner and a lost
  * datagram converge on the next one. It is a few bytes — one bit per solid —
- * against a player's forty, which is cheaper than the bookkeeping of sending it
+ * against a player's eighty-odd, which is cheaper than the bookkeeping of sending it
  * only when it changes.
  */
 export interface SnapshotPresence {
@@ -34,7 +34,7 @@ export interface SnapshotPresence {
 }
 
 /** Ten bits of length: 8,184 solids, against a zombies map's few dozen. */
-export const snapshotPresence = struct({ since: uint(16), bits: array(uint(8), 10) }) satisfies Codec<SnapshotPresence>;
+const snapshotPresence = struct({ since: uint(16), bits: array(uint(8), 10) }) satisfies Codec<SnapshotPresence>;
 
 /**
  * One authoritative tick. `ack` is the last `InputMessage.seq` this server had

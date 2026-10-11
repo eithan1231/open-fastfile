@@ -1,13 +1,14 @@
-// Joining and leaving: the reliable messages that bracket a match.
+// Getting into a match: the messages either end repeats until the other answers.
 //
-// These three are together because they are one exchange — a client asks, the
-// server answers, and one of the two eventually says the player is gone — and
-// because none of them is on the hot path that the rest of this folder exists
-// to make small.
+// These are together because they are two exchanges — a client asks to join and
+// is admitted or refused, then asks for a class and is told what became of it —
+// and because none of them is on the hot path that the rest of this folder
+// exists to make small. Nothing says a player has gone: a snapshot that no
+// longer carries them does.
 
-import { bool, enumOf, f32, nullable, str, struct, uint, type Codec } from "../codec/schema.js";
+import { bool, enumOf, str, struct, uint, type Codec } from "../codec/schema.js";
 import { CLASS_TIMINGS, type ClassTiming } from "../../game/classes.js";
-import type { CombatRules } from "../../game/rules.js";
+import { MAX_HEALTH } from "../../sim/player.js";
 import { playerId, type PlayerId } from "./fields.js";
 
 export interface JoinMessage {
@@ -69,9 +70,18 @@ export const joinMessage = struct({
   engine: str(5),
 }) satisfies Codec<JoinMessage>;
 
+/**
+ * The part of a match's `CombatRules` (game/rules.ts) a client acts on. The rest
+ * are the server's alone to apply, so they do not travel.
+ */
+export interface JoinedRules {
+  /** What a snapshot's `health` is out of: without it a client cannot draw a health bar at all. */
+  maxHealth: number;
+  /** Whether a death counts down to a respawn (`CombatRules.respawnDelay`). False: the gametype brings the dead back itself. */
+  timedRespawn: boolean;
+}
+
 export interface JoinedMessage {
-  you: PlayerId;
-  world: string;
   /** The server's fixed tick, in hertz. A client accumulates dt to match it. */
   tickRate: number;
   /**
@@ -86,25 +96,20 @@ export interface JoinedMessage {
    */
   gametype: string;
   /**
-   * What combat costs here, as this match's scripts set it at its start
-   * (`game/rules.ts`).
-   *
    * Sent rather than derived, for the reason `gametype` is: the numbers come from
    * a script's `combatRules`, and a client has no way to reach the answer that
    * this particular server reached. Sent **once**, because they do not change
-   * during a match — a snapshot's `health` is a count and `maxHealth` is what
-   * makes it a fraction, so without this a client cannot draw a health bar at
-   * all, let alone say how long until regeneration.
+   * during a match.
    */
-  rules: CombatRules;
+  rules: JoinedRules;
   /**
    * The match's event counter as this player joined (net/messages/events.ts).
    *
-   * The watermark their de-dupe starts from, and it has to be told rather than
-   * guessed: a player joining an hour in would otherwise read a counter already
-   * past 32768 as an id older than the nothing they have seen, and ignore every
-   * event until it wrapped. It also settles what a snapshot's retained deaths
-   * mean on the first tick — they happened before this player was here.
+   * Where their de-dupe starts, and it has to be told rather than guessed: a
+   * player joining an hour in would otherwise read a counter already past 32768
+   * as an id older than the nothing they have seen, and ignore every event until
+   * it wrapped. It also settles what a snapshot's retained deaths mean on the
+   * first tick — they happened before this player was here.
    */
   eventId: number;
   /**
@@ -122,23 +127,10 @@ export interface JoinedMessage {
 }
 
 export const joinedMessage = struct({
-  you: playerId,
-  world: str(),
   tickRate: uint(8),
   gametype: str(),
-  // Full floats rather than the tight budgets a snapshot uses: this rides once
-  // per join and is the first thing in this file that would have to declare a
-  // range for a number a script chose. `maxHealth` is the exception, because the
-  // wire's own health field is what fixes its ceiling.
-  rules: struct({
-    maxHealth: uint(10),
-    regenDelay: f32,
-    regenRate: f32,
-    friendlyFire: bool,
-    // Null: the gametype brings the dead back itself (`ServerContext.respawn`).
-    respawnDelay: nullable(f32),
-    damageScale: f32,
-  }) satisfies Codec<CombatRules>,
+  // The width of a snapshot's own health field, which is what fixes its ceiling.
+  rules: struct({ maxHealth: uint(Math.log2(MAX_HEALTH + 1)), timedRespawn: bool }) satisfies Codec<JoinedRules>,
   eventId: uint(16),
   spawned: bool,
   classes: bool,
@@ -179,10 +171,3 @@ export interface RefusedMessage {
 }
 
 export const refusedMessage = struct({ reason: str() }) satisfies Codec<RefusedMessage>;
-
-/** A player is gone: the peers drop them. */
-export interface LeaveMessage {
-  id: PlayerId;
-}
-
-export const leaveMessage = struct({ id: playerId }) satisfies Codec<LeaveMessage>;

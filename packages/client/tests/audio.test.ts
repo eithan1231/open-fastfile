@@ -843,7 +843,6 @@ describe("an actor's voice", () => {
     action: "move",
     phase: 0.2,
     traversal: 0,
-    dead: false,
     ...over,
   });
 
@@ -862,7 +861,7 @@ describe("an actor's voice", () => {
     voices.apply([actor("zombie_transit")], 0);
     await settle(); // its bank, fetched as it was first seen
     voices.apply([actor("zombie_transit", { action: "attack", phase: 0 })], 0.05);
-    voices.apply([actor("zombie_transit", { action: "die", dead: true, phase: 0 })], 0.1);
+    voices.apply([actor("zombie_transit", { action: "die", phase: 0 })], 0.1);
     await settle();
     expect(heard().sort()).toEqual(["t6_zmb_attack_whoosh", "t6_zmb_vocals_zombie_attack", "t6_zmb_vocals_zombie_death"]);
   });

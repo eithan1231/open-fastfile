@@ -1,4 +1,4 @@
-// What crosses the wire to create a physics entity, and to end one early.
+// What crosses the wire to create a physics entity.
 //
 // The layer is general (`sim/entityKinds.ts`) and so is this: a spawn names a kind
 // and carries that kind's own payload, so a grenade is an entry in the table plus a
@@ -15,14 +15,16 @@
 // downstream of `Quaternion.slerp`, which is `acos` and `sin`, both of which
 // Rapier's own documentation names as not cross-platform deterministic.
 //
-// So the pose is **sent quantised, and every end simulates the value it decoded —
-// the server included**. `roundRagdollSpawn` is that rule as a function, and it is
-// the same discipline `roundInput` already states for a player's input in
-// net/packet.ts. It is also why the rotations are in world space rather than joint
-// local: a quantisation error in a local rotation is amplified by every joint below
-// it, and a hand would end up a hand's width from where the next client put it.
+// So the pose is **sent quantised, and every end that simulates a corpse
+// simulates the value it decoded**. Today those ends are the clients: a game
+// server issues the spawn and builds no body. One that did would have to put its
+// own spawn through `roundRagdollSpawn` first — the discipline `roundInput`
+// states for a player's input in net/packet.ts. It is also why the rotations are
+// in world space rather than joint local: a quantisation error in a local
+// rotation is amplified by every joint below it, and a hand would end up a
+// hand's width from where the next client put it.
 
-import { quant, struct, uint, type Codec, type Quat } from "../codec/schema.js";
+import { scaled, struct, uint, type Codec, type Quat } from "../codec/schema.js";
 import { RAGDOLL_SEGMENTS } from "../../sim/ragdollBones.js";
 import { metres, playerId, quat, type PlayerId } from "./fields.js";
 import type { Vec3 } from "../../sim/movement.js";
@@ -32,9 +34,9 @@ import type { Vec3 } from "../../sim/movement.js";
  *
  * A sprinting player does about 6 and nothing in the game launches a body, so 20
  * is generous. Twelve bits is a centimetre a second, well under what a first frame
- * can show.
+ * can show. `scaled`, so a body that was standing still starts exactly still.
  */
-export const speed = quant(-20, 20, 12);
+const speed = scaled(20, 12);
 
 /**
  * A push, newton-seconds, one component.
@@ -42,9 +44,10 @@ export const speed = quant(-20, 20, 12);
  * Carried as a vector rather than as a direction and a magnitude, which halves the
  * arithmetic and removes the one genuinely awkward step — a quantised unit vector
  * is no longer unit, and renormalising it is a `sqrt` both ends would have to agree
- * on. 400 N·s clears anything a rifle does to a 72 kg body by a wide margin.
+ * on. 400 N·s clears anything a rifle does to a 72 kg body by a wide margin, and
+ * `scaled` makes a death no round caused push exactly nothing.
  */
-export const impulseAxis = quant(-400, 400, 12);
+const impulseAxis = scaled(400, 12);
 
 const vec3Speed = struct({ x: speed, y: speed, z: speed });
 const vec3Impulse = struct({ x: impulseAxis, y: impulseAxis, z: impulseAxis });
@@ -109,7 +112,7 @@ export const ragdollSpawn: Codec<RagdollSpawn> = struct({
   velocity: vec3Speed,
   knock: vec3Speed,
   // Four bits for sixteen segments. `RAGDOLL_SEGMENTS` may not grow past 16
-  // without widening this, which `netEntities.test.ts` asserts rather than hopes.
+  // without widening this: `uint` throws on a seventeenth rather than wrap it.
   segment: uint(4),
   impulse: vec3Impulse,
 });
@@ -117,14 +120,11 @@ export const ragdollSpawn: Codec<RagdollSpawn> = struct({
 /**
  * A spawn as every end will actually see it.
  *
- * Nothing simulates a spawn it has not put through this, the server included: that
- * is what makes both ends' initial conditions the same numbers rather than the same
- * intention. `origin` is `f32` and already exact, so it passes through untouched —
- * the same exemption `net/packet.ts` grants a player's position for the same reason.
+ * What an end that issued a spawn must simulate instead of the spawn it meant, so
+ * that its initial conditions are the same numbers as everyone's rather than the
+ * same intention. `origin` is `f32` and passes through untouched — the same
+ * exemption `net/packet.ts` grants a player's position.
  */
 export function roundRagdollSpawn(spawn: RagdollSpawn): RagdollSpawn {
   return ragdollSpawn.round ? ragdollSpawn.round(spawn) : spawn;
 }
-
-/** How many segments a spawn may describe before `segment` needs more bits. */
-export const MAX_SEGMENTS_ON_THE_WIRE = 16;

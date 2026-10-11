@@ -21,7 +21,6 @@ const actor = (id: number, overrides: Partial<ActorState> = {}): ActorState => (
   action: "move",
   phase: 0.37,
   traversal: 0,
-  dead: false,
   ...overrides,
 });
 
@@ -40,7 +39,7 @@ describe("ActorState", () => {
   it("round-trips to within its quanta", () => {
     for (const state of [
       actor(1),
-      actor(0xffff, { kind: MAX_ACTOR_KINDS - 1, action: "die", dead: true, phase: 1, speed: 0 }),
+      actor(0xffff, { kind: MAX_ACTOR_KINDS - 1, action: "die", phase: 1, speed: 0 }),
       actor(7, { action: "attack", gait: "sprint", phase: 0, yaw: -3, feet: { x: -900, y: 200, z: 900 } }),
       actor(9, { gait: "run", speed: 3.6 }),
       actor(8, { action: "idle", feet: { x: 0, y: 0, z: 0 } }),
@@ -53,7 +52,6 @@ describe("ActorState", () => {
       expect(back.id).toBe(state.id);
       expect(back.kind).toBe(state.kind);
       expect(back.action).toBe(state.action);
-      expect(back.dead).toBe(state.dead);
       expect(back.gait).toBe(state.gait);
       expect(Math.abs(back.feet.x - state.feet.x)).toBeLessThan(1 / 64);
       expect(Math.abs(back.feet.y - state.feet.y)).toBeLessThan(1 / 64);
@@ -80,15 +78,9 @@ describe("ActorState", () => {
     expect(back.feet).toEqual({ x: ACTOR_REACH, y: -ACTOR_HEIGHT_REACH, z: -ACTOR_REACH });
   });
 
-  // Not sent: a body that is dying is dead, and one that is not is not.
-  it("reads dead back from the action", () => {
-    expect(roundTrip(actor(1, { action: "die", dead: true })).back.dead).toBe(true);
-    expect(roundTrip(actor(1, { action: "attack", dead: false })).back.dead).toBe(false);
-  });
-
   it("carries every action, and draws a speed past the top at the top", () => {
     for (const action of ACTOR_ACTIONS) {
-      expect(roundTrip(actor(1, { action, dead: action === "die" })).back.action).toBe(action);
+      expect(roundTrip(actor(1, { action })).back.action).toBe(action);
     }
     expect(roundTrip(actor(1, { speed: 20 })).back.speed).toBeCloseTo(ACTOR_SPEED_MAX, 9);
   });
@@ -121,7 +113,7 @@ describe("a snapshot's actors", () => {
         players: players(),
         actors: [actor(1), actor(2, { action: "attack" })],
         counters: [],
-        events: [{ kind: "hit" as const, id: 4, location: "torsoUpper" as const, lethal: false }],
+        events: [{ kind: "hit" as const, id: 4, lethal: false }],
       },
       { tick: 9, ack: 0, presence: null, players: [], actors: [actor(3)], counters: [], events: [] },
     ] satisfies SnapshotMessage[]) {

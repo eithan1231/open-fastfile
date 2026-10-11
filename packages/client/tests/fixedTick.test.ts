@@ -153,7 +153,7 @@ describe("the fixed tick", () => {
     expect(ticks.slice(4).map((t) => t.use)).toEqual([true, false]);
     expect(roundInput(ticks[0]!).use).toBe(true);
     const decoded = decodePacket(
-      encodePacket(MessageType.input, { seq: 1, dt: TICK_DT, input: ticks[0]!, claim: controls.player.movement, renderTick: 0, renderFrac: 0, earlier: [] }),
+      encodePacket(MessageType.input, { seq: 1, dt: TICK_DT, input: ticks[0]!, claim: controls.player.movement.feet, drawn: null, earlier: [] }),
     );
     expect((decoded.message as InputPacket).input.use).toBe(true);
   });
@@ -180,7 +180,7 @@ describe("the fixed tick", () => {
     const devices = new FakeDevices();
     const controls = new FirstPersonControls(new THREE.PerspectiveCamera(), devices, ground);
     const claims: number[] = [];
-    controls.onTick = (_input, _dt, claim) => claims.push(claim.feet.z);
+    controls.onTick = (_input, _dt, feet) => claims.push(feet.z);
 
     devices.hold("forward");
     for (let i = 0; i < 10; i++) {

@@ -14,9 +14,9 @@
 //
 // -- Several games, one socket -----------------------------------------------
 //
-// A process hosts several games, so nothing may be sent to "everyone": a `leave`
-// is addressed to the game it happened in, because a client drops any player id
-// it sees in one, and a player in another game must never be named at it.
+// A process hosts several games, so nothing may be sent to "everyone": a packet
+// goes to the seats of one game, because a snapshot names players and a player
+// in another game must never be named at it.
 //
 // A channel is not an identity any more either. The api issues a player's id and
 // the key that proves it, so this file maps a socket onto a (game, player) pair
@@ -36,9 +36,9 @@
 //           `join` and only spawned by this: until then they are seated, sent
 //           snapshots, and not in the match — nobody sees them and nothing can
 //           shoot them. Idempotent too: the same index is the same answer.
-//   leave   a hint. Snapshot membership is authoritative — a client drops any
-//           player missing from the latest snapshot — so a lost `leave` heals
-//           itself on the next tick instead of leaving a ghost standing there.
+//   leaving is not a message at all. Snapshot membership is authoritative — a
+//           client drops any player missing from the latest snapshot — so there
+//           is nothing to lose and no ghost left standing.
 //   refused a join that will not be answered says so, rather than leaving the
 //           client to time out after ten seconds of silence it cannot tell from
 //           a dead network.
@@ -136,9 +136,6 @@ export class NetServer {
       game.match.fail(err);
       console.error(`  ! game ${game.id} threw as ${seat.playerId} left, so it is ended:`, err);
     }
-    for (const other of this.inGame(seat.gameId)) {
-      send(other.channel, encodePacket(MessageType.leave, { id: seat.playerId }));
-    }
   }
 
   private onConnection(channel: ServerChannel): void {
@@ -158,7 +155,10 @@ export class NetServer {
       const seat = this.seats.get(socket);
       this.seats.delete(socket);
       if (seat) {
-        this.games.get(seat.gameId)?.choosing.delete(seat.playerId);
+        const game = this.games.get(seat.gameId);
+        game?.choosing.delete(seat.playerId);
+        // Before they part: what was heard from somebody who never spawned goes with the seat.
+        game?.match.resetInputs(seat.playerId);
         this.part(seat, "left");
       }
     });
@@ -196,7 +196,7 @@ export class NetServer {
           return;
         }
         default:
-          // joined, snapshot, leave, refused and classChosen are ours to send, not to receive.
+          // joined, snapshot, refused and classChosen are ours to send, not to receive.
           return;
       }
     });
@@ -283,11 +283,9 @@ export class NetServer {
     send(
       channel,
       encodePacket(MessageType.joined, {
-        you: playerId,
-        world: game.map,
         tickRate: game.match.tickRate,
         gametype: game.match.gametype.id,
-        rules: game.match.rules,
+        rules: { maxHealth: game.match.rules.maxHealth, timedRespawn: game.match.rules.respawnDelay !== null },
         // Where their de-dupe starts. Read at the moment of the join rather than
         // kept anywhere: everything they will be told about is issued after this.
         eventId: game.match.eventCursor,

@@ -16,12 +16,12 @@
 // Unreliable, like the two other hot-path messages: a lost diagnostic packet is
 // a line that is not drawn, never a line drawn wrongly.
 
-import { enumOf, nullable, struct, uint, type Codec } from "../codec/schema.js";
-import { metres, playerId, vec3, type PlayerId } from "./fields.js";
+import { enumOf, struct, uint, type Codec } from "../codec/schema.js";
+import { metres, vec3 } from "./fields.js";
 import type { Vec3 } from "../../sim/movement.js";
 
 /** What the round met. `none` is a bullet that reached its range through open air. Appended: still two bits. */
-export const SHOT_TRACE_MET = ["none", "world", "player", "actor"] as const;
+const SHOT_TRACE_MET = ["none", "world", "player", "actor"] as const;
 export type ShotTraceMet = (typeof SHOT_TRACE_MET)[number];
 
 export interface ShotTraceMessage {
@@ -39,8 +39,6 @@ export interface ShotTraceMessage {
   /** Metres travelled. The weapon's whole range where `met` is `none`. */
   distance: number;
   met: ShotTraceMet;
-  /** Who was hit, where `met` is `player`; null otherwise. */
-  target: PlayerId | null;
 }
 
 export const shotTraceMessage = struct({
@@ -49,5 +47,4 @@ export const shotTraceMessage = struct({
   direction: vec3,
   distance: metres,
   met: enumOf(SHOT_TRACE_MET),
-  target: nullable(playerId),
 }) satisfies Codec<ShotTraceMessage>;

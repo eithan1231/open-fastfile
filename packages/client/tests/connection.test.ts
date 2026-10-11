@@ -25,6 +25,5 @@ describe("closing a connection", () => {
     const connection = new Connection({ onJoined: vi.fn(), onSnapshot: vi.fn(), onShotTrace: vi.fn(), onClosed: closed }, "hash");
     expect(connection.connect({ gameId: "g-1", playerId: "p-1", authorizationKey: "k", serverUrl: "http://localhost:9300" })).toBe(true);
     expect(() => connection.close()).not.toThrow();
-    expect(connection.connected).toBe(false);
   });
 });

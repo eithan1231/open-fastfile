@@ -139,7 +139,7 @@ describe("points", () => {
     ctx().addPoints("a", -120);
     expect(ctx().points("a")).toBe(380);
     expect(ctx().player("a")?.points).toBe(380);
-    const snapshot = m.step();
+    const snapshot = m.snapshotFor("a", m.step().players);
     expect(snapshot.players.find((p) => p.id === "a")!.state.points).toBe(380);
     const wire = decodePacket(encodePacket(MessageType.snapshot, snapshot)).message as typeof snapshot;
     expect(wire.players[0]!.state.points).toBe(380);
@@ -174,9 +174,8 @@ describe("counters", () => {
     ctx().setCounter("wave", -4);
     ctx().setCounter("round", 7);
     expect(ctx().counter("round")).toBe(7);
-    const snapshot = m.step();
+    const snapshot = m.snapshotFor("a", m.step().players);
     expect(snapshot.counters).toEqual([7, -4]);
-    expect(m.snapshotFor("a", []).counters).toEqual([7, -4]);
     expect((decodePacket(encodePacket(MessageType.snapshot, snapshot)).message as typeof snapshot).counters).toEqual([7, -4]);
   });
 
@@ -193,7 +192,7 @@ describe("counters", () => {
   it("cost a gametype that declares none nothing but their count", () => {
     const { script } = holding();
     const m = match([script], { id: "plain", display: "Plain", teams: [] });
-    expect(m.step().counters).toEqual([]);
+    expect(m.snapshotFor("a", m.step().players).counters).toEqual([]);
   });
 });
 

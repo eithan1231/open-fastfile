@@ -20,7 +20,6 @@ function state(over: Partial<ActorState> = {}): ActorState {
     action: "move",
     phase: 0.2,
     traversal: 0,
-    dead: false,
     ...over,
   };
 }
@@ -29,7 +28,7 @@ describe("an actor's sounds, from its snapshots", () => {
   it("sounds a spawn only when the caller says it arrived, and not for one already dead", () => {
     expect(actorSoundsBetween(undefined, state(), true)).toEqual(["spawn"]);
     expect(actorSoundsBetween(undefined, state())).toEqual([]);
-    expect(actorSoundsBetween(undefined, state({ action: "die", dead: true }), true)).toEqual([]);
+    expect(actorSoundsBetween(undefined, state({ action: "die" }), true)).toEqual([]);
   });
 
   it("voices and swings as an attack begins, and again when a second swing starts over", () => {
@@ -39,7 +38,7 @@ describe("an actor's sounds, from its snapshots", () => {
   });
 
   it("dies once, as it starts to fall", () => {
-    const falling = state({ action: "die", dead: true, phase: 0.1 });
+    const falling = state({ action: "die", phase: 0.1 });
     expect(actorSoundsBetween(state(), falling)).toEqual(["death"]);
     expect(actorSoundsBetween(falling, { ...falling, phase: 0.5 })).toEqual([]);
   });
@@ -48,7 +47,7 @@ describe("an actor's sounds, from its snapshots", () => {
     expect(vocalRole(state())).toBe("ambient");
     expect(vocalRole(state({ gait: "run" }))).toBe("sprint");
     expect(vocalRole(state({ gait: "sprint" }))).toBe("sprint");
-    expect(vocalRole(state({ action: "die", dead: true }))).toBeUndefined();
+    expect(vocalRole(state({ action: "die" }))).toBeUndefined();
   });
 
   it("spaces one actor's noises inside the gap, differently per actor and per noise, the same every time", () => {

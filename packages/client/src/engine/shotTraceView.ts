@@ -104,7 +104,7 @@ export interface Answer {
   /** Metres travelled. `BULLET_RANGE` where it met nothing. */
   distance: number;
   met: ShotTraceMet;
-  /** Who was hit, where `met` is `player`. */
+  /** Who this client's own trace hit, where `met` is `player`. The server's answer names nobody. */
   target: string | null;
   /** Where it stopped, in the world. What the divergence measures. */
   end: Vec3;
@@ -296,7 +296,7 @@ export class ShotTraceView {
     const answer: Answer = {
       distance: message.distance,
       met: message.met,
-      target: message.target,
+      target: null,
       end: along(message.from, message.direction, message.distance),
     };
     const existing = this.traces.find((trace) => trace.ordinal === message.ordinal);

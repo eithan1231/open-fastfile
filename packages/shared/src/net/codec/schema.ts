@@ -26,7 +26,7 @@ export interface Codec<T> {
 }
 
 /** The value type a codec carries. */
-export type Infer<C> = C extends Codec<infer T> ? T : never;
+type Infer<C> = C extends Codec<infer T> ? T : never;
 
 // -- Numbers -----------------------------------------------------------------------
 
@@ -163,6 +163,21 @@ export function signed(bits: number): Codec<number> {
     round(value) {
       return decode(encode(value));
     },
+  };
+}
+
+/**
+ * A signed quantity in ±`limit`, built on `signed` rather than on
+ * `quant(-limit, limit, bits)` for the reason `signed` exists: a symmetric
+ * `quant` cannot represent zero, and "at rest" is the overwhelmingly common
+ * value of anything that is signed.
+ */
+export function scaled(limit: number, bits: number): Codec<number> {
+  const inner = signed(bits);
+  return {
+    write: (w, value) => inner.write(w, value / limit),
+    read: (r) => inner.read(r) * limit,
+    round: (value) => inner.round!(value / limit) * limit,
   };
 }
 

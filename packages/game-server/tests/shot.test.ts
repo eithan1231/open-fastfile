@@ -24,7 +24,7 @@ import { createApiClient, type ApiClient } from "@3d/shared/protocol/api.js";
 import type { HttpFetch } from "@3d/shared/protocol/http.js";
 import type { RayHit, Vec3 } from "@3d/shared/sim/capsule.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { aimAngles, aimDirection, coneSample, shotStream, type ViewKick } from "@3d/shared/sim/recoil.js";
 import { hashString } from "@3d/shared/game/random.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
@@ -108,7 +108,7 @@ function world(): ResolvedWorld {
 const running: PlayerInput = { ...idleInput(0, 0), forward: 1, run: true };
 
 function input(seq: number, renderTick: number, renderFrac = 0): InputMessage {
-  return { seq, dt: DT, input: running, claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick, renderFrac };
+  return { seq, dt: DT, input: running, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: renderTick, frac: renderFrac } };
 }
 
 interface Real {
@@ -237,7 +237,7 @@ async function played(ticks: number): Promise<Played | null> {
     const snapshot = match.step();
     match.snapshotFor("shooter", snapshot.players);
     match.snapshotFor(target, snapshot.players);
-    seen.push({ tick: snapshot.tick, feet: { ...snapshot.players.find((p) => p.id === target)!.state.movement.feet } });
+    seen.push({ tick: match.tick, feet: { ...snapshot.players.find((p) => p.id === target)!.state.movement.feet } });
   }
 
   const shoot = (at: { y: number; z: number }, tick: number) =>
@@ -405,14 +405,13 @@ describe("a shot out of the replay", () => {
         seq: ++seq,
         dt: DT,
         input: command,
-        claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-        renderTick: named & 0xffff,
-        renderFrac: 0,
+        claim: { x: 0, y: 0, z: 0 },
+        drawn: { tick: named & 0xffff, frac: 0 },
       });
       const snapshot = match.step();
       match.snapshotFor("shooter", snapshot.players);
       match.snapshotFor(p.target, snapshot.players);
-      feetAt.set(snapshot.tick, { ...snapshot.players.find((x) => x.id === p.target)!.state.movement.feet });
+      feetAt.set(match.tick, { ...snapshot.players.find((x) => x.id === p.target)!.state.movement.feet });
       // The shooter's own state as this tick left it: where this tick's shot has
       // *moved* the view to, which is not what it was traced along. The **view**
       // kick, not the gun kick — the gun kick rocks the model, and a shot that
@@ -452,15 +451,14 @@ describe("a shot out of the replay", () => {
           seq: ++seq,
           dt: DT,
           input: command,
-          claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-          renderTick: (match.tick - lag) & 0xffff,
-          renderFrac: 0,
+          claim: { x: 0, y: 0, z: 0 },
+          drawn: { tick: (match.tick - lag) & 0xffff, frac: 0 },
         });
       }
       const snapshot = match.step();
       match.snapshotFor("shooter", snapshot.players);
       match.snapshotFor(p.target, snapshot.players);
-      feetAt.set(snapshot.tick, { ...snapshot.players.find((x) => x.id === p.target)!.state.movement.feet });
+      feetAt.set(match.tick, { ...snapshot.players.find((x) => x.id === p.target)!.state.movement.feet });
       return [...match.shotsThisTick];
     };
 

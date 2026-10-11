@@ -7,13 +7,13 @@
 // field added to sim/ and forgotten here into a typecheck failure rather than a
 // state that silently stops arriving.
 
-import { array, bool, enumOf, nullable, quant, signed, struct, uint, type Codec } from "../codec/schema.js";
+import { array, bool, enumOf, nullable, quant, scaled, struct, uint, type Codec } from "../codec/schema.js";
 import { CLIP_ROLES, type ClipRole } from "../../sim/weaponDef.js";
-import { WEAPON_STATES, type WeaponData } from "../../sim/weapon.js";
+import { MAX_BURST, MAX_CLIP_RATE, MAX_CLIP_SIZE, MAX_FIRE_TIME, WEAPON_STATES, type WeaponData } from "../../sim/weapon.js";
 import { KICK_LIMIT, KICK_SPEED_LIMIT, VIEW_KICK_LIMIT, VIEW_KICK_SPEED_LIMIT } from "../../sim/recoil.js";
 import type { MovementState } from "../../sim/movement.js";
-import type { PlayerState } from "../../sim/player.js";
-import { MAX_ATTACHMENT_SLOTS, MAX_FITTED_ATTACHMENTS } from "../../sim/weaponRegistry.js";
+import { MAX_HEALTH, type PlayerState } from "../../sim/player.js";
+import { MAX_ATTACHMENT_SLOTS, MAX_FITTED_ATTACHMENTS, MAX_WEAPONS } from "../../sim/weaponRegistry.js";
 import { MAX_POINTS } from "../../game/matchValues.js";
 import { axis, climb, combatTimer, pitch, shortTimer, unit, vec3, weaponTimer, yaw } from "./fields.js";
 
@@ -61,29 +61,17 @@ const POINTS_BITS = Math.log2(MAX_POINTS + 1);
 // Both caps are powers of two, so each is exactly its own field: sixteen slots
 // in four bits, and a count of nought to three in two.
 const ATTACHMENT_SLOT_BITS = Math.log2(MAX_ATTACHMENT_SLOTS);
+/** Eight bits: `MAX_WEAPONS`, which the registry holds a catalogue to. */
+const WEAPON_INDEX_BITS = Math.log2(MAX_WEAPONS);
 const FITTED_COUNT_BITS = Math.log2(MAX_FITTED_ATTACHMENTS + 1);
-
-/**
- * A signed quantity in ±`limit`, built on `signed` rather than on
- * `quant(-limit, limit, bits)` for the reason `signed` exists: a symmetric
- * `quant` has an odd number of steps and so cannot represent zero. A gun at rest
- * is the overwhelmingly common case here, and decoding it as a thirtieth of a
- * degree of kick would give every player a small permanent bias in their aim.
- */
-function scaled(limit: number, bits: number): Codec<number> {
-  const inner = signed(bits);
-  return {
-    write: (w, value) => inner.write(w, value / limit),
-    read: (r) => inner.read(r) * limit,
-    round: (value) => inner.round!(value / limit) * limit,
-  };
-}
 
 /**
  * How hot the weapon is, and the kick: degrees and degrees a second. Every kick
  * range is a clamp `sim/recoil.ts` already holds the simulation to, so the two
  * cannot disagree about what is carryable; the widths give 1/32 of a degree of
- * kick and two degrees a second of kick speed.
+ * kick and two degrees a second of kick speed. `scaled` rather than `quant`,
+ * because a gun at rest is the common case and decoding it as a thirtieth of a
+ * degree of kick would give every player a small permanent bias in their aim.
  *
  * The first is a **fraction** rather than an angle — `WeaponData.spread` is how
  * far between the weapon's own minimum and maximum it has opened, and
@@ -114,11 +102,11 @@ export const weaponSchema = struct({
   timer: weaponTimer,
   /** What `timer` started at: a countdown cannot say how far through a state is on its own. */
   span: weaponTimer,
-  /** No magazine is near 1023 rounds. */
-  ammo: uint(10),
-  cooldown: quant(0, 4, 10),
+  /** Ten bits. No magazine is near 1023 rounds, and the registry refuses one that is. */
+  ammo: uint(Math.log2(MAX_CLIP_SIZE + 1)),
+  cooldown: quant(0, MAX_FIRE_TIME, 10),
   pressed: bool,
-  burstLeft: uint(4),
+  burstLeft: uint(Math.log2(MAX_BURST + 1)),
   ads: unit,
   reloadQueued: bool,
   refillAt: nullable(weaponTimer),
@@ -151,8 +139,8 @@ export const weaponSchema = struct({
       role: enumOf(CLIP_ROLES) as Codec<ClipRole>,
       /** Seconds into the clip. No viewmodel animation runs anywhere near 32 s. */
       time: quant(0, 32, 14),
-      /** A clip is stretched to fit its state; it never plays backwards. */
-      rate: quant(0, 8, 10),
+      /** A clip is stretched to fit its state; it never plays backwards, and the simulation holds it to this ceiling. */
+      rate: quant(0, MAX_CLIP_RATE, 10),
       loop: bool,
     }),
   ),
@@ -175,7 +163,7 @@ export const weaponSchema = struct({
  */
 export const playerStateSchema = struct({
   movement: movementSchema,
-  weaponIndex: nullable(uint(8)),
+  weaponIndex: nullable(uint(WEAPON_INDEX_BITS)),
   attachments: array(uint(ATTACHMENT_SLOT_BITS), FITTED_COUNT_BITS),
   weapon: nullable(weaponSchema),
   /**
@@ -185,7 +173,7 @@ export const playerStateSchema = struct({
    * client already simulated it, since it is stepped by nothing while carried.
    */
   slot: uint(1) as Codec<0 | 1>,
-  spareIndex: nullable(uint(8)),
+  spareIndex: nullable(uint(WEAPON_INDEX_BITS)),
   spareAttachments: array(uint(ATTACHMENT_SLOT_BITS), FITTED_COUNT_BITS),
   armed: uint(3),
   swapping: bool,
@@ -202,9 +190,8 @@ export const playerStateSchema = struct({
    * because health *is* a whole number: `Player.hurt` rounds, so the wire is
    * carrying the simulation's value and not an approximation of it.
    */
-  health: uint(10),
+  health: uint(Math.log2(MAX_HEALTH + 1)),
   dead: bool,
-  sinceDamage: combatTimer,
   respawnIn: combatTimer,
   /** Twenty bits: `MAX_POINTS`, a little over a million. In every snapshot, so no wider. */
   points: uint(POINTS_BITS),

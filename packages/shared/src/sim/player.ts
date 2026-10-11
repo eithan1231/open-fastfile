@@ -85,8 +85,6 @@ export interface PlayerState {
   health: number;
   /** Down, and waiting on `respawnIn`. Not derivable from `health`: a corpse regenerates nothing. */
   dead: boolean;
-  /** Seconds since the last hit, which is what `regenDelay` is counted against. Stops at `COMBAT_TIMER_MAX`. */
-  sinceDamage: number;
   /** Seconds left of the respawn countdown; 0 for anyone alive. */
   respawnIn: number;
   /**
@@ -106,15 +104,18 @@ export interface PlayerState {
  */
 export const DEFAULT_HEALTH = 100;
 
+/** The most `CombatRules.maxHealth` may be: health travels in ten bits (net/messages/player.ts). */
+export const MAX_HEALTH = 1023;
+
 /**
  * The ceiling on both combat clocks, seconds.
  *
- * `sinceDamage` stops counting here and `respawnIn` is never set past it, so the
- * value the simulation holds is the value the wire carries — `combatTimer` in
- * net/messages/fields.ts quantizes over exactly this range, and a clock that ran
- * past it would saturate on the wire while the server kept counting. Ten seconds
- * covers the longest regeneration the games use (five to wait, two to fill) with
- * room over.
+ * `respawnIn` is never set past it, so the value the simulation holds is the
+ * value the wire carries — `combatTimer` in net/messages/fields.ts quantizes over
+ * exactly this range, and a countdown longer than it would saturate on the wire
+ * while the server kept counting. The time since the last hit stops here too,
+ * though it travels nowhere: ten seconds covers the longest regeneration the
+ * games use (five to wait, two to fill) with room over.
  */
 export const COMBAT_TIMER_MAX = 10;
 
@@ -465,7 +466,6 @@ export class Player {
       // zero: damage already rounds, so health below 1 means dead.
       health: Math.round(this.hp),
       dead: this.down,
-      sinceDamage: this.since,
       respawnIn: this.waiting,
       points: this.purse,
     });
@@ -513,7 +513,6 @@ export class Player {
     this.team = state.team;
     this.hp = state.health;
     this.down = state.dead;
-    this.since = state.sinceDamage;
     this.waiting = state.respawnIn;
     this.purse = state.points;
     if (state.weapon && this.held) {

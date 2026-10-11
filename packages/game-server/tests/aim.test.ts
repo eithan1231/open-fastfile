@@ -21,7 +21,7 @@ import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
-import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { aimAngles, aimDirection, type ViewKick } from "@3d/shared/sim/recoil.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
@@ -206,7 +206,7 @@ function sniper(weapon = ARMED) {
 
   const tick = (input: PlayerInput): Tick => {
     const drawn = latest;
-    const message: InputMessage = { seq: ++seq, dt: DT, input, claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick: 0, renderFrac: 0 };
+    const message: InputMessage = { seq: ++seq, dt: DT, input, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: 0, frac: 0 } };
     match.receive(SHOOTER, message);
     const snapshot = match.step();
     const state = snapshot.players.find((p) => p.id === SHOOTER)!.state;

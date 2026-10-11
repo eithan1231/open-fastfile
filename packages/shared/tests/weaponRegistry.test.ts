@@ -9,8 +9,10 @@ import { describe, expect, it } from "vitest";
 import type { WeaponDef } from "../src/sim/weaponDef.js";
 import { Player } from "../src/sim/player.js";
 import type { CapsuleWorld } from "../src/sim/capsule.js";
+import { MAX_CLIP_SIZE, MAX_FIRE_TIME, MAX_STATE_TIME } from "../src/sim/weapon.js";
 import {
   MAX_ATTACHMENT_SLOTS,
+  MAX_WEAPONS,
   WeaponRegistry,
   fittedIds,
   fittedSlots,
@@ -101,6 +103,28 @@ describe("catalogue order", () => {
   it("refuses a weapon with more attachments than the wire can carry", () => {
     const tooMany = Array.from({ length: MAX_ATTACHMENT_SLOTS + 1 }, (_, i) => ({ id: `a${i}` }));
     expect(() => new WeaponRegistry([entry("a", tooMany)])).toThrow(/the wire carries/);
+  });
+
+  /**
+   * A snapshot carries an index and a weapon's numbers in fields of a fixed
+   * width. One past any of them throws or saturates mid-match, on one end, so it
+   * is refused here, where the catalogue is read and the weapon can be named.
+   */
+  it("refuses a catalogue, or a weapon in one, that a snapshot could not carry", () => {
+    const weapons = (count: number) => Array.from({ length: count }, (_, i) => entry(`w${i}`));
+    expect(() => new WeaponRegistry(weapons(MAX_WEAPONS))).not.toThrow();
+    expect(() => new WeaponRegistry(weapons(MAX_WEAPONS + 1))).toThrow(/257/);
+
+    const holding = (over: Partial<WeaponDef>): WeaponEntry => ({ id: "big", game: "iw5", def: def("big", over), attachments: [] });
+    expect(() => new WeaponRegistry([holding({ clipSize: MAX_CLIP_SIZE })])).not.toThrow();
+    expect(() => new WeaponRegistry([holding({ clipSize: MAX_CLIP_SIZE + 1 })])).toThrow(/"iw5\/big" has a magazine of 1024/);
+    expect(() => new WeaponRegistry([holding({ times: { reload: MAX_STATE_TIME + 1 } })])).toThrow(/reload time of 17 s/);
+    expect(() => new WeaponRegistry([holding({ times: { fire: MAX_FIRE_TIME + 1 } })])).toThrow(/fire time of 5 s/);
+    expect(() => new WeaponRegistry([holding({ clips: { idle_clip: { duration: 20, looped: true, notes: [] } } })])).toThrow(/20 s long/);
+
+    // An attachment's overrides are a weapon's numbers too.
+    const extended = entry("m4", [{ id: "xmags", overrides: { clipSize: 5000 } }]);
+    expect(() => new WeaponRegistry([extended])).toThrow(/"iw5\/m4\+xmags" has a magazine of 5000/);
   });
 });
 

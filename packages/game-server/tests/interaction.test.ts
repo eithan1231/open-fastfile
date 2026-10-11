@@ -18,7 +18,7 @@ import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
 import type { Script } from "@3d/shared/game/hooks.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { presenceFor } from "@3d/shared/worlds/presence.js";
 import { NO_BODIES } from "../src/bodies.js";
@@ -120,9 +120,8 @@ function send(m: Match, id: string, input: Partial<PlayerInput> = {}): void {
     seq: ++seq & 0xffff,
     dt: 1 / TICK_RATE,
     input: { ...idleInput(0, 0), ...input },
-    claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-    renderTick: 0,
-    renderFrac: 0,
+    claim: { x: 0, y: 0, z: 0 },
+    drawn: { tick: 0, frac: 0 },
   } satisfies InputMessage);
   m.step();
 }

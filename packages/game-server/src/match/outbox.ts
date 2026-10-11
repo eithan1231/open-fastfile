@@ -37,9 +37,7 @@ export const KILL_FEED_REPEAT_SECONDS = 0.5;
  * line that never arrives is contradicted by a scoreboard the player can open,
  * and "the enemy has the flag" is contradicted by nothing — a player who missed
  * it is misinformed for the rest of the round. It costs almost nothing to say so:
- * an announcement is a handful of bytes, they are rare where deaths are not, and
- * `EventOutbox.for` gives up the *oldest* first, so the kind held longest is the
- * kind dropped first under pressure rather than one crowding a death out.
+ * an announcement is a handful of bytes, and they are rare where deaths are not.
  */
 const ANNOUNCE_REPEAT_SECONDS = 1;
 
@@ -58,7 +56,7 @@ const MAX_ANNOUNCEMENTS_PER_TICK = 8;
 const NAME_BYTES = new TextEncoder();
 
 /** An event before the outbox has numbered it. */
-export type UnissuedEvent = Omit<HitEvent, "id"> | Omit<DeathEvent, "id"> | Omit<SpawnEvent, "id"> | Omit<AnnounceEvent, "id">;
+type UnissuedEvent = Omit<HitEvent, "id"> | Omit<DeathEvent, "id"> | Omit<SpawnEvent, "id"> | Omit<AnnounceEvent, "id">;
 
 /**
  * An event waiting to go out, with the last tick it may ride on and who is to
@@ -72,6 +70,8 @@ interface Outgoing {
   event: GameEvent;
   to: PlayerId | null;
   until: number;
+  /** Held for no longer than the tick it happened on, so this tick's tail is its only one. */
+  once: boolean;
 }
 
 export class EventOutbox {
@@ -80,30 +80,27 @@ export class EventOutbox {
    * The last event id issued, counting up for the life of this match and
    * wrapping at 16 bits.
    *
-   * Never per recipient: a client de-dupes by keeping the newest id it has seen,
-   * which only works while the order is one order. It reaches a joining player in
-   * `joined`, so their watermark starts where this count already is.
+   * Never per recipient: a client de-dupes by the ids it has taken and starts
+   * from the counter `joined` gave it, which only works while there is one
+   * counter. An event addressed to one player is a gap in everyone else's.
    */
   private lastId = 0;
 
   constructor(private readonly clock: MatchClock) {}
 
-  /** The event counter as it stands: a joining player's watermark. Everything they are told about is above it. */
+  /** The event counter as it stands: where a joining player's de-dupe starts. Everything they are told about is above it. */
   get cursor(): number {
     return this.lastId;
   }
 
   /**
-   * Put an event in the outbox, to ride on the next snapshot and on every one up
-   * to `hold` seconds later.
-   *
-   * The id is issued here and nowhere else, so the order one client sees is the
-   * order every client sees — which is what makes "newer than the newest I have
-   * seen" a sound de-dupe at the far end.
+   * Put an event in the outbox, to ride on the next snapshot and on the ones up
+   * to `hold` seconds later. The id is issued here and nowhere else.
    */
   push(event: UnissuedEvent, to: PlayerId | null, hold: number): void {
     this.lastId = (this.lastId + 1) & 0xffff;
-    this.held.push({ event: { ...event, id: this.lastId } as GameEvent, to, until: this.clock.tick + this.clock.ticks(hold) });
+    const ticks = this.clock.ticks(hold);
+    this.held.push({ event: { ...event, id: this.lastId } as GameEvent, to, until: this.clock.tick + ticks, once: ticks === 0 });
   }
 
   /** Drop what has outlived its retention: once, by the clock, and not once per player who has been sent it. */
@@ -116,28 +113,41 @@ export class EventOutbox {
   }
 
   /**
-   * What `id` has still to hear, oldest first.
+   * What rides in `id`'s tail this tick, in the order it was issued: everything
+   * they have still to hear, where that fits.
    *
-   * Capped at what the tail can carry, keeping the **newest**: an event that has
-   * been in here longest has been sent most often, so it is the one whose loss is
-   * least likely and whose repeat is worth least.
+   * Where it does not, what is held **takes turns**. An event that lives for this
+   * tick alone goes first, newest first, because no later tail will carry it. The
+   * retained ones then fill what is left starting from a different one each tick,
+   * so each leads a tail once in as many ticks as there are of them — a few ticks
+   * of a retention that is thirty or more. Nothing is kept per recipient: the
+   * turn is the clock's, and the client takes ids in any order.
    */
   for(id: PlayerId): GameEvent[] {
-    const mine = this.held.filter((held) => held.to === null || held.to === id).map((held) => held.event);
+    const mine = this.held.filter((held) => held.to === null || held.to === id);
+    if (mine.length === 0) {
+      return []; // nearly every tick
+    }
+    const riding = new Set<Outgoing>();
+    for (let i = mine.length - 1; i >= 0 && riding.size < MAX_SNAPSHOT_EVENTS; i--) {
+      if (mine[i]!.once) {
+        riding.add(mine[i]!);
+      }
+    }
 
-    // Spawns are capped first and separately. One is a hundred bytes against a
-    // death's twenty, nearly all of it the sixteen rotations a corpse starts from,
-    // so seven of them would be a tail worth more than the snapshot it rides on.
+    // Spawns are capped separately. One is a hundred bytes against a death's
+    // twenty, nearly all of it the sixteen rotations a corpse starts from, so
+    // seven of them would be a tail worth more than the snapshot it rides on.
+    const retained = mine.filter((held) => !held.once);
     let spawns = 0;
-    const capped: GameEvent[] = [];
-    for (let i = mine.length - 1; i >= 0; i--) {
-      const event = mine[i]!;
-      if (event.kind === "spawn" && ++spawns > MAX_SPAWNS_PER_SNAPSHOT) {
+    for (let i = 0; i < retained.length && riding.size < MAX_SNAPSHOT_EVENTS; i++) {
+      const held = retained[(this.clock.tick + i) % retained.length]!;
+      if (held.event.kind === "spawn" && ++spawns > MAX_SPAWNS_PER_SNAPSHOT) {
         continue;
       }
-      capped.unshift(event);
+      riding.add(held);
     }
-    return capped.length <= MAX_SNAPSHOT_EVENTS ? capped : capped.slice(capped.length - MAX_SNAPSHOT_EVENTS);
+    return mine.filter((held) => riding.has(held)).map((held) => held.event);
   }
 }
 

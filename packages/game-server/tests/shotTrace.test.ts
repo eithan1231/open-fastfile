@@ -24,7 +24,6 @@ import { shotTraceMessage } from "@3d/shared/net/messages/shotTrace.js";
 import { BitReader, BitWriter } from "@3d/shared/net/codec/bits.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
-import { createMovement } from "@3d/shared/sim/movement.js";
 import type { HitLocation } from "@3d/shared/sim/hitLocations.js";
 import { CATALOG_VERSION, WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
@@ -133,9 +132,8 @@ function fireOne(hits: HitLocation | null): FiredShot {
         seq: ++seq,
         dt: DT,
         input: id === "a" ? firing : idleInput(0, 0),
-        claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-        renderTick: 0,
-        renderFrac: 0,
+        claim: { x: 0, y: 0, z: 0 },
+        drawn: { tick: 0, frac: 0 },
       };
       match.receive(id, message);
     }
@@ -167,7 +165,6 @@ describe("what the server says about a round it fired", () => {
     expect(new Set([packet.direction.x, packet.direction.y, packet.direction.z]).size).toBe(3);
 
     expect(packet.met).toBe("player");
-    expect(packet.target).toBe("b");
     expect(packet.distance).toBeCloseTo(HIT_AT, 6);
   });
 
@@ -177,7 +174,6 @@ describe("what the server says about a round it fired", () => {
 
     const packet = shotTracePacket(shot);
     expect(packet.met).toBe("none");
-    expect(packet.target).toBeNull();
     expect(packet.distance).toBeCloseTo(SHOT_RANGE, 6);
     // And it is the range, not zero and not some other constant.
     expect(packet.distance).toBeGreaterThan(200);
@@ -191,7 +187,6 @@ describe("what the server says about a round it fired", () => {
 
     expect(back.ordinal).toBe(packet.ordinal);
     expect(back.met).toBe(packet.met);
-    expect(back.target).toBe(packet.target);
     expect(back.distance).toBeCloseTo(packet.distance, 4);
     expect(back.direction.x).toBeCloseTo(packet.direction.x, 6);
     expect(back.direction.y).toBeCloseTo(packet.direction.y, 6);

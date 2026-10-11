@@ -29,7 +29,6 @@ import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import type { PlayerSnapshot } from "@3d/shared/net/messages/snapshot.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
-import { createMovement } from "@3d/shared/sim/movement.js";
 import type { HitLocation } from "@3d/shared/sim/hitLocations.js";
 import { CATALOG_VERSION, WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import type { WeaponDef } from "@3d/shared/sim/weaponDef.js";
@@ -185,9 +184,8 @@ function combat(options: Options = {}) {
     seq: ++seq,
     dt: DT,
     input,
-    claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-    renderTick: 0,
-    renderFrac: 0,
+    claim: { x: 0, y: 0, z: 0 },
+    drawn: { tick: 0, frac: 0 },
   });
 
   /** One tick, with every snapshot delivered — without which every rewind would be clamped. */
@@ -482,7 +480,6 @@ describe("regeneration", () => {
     // Regeneration ignoring the delay would have put back 20 by now and the health
     // below would be full.
     hurt.idle(59);
-    expect(hurt.state("b").sinceDamage).toBeCloseTo(1, 2);
     expect(hurt.health("b")).toBe(100 - CHEST_DAMAGE);
 
     // Half a second of it: ten health back, which is a different number from
@@ -637,7 +634,7 @@ describe("what the tail carries", () => {
     const hit = combat({ location: "head" });
     hit.fire();
 
-    expect(hit.events("a")).toEqual([{ kind: "hit", id: 1, location: "head", lethal: false }]);
+    expect(hit.events("a")).toEqual([{ kind: "hit", id: 1, lethal: false }]);
     // The man who was shot is told his health, not that somebody hit him.
     expect(hit.events("b")).toEqual([]);
 
@@ -651,7 +648,7 @@ describe("what the tail carries", () => {
   it("says when the round was the one that killed them", () => {
     const killed = combat({ hooks: fatal });
     killed.fire();
-    expect(killed.events("a").filter((event) => event.kind === "hit")).toEqual([{ kind: "hit", id: 2, location: "torsoUpper", lethal: true }]);
+    expect(killed.events("a").filter((event) => event.kind === "hit")).toEqual([{ kind: "hit", id: 2, lethal: true }]);
   });
 
   it("draws no marker for a round that cost them nothing", () => {
@@ -719,8 +716,8 @@ describe("what the tail carries", () => {
     killed.fire();
 
     // The death is issued while the damage is applied and the marker after it
-    // returns, so the ids are the order things happened in — which is what makes
-    // "newer than the newest I have seen" a sound de-dupe at the far end.
+    // returns, so the ids are the order things happened in, and a tail that has
+    // room for everything carries it in that order.
     expect(killed.events("a").map((event) => event.id)).toEqual([1, 2]);
     expect(killed.match.eventCursor).toBe(2);
 
@@ -730,7 +727,7 @@ describe("what the tail carries", () => {
     expect(killed.match.eventCursor).toBe(2);
   });
 
-  it("drops the oldest rather than overflowing the field the count is carried in", () => {
+  it("takes turns rather than overflowing the field the count is carried in", () => {
     // Eight deaths at once: the shot kills `b`, and the hook takes the rest of
     // the match down with it — the shooter included, which is a player's own
     // grenade and is always allowed.
@@ -759,9 +756,15 @@ describe("what the tail carries", () => {
     expect(massacre.match.eventCursor).toBe(9);
     const tail = massacre.events("a");
     expect(tail).toHaveLength(MAX_SNAPSHOT_EVENTS);
-    // The newest seven, in order: the ones dropped are those that have already
-    // been sent most often, and on this tick they have all been sent once.
-    expect(tail.map((event) => event.id)).toEqual([3, 4, 5, 6, 7, 8, 9]);
+    // The marker rides for certain, because this tail is the only one it gets.
+    // The deaths take turns at what is left, so the one left out leads the next.
+    const heard = new Set(tail.map((event) => event.id));
+    expect(heard.has(9)).toBe(true);
+    massacre.idle(1);
+    for (const event of massacre.events("a")) {
+      heard.add(event.id);
+    }
+    expect([...heard].sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(() => encodePacket(MessageType.snapshot, { tick: 1, ack: 0, presence: null, players: [], actors: [], counters: [], events: tail })).not.toThrow();
   });
 });

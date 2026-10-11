@@ -30,7 +30,6 @@ import { decodePacket, encodePacket, MessageType } from "@3d/shared/net/packet.j
 import type { SnapshotMessage } from "@3d/shared/net/messages/snapshot.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
-import { createMovement } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { movementRules } from "@3d/shared/sim/worldRules.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
@@ -225,9 +224,8 @@ function arena(setup: Setup = {}) {
       seq: ++seq,
       dt: DT,
       input,
-      claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-      renderTick: match.tick & 0xffff,
-      renderFrac: 0,
+      claim: { x: 0, y: 0, z: 0 },
+      drawn: { tick: match.tick & 0xffff, frac: 0 },
     };
     match.receive(PLAYER, message);
     const step = match.step();
@@ -397,7 +395,7 @@ describe("actors in a match", () => {
 
     // Lying there: on the wire as dying, and in the script's list.
     const lying = a.snapshots.at(-1)!.actors[0]!;
-    expect(lying).toMatchObject({ id: 1, action: "die", dead: true });
+    expect(lying).toMatchObject({ id: 1, action: "die" });
     // A body stops no round: what is fired at it now goes past.
     const met: (string | undefined)[] = [];
     for (let i = 0; i < 30; i++) {

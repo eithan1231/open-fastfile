@@ -2,7 +2,8 @@
 // it echoes, the use key's edge, and the drift between what the client claimed
 // and what our replay of the same input did.
 
-import type { InputMessage } from "@3d/shared/net/messages/input.js";
+import type { PlayerId } from "@3d/shared/net/messages/fields.js";
+import type { InputMessage, InputStep } from "@3d/shared/net/messages/input.js";
 import { after } from "@3d/shared/net/seq.js";
 import type { Vec3 } from "@3d/shared/sim/capsule.js";
 
@@ -49,6 +50,16 @@ export class InputQueue {
   dropped = 0;
   readonly drift: DriftReport = { current: 0, max: 0, mean: 0, samples: 0 };
 
+  /**
+   * `seen` is the newest seq this player sent before they were being simulated
+   * (`UnspawnedInputs`): everything up to it counts as dealt with, so nothing
+   * made before the spawn is stepped after it.
+   */
+  constructor(seen?: number) {
+    this.acked = seen ?? 0;
+    this.newest = seen;
+  }
+
   get ack(): number {
     return this.acked;
   }
@@ -73,15 +84,23 @@ export class InputQueue {
     this.newest = message.seq;
   }
 
-  /** Queue an input this server wrote itself (a bot's), which no seq check applies to. */
-  push(message: InputMessage): void {
-    this.queue.push(message);
+  /**
+   * Queue an input this server wrote itself (a bot's). It has no seq to check or
+   * to acknowledge and claims nothing, so it leaves the ack where it stands.
+   */
+  push(step: InputStep): void {
+    this.queue.push({ ...step, seq: this.acked, claim: null });
   }
 
-  /** Forget which seqs were sent: a new connection counts from the start again. */
+  /**
+   * Forget which seqs were sent, the ack with them: a new connection counts from
+   * the start again, and an ack left over from the old one would tell it that
+   * inputs it has only just sent were already applied.
+   */
   reset(): void {
     this.queue.length = 0;
     this.newest = undefined;
+    this.acked = 0;
   }
 
   /** This tick's inputs, oldest first, at most `MAX_INPUTS_PER_TICK`. */
@@ -110,5 +129,38 @@ export class InputQueue {
     drift.samples++;
     // Incremental, so nothing has to hold a running total that /healthz would then serialise.
     drift.mean += (metres - drift.mean) / drift.samples;
+  }
+}
+
+/**
+ * The inputs of players who are seated but not in the match: sent a snapshot
+ * every tick, choosing a class, and simulated by nothing.
+ *
+ * Nothing is stepped for them, but each is still acknowledged. A client keeps
+ * what it has sent until an ack covers it and replays the lot onto its next
+ * correction, so one left unanswered through a class menu would arrive at its
+ * spawn two seconds of input ahead of it.
+ */
+export class UnspawnedInputs {
+  private readonly newest = new Map<PlayerId, number>();
+
+  /** An input arrived from somebody not in the match. */
+  receive(id: PlayerId, seq: number): void {
+    const seen = this.newest.get(id);
+    if (seen === undefined || after(seq, seen)) {
+      this.newest.set(id, seq);
+    }
+  }
+
+  /** The newest seq they have sent, or undefined for none. */
+  ack(id: PlayerId): number | undefined {
+    return this.newest.get(id);
+  }
+
+  /** They are spawning, or gone: hand over what was seen and keep nothing. */
+  take(id: PlayerId): number | undefined {
+    const seen = this.newest.get(id);
+    this.newest.delete(id);
+    return seen;
   }
 }

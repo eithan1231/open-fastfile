@@ -23,7 +23,7 @@
 
 import * as THREE from "three";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { clampPitch, EYE_HEIGHT, type CapsuleWorld, type MovementState, type Vec3 } from "@3d/shared/sim/movement.js";
+import { clampPitch, EYE_HEIGHT, type CapsuleWorld, type Vec3 } from "@3d/shared/sim/movement.js";
 import { ladderYaw } from "@3d/shared/sim/ladder.js";
 import { roundDt, roundInput } from "@3d/shared/net/messages/input.js";
 import { TICK_RATE } from "@3d/shared/net/messages/fields.js";
@@ -43,8 +43,12 @@ export interface DeviceInput {
   takeLook(): { x: number; y: number };
 }
 
-/** What a tick produced, for whatever wants to send it. The arguments are owned by the callee. */
-export type TickListener = (input: PlayerInput, dt: number, claim: MovementState) => void;
+/**
+ * What a tick stepped on and where it left the feet, for whatever wants to send
+ * it. Both objects are the simulation's own and are refilled next tick: a
+ * listener copies what it wants to keep.
+ */
+export type TickListener = (input: PlayerInput, dt: number, feet: Readonly<Vec3>) => void;
 
 /**
  * Ticks one frame may run. The frame dt is already capped at 1/20 s
@@ -386,9 +390,7 @@ export class FirstPersonControls {
     this.pressed.clear();
     this.interpolating = true;
 
-    if (this.onTick) {
-      this.onTick(rounded, dt, structuredClone(this.player.movement) as MovementState);
-    }
+    this.onTick?.(rounded, dt, this.player.movement.feet);
   }
 
   /**

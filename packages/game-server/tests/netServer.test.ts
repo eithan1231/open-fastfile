@@ -16,7 +16,6 @@ import { roundDt, type InputPacket, type InputStep } from "@3d/shared/net/messag
 import { decodePacket, encodePacket, MessageType, PROTOCOL_VERSION, type Packet } from "@3d/shared/net/packet.js";
 import type { SnapshotMessage } from "@3d/shared/net/messages/snapshot.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { createMovement } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
 import type { GameInstance, Games } from "../src/games.js";
@@ -189,8 +188,8 @@ describe("a game that throws as somebody leaves", () => {
 });
 
 describe("inputs off an unordered, lossy channel", () => {
-  const claim = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
-  const step = (forward: number): InputStep => ({ dt: roundDt(1 / TICK_RATE), input: { ...idleInput(0, 0), forward }, renderTick: 0, renderFrac: 0 });
+  const claim = { x: 0, y: 0, z: 0 };
+  const step = (forward: number): InputStep => ({ dt: roundDt(1 / TICK_RATE), input: { ...idleInput(0, 0), forward }, drawn: { tick: 0, frac: 0 } });
   const packet = (seq: number, newest: InputStep, earlier: InputStep[]): Uint8Array =>
     encodePacket(MessageType.input, { seq, claim, ...newest, earlier } satisfies InputPacket);
 

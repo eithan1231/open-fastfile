@@ -11,14 +11,16 @@
 import { angle, f32, quant, quat as quatCodec, signed, str, struct, type Codec, type Quat } from "../codec/schema.js";
 import type { Vec3 } from "../../sim/movement.js";
 import { COMBAT_TIMER_MAX } from "../../sim/player.js";
+import { MAX_STATE_TIME } from "../../sim/weapon.js";
 
-/** Server-assigned, unique for a session. Not a database id. */
+/** Issued by the api for one match, or minted by a game server for a bot. Not a database id. */
 export type PlayerId = string;
 
 /**
- * An id is short and ASCII in practice (geckos hands out a channel id), so one
- * length byte is plenty. It is still the single most expensive field in a
- * snapshot: a per-match slot number would cost 8 bits rather than ~72.
+ * An id is short and ASCII — eight characters as the api mints one
+ * (api/src/matchmaking/ids.ts) — so one length byte is plenty. It is still the
+ * single most expensive field in a snapshot: a per-match slot number would cost
+ * 8 bits rather than 72.
  */
 export const playerId = str(8);
 
@@ -27,7 +29,7 @@ export const playerId = str(8);
  * (api/src/matchmaking/ids.ts), so a bot a game server mints can never collide
  * with a player the api admitted, and either end can tell one from the other.
  */
-export const BOT_ID_PREFIX = "#b";
+const BOT_ID_PREFIX = "#b";
 
 /** Whether this player is a bot a game server is driving rather than somebody the api admitted. */
 export function isBotId(id: PlayerId): boolean {
@@ -87,18 +89,18 @@ export const shortTimer = quant(0, 1, 8);
 export const climb = quant(0, 2, 8);
 
 /**
- * The two combat clocks: time since the last hit, and time left of a respawn.
+ * The combat clock a client is shown: time left of a respawn.
  *
- * A second budget rather than `shortTimer` because neither fits in one second —
- * regeneration waits about five — and `weaponTimer`'s sixteen would buy nothing
- * either clock can use. The range is `COMBAT_TIMER_MAX`, which the simulation
- * clamps both to, so the value held is the value carried; 8 bits over it is
- * 39 ms, under three ticks, and neither number is acted on by a client at all.
+ * A second budget rather than `shortTimer` because it does not fit in one
+ * second, and `weaponTimer`'s sixteen would buy nothing it can use. The range is
+ * `COMBAT_TIMER_MAX`, which the simulation clamps it to, so the value held is
+ * the value carried; 8 bits over it is 39 ms, under three ticks, and a client
+ * prints it to a tenth of a second.
  */
 export const combatTimer = quant(0, COMBAT_TIMER_MAX, 8);
 
-/** A weapon's state timer: the longest is a reload, comfortably under 16 s. */
-export const weaponTimer = quant(0, 16, 12);
+/** A weapon's state timer: the longest is a reload, and the registry refuses one past `MAX_STATE_TIME`'s 16 s. */
+export const weaponTimer = quant(0, MAX_STATE_TIME, 12);
 
 /** 0 (hip) to 1 (in the sights). */
 export const unit = quant(0, 1, 8);

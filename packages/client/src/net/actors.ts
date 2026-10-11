@@ -142,7 +142,7 @@ export class ActorsView {
         object.position.set(x, y, z);
         object.rotation.set(0, yaw + MODEL_FACING, 0);
         drawn.body.poser.update(to.state, drawn.body.look, dt);
-      } else if (to.state.dead) {
+      } else if (to.state.action === "die") {
         // A capsule has no death to play: it lies down where it fell.
         object.position.set(x, y + kind.radius, z);
         object.rotation.set(0, yaw, Math.PI / 2, "YXZ");

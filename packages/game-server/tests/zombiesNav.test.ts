@@ -31,7 +31,6 @@ import type { Script } from "@3d/shared/game/hooks.js";
 import { createApiClient } from "@3d/shared/protocol/api.js";
 import type { HttpFetch } from "@3d/shared/protocol/http.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { createMovement } from "@3d/shared/sim/movement.js";
 import { WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { presenceFor } from "@3d/shared/worlds/presence.js";
 import { NO_BODIES } from "../src/bodies.js";
@@ -257,7 +256,8 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
     const script: Script = {
       id: "zombies-nav-test",
       server: {
-        combatRules: () => ({ maxHealth: 100_000, regenRate: 0 }),
+        // Nobody here is to die of it: whatever a blow takes is back by the next.
+        combatRules: () => ({ maxHealth: 1000, regenDelay: 0, regenRate: 100_000 }),
         matchStart: (ctx) => {
           for (const i of boarded ? [] : clear) {
             const tag = loaded.world.solids[i]!.tags[0];
@@ -292,9 +292,8 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
         seq,
         dt: 1 / 60,
         input: idleInput(0, 0),
-        claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-        renderTick: match.tick & 0xffff,
-        renderFrac: 0,
+        claim: { x: 0, y: 0, z: 0 },
+        drawn: { tick: match.tick & 0xffff, frac: 0 },
       });
       const step = match.step();
       const actor = match.snapshotFor(PLAYER, step.players).actors[0];
@@ -401,7 +400,8 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
     const script: Script = {
       id: "chase",
       server: {
-        combatRules: () => ({ maxHealth: 100_000, regenRate: 0 }),
+        // Nobody here is to die of it: whatever a blow takes is back by the next.
+        combatRules: () => ({ maxHealth: 1000, regenDelay: 0, regenRate: 100_000 }),
         matchStart: (ctx) => {
           for (const solid of loaded.world.solids) {
             if (solid.tags[0] !== undefined) {
@@ -459,9 +459,8 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
           seq: seq & 0xffff,
           dt: 1 / 60,
           input: idleInput(0, 0),
-          claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-          renderTick: match.tick & 0xffff,
-          renderFrac: 0,
+          claim: { x: 0, y: 0, z: 0 },
+          drawn: { tick: match.tick & 0xffff, frac: 0 },
         });
         match.step();
       }
@@ -551,9 +550,8 @@ describe.skipIf(!exported)("theater's doors on its navigation graph", () => {
         seq: seq & 0xffff,
         dt: 1 / 60,
         input: idleInput(0, 0),
-        claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
-        renderTick: match.tick & 0xffff,
-        renderFrac: 0,
+        claim: { x: 0, y: 0, z: 0 },
+        drawn: { tick: match.tick & 0xffff, frac: 0 },
       });
       const step = match.step();
       const snapshot = match.snapshotFor(PLAYER, step.players);

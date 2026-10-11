@@ -312,7 +312,6 @@ describe("pairing the two answers", () => {
       direction,
       distance: BULLET_RANGE,
       met: "none",
-      target: null,
       ...over,
     };
   }

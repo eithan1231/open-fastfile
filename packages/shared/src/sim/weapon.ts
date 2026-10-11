@@ -176,6 +176,45 @@ function shotsPerPress(fireType: string): number {
   return burst ? Number(burst[1]) : 1;
 }
 
+/**
+ * What `WeaponData` may hold, which is what the wire carries it in
+ * (net/messages/player.ts builds its fields from these). A weapon file outside
+ * them is refused where it is loaded (`checkWeaponLimits`), because the
+ * alternative is a snapshot that throws or saturates in the middle of a match.
+ */
+export const MAX_CLIP_SIZE = 1023;
+export const MAX_BURST = 15;
+/** Seconds: the longest a timed state, or the clip that times one, may last. */
+export const MAX_STATE_TIME = 16;
+/** Seconds between two shots. */
+export const MAX_FIRE_TIME = 4;
+/** How far a clip may be sped up to fit its state. A faster one plays at this and is cut short. */
+export const MAX_CLIP_RATE = 8;
+
+/**
+ * Throw, naming `who`, for a weapon file — or the part of one an attachment
+ * overrides — holding a number `WeaponData` cannot carry.
+ */
+export function checkWeaponLimits(def: Partial<Pick<WeaponDef, "clipSize" | "fireType" | "times" | "clips">>, who: string): void {
+  if (def.clipSize !== undefined && !(Number.isInteger(def.clipSize) && def.clipSize >= 0 && def.clipSize <= MAX_CLIP_SIZE)) {
+    throw new Error(`weapon "${who}" has a magazine of ${def.clipSize}; a whole number up to ${MAX_CLIP_SIZE} can be carried`);
+  }
+  if (def.fireType !== undefined && shotsPerPress(def.fireType) > MAX_BURST) {
+    throw new Error(`weapon "${who}" fires a "${def.fireType}"; a burst of up to ${MAX_BURST} can be carried`);
+  }
+  for (const [name, time] of Object.entries(def.times ?? {})) {
+    const max = name === "fire" ? MAX_FIRE_TIME : MAX_STATE_TIME;
+    if (typeof time === "number" && !(time <= max)) {
+      throw new Error(`weapon "${who}" has a ${name} time of ${time} s; up to ${max} s can be carried`);
+    }
+  }
+  for (const [name, clip] of Object.entries(def.clips ?? {})) {
+    if (!(clip.duration <= MAX_STATE_TIME)) {
+      throw new Error(`weapon "${who}" has a clip "${name}" ${clip.duration} s long; up to ${MAX_STATE_TIME} s can be carried`);
+    }
+  }
+}
+
 export class WeaponController {
   private d: WeaponData;
   private readonly listeners = new Set<WeaponListener>();
@@ -636,7 +675,7 @@ export class WeaponController {
     if (now && this.def.roles[now.role] === name && now.loop === loop && !options.restart) {
       return;
     }
-    const rate = options.time && options.time > 0 && duration > 0 ? duration / options.time : 1;
+    const rate = options.time && options.time > 0 && duration > 0 ? Math.min(MAX_CLIP_RATE, duration / options.time) : 1;
     this.d.clip = { role, time: 0, rate, loop };
     this.emit({ type: "play", clip: name, role, time: 0, rate, loop, fade: options.fade ?? CROSSFADE });
     this.emitNotes(-1, 0);

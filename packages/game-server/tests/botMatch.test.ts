@@ -212,8 +212,9 @@ describe("a bot in a match", () => {
     expect(m.navigation).toBeNull();
     expect(after.x).toBeCloseTo(start.x, 6);
     expect(after.z).toBeCloseTo(start.z, 6);
-    // Stepped all the same: its inputs were spent, one a tick.
-    expect(m.snapshotFor(id, []).ack).toBe(32);
+    // Stepped all the same: a member is only stepped by its inputs, and one that
+    // had none would never have found the floor it was placed on.
+    expect(m.step().players.find((p) => p.id === id)!.state.movement.grounded).toBe(true);
 
     nav.graph = lineGraph();
     const tick = m.tick;

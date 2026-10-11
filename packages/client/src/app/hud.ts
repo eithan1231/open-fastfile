@@ -64,7 +64,7 @@ export class Hud {
    */
   joined(message: JoinedMessage, you: PlayerId, gametype?: GametypeDecl): void {
     this.maxHealth = message.rules.maxHealth;
-    this.noCountdown = message.rules.respawnDelay === null;
+    this.noCountdown = !message.rules.timedRespawn;
     this.me = you;
     this.connected = true;
     this.counterNames = gametype?.counters ?? [];
@@ -123,7 +123,6 @@ export class Hud {
           this.addKill(event, now);
           break;
         case "spawn":
-        case "despawn":
           break; // the HUD has nothing to say about a body on the floor
       }
     }

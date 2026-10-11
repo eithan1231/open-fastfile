@@ -16,7 +16,7 @@ import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
 import type { Script } from "@3d/shared/game/hooks.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { createMovement, EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import type { BodyView, LoadedBody } from "../src/bodies.js";
 import { NO_BODIES } from "../src/bodies.js";
@@ -72,7 +72,7 @@ function match(scripts: Script[], bodies: BodyView = NO_BODIES): Match {
 }
 
 function input(renderTick: number): InputMessage {
-  return { seq: 1, dt: 1 / TICK_RATE, input: idleInput(0, 0), claim: createMovement({ x: 0, y: 0, z: 0 }, 0, 0), renderTick, renderFrac: 0 };
+  return { seq: 1, dt: 1 / TICK_RATE, input: idleInput(0, 0), claim: { x: 0, y: 0, z: 0 }, drawn: { tick: renderTick, frac: 0 } };
 }
 
 describe("a tick's phases", () => {

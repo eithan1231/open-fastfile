@@ -65,8 +65,6 @@ export interface ActorState {
    * as its index plus one; 0 for the gait's climb. 0 for every other action.
    */
   traversal: number;
-  /** Exactly `action === "die"`: not sent, but derived on reading (net/messages/actors.ts). */
-  dead: boolean;
 }
 
 /** An actor a script spawns (`ServerContext.actors.spawn`). */

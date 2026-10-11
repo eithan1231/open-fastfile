@@ -35,6 +35,5 @@ export function shotTracePacket(shot: FiredShot): ShotTraceMessage {
     direction: shot.direction,
     distance: result === null ? BULLET_RANGE : result.distance,
     met: result === null ? "none" : result.kind,
-    target: result !== null && result.kind === "player" ? result.id : null,
   };
 }

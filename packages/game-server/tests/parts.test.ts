@@ -21,7 +21,7 @@ import { linksThroughParts } from "@3d/shared/nav/parts.js";
 import { HEADER_FLAGS } from "@3d/shared/nav/vocab.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { movementRules } from "@3d/shared/sim/worldRules.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { basePresence, presenceFor } from "@3d/shared/worlds/presence.js";
@@ -147,9 +147,8 @@ function walk(m: Match, id = "a"): number {
     seq: ++seq & 0xffff,
     dt: 1 / TICK_RATE,
     input: { ...idleInput(0, 0), forward: 1 },
-    claim: structuredClone(movement) as MovementState,
-    renderTick: 0,
-    renderFrac: 0,
+    claim: { ...movement.feet },
+    drawn: { tick: 0, frac: 0 },
   } satisfies InputMessage);
   return movement.feet.z;
 }
@@ -183,7 +182,7 @@ describe("a solid in a match", () => {
     }
     // Against the door's face, a capsule's radius short of it.
     expect(z).toBeGreaterThan(-1.8);
-    const shut = m.step();
+    const shut = m.snapshotFor("a", m.step().players);
     expect(shut.presence).toEqual({ since: 0, bits: [0b01] });
     for (const link of doorLinks(graph)) {
       expect(m.navigation!.state.isOpen(link)).toBe(false);
@@ -194,9 +193,8 @@ describe("a solid in a match", () => {
     // Queued: still there for the rest of this tick, and gone at its end.
     expect(m.presence.has(0)).toBe(true);
     expect(ctx().world.isPresent("front")).toBe(false);
-    const opened = m.step();
+    const opened = m.snapshotFor("a", m.step().players);
     expect(opened.presence).toEqual({ since: opened.tick & 0xffff, bits: [0b00] });
-    expect(m.snapshotFor("a", opened.players).presence).toEqual(opened.presence);
     expect(m.presence.has(0)).toBe(false);
     for (const link of doorLinks(graph)) {
       expect(m.navigation!.state.isOpen(link)).toBe(true);
@@ -239,8 +237,8 @@ describe("a solid in a match", () => {
     const tdm: GametypeDecl = { ...defaultGametype, id: "tdm-test", mode: "tdm" };
     const roam = match();
     const war = match(tdm);
-    expect(roam.m.step().presence!.bits).toEqual([0b01]);
-    expect(war.m.step().presence!.bits).toEqual([0b11]);
+    expect(roam.m.snapshotFor("a", roam.m.step().players).presence!.bits).toEqual([0b01]);
+    expect(war.m.snapshotFor("a", war.m.step().players).presence!.bits).toEqual([0b11]);
     expect(roam.m.navigation!.graph).toBe(war.m.navigation!.graph);
 
     // The barrier is a wall in one and air in the other: the same spot, two answers.
@@ -258,6 +256,6 @@ describe("a solid in a match", () => {
 
   it("sends nothing for a world with no solids", () => {
     const m = new Match(loaded().collision, { ...world(), solids: [] } as ResolvedWorld, TICK_RATE, 4);
-    expect(m.step().presence).toBeNull();
+    expect(m.snapshotFor("a", m.step().players).presence).toBeNull();
   });
 });

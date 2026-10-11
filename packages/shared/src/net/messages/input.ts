@@ -1,11 +1,31 @@
 // Client → server, every tick: one step's command, what the client says it
 // produced, and the few commands before it the server may not have had.
 
-import { array, bool, struct, uint, type Codec } from "../codec/schema.js";
-import type { MovementState } from "../../sim/movement.js";
+import { array, bool, nullable, struct, uint, type Codec } from "../codec/schema.js";
+import type { Vec3 } from "../../sim/movement.js";
 import type { PlayerInput } from "../../sim/input.js";
-import { axis, pitch, seconds, unit, yaw } from "./fields.js";
-import { movementSchema } from "./player.js";
+import { axis, pitch, seconds, unit, vec3, yaw } from "./fields.js";
+
+/**
+ * The moment a client was drawing other players at: a server tick, and how far
+ * towards the next one.
+ *
+ * This is what makes lag compensation possible. A client draws peers a tick
+ * behind the newest snapshot and interpolated, so it aims at where they *were*;
+ * for the server to judge a shot it has to reproduce that, and only the client
+ * knows which moment it was looking at.
+ */
+export interface RenderMoment {
+  /**
+   * The **low 16 bits** of the server tick. The server recovers the rest: the
+   * tick named can only be in the recent past, so
+   * `current - ((current - tick) & 0xffff)` is unambiguous for anything inside
+   * 32768 ticks — nine minutes at 60 Hz, against a history one second deep.
+   */
+  tick: number;
+  /** How far past `tick`, in [0, 1). The client's own interpolation factor, in server-tick space. */
+  frac: number;
+}
 
 /**
  * One tick's command, without what identifies it: the part a datagram repeats
@@ -16,26 +36,15 @@ export interface InputStep {
   dt: number;
   input: PlayerInput;
   /**
-   * The server tick the client was drawing other players at when it produced this
-   * input — the **low 16 bits** of it.
-   *
-   * This is what makes lag compensation possible. A client draws peers a tick
-   * behind the newest snapshot and interpolated, so it aims at where they *were*;
-   * for the server to judge a shot it has to reproduce that, and only the client
-   * knows which moment it was looking at.
-   *
-   * Low bits because the server can recover the rest: the tick named can only be
-   * in the recent past, so `current - ((current - renderTick) & 0xffff)` is
-   * unambiguous for anything inside 32768 ticks — nine minutes at 60 Hz, against a
-   * history one second deep.
+   * The moment its sender was drawing, or null for one drawing nobody — no peer
+   * and no actor on screen, or an input this server wrote itself. A shot with
+   * none is judged against the world as the last tick left it.
    *
    * Per input rather than per tick, which is why it lives here: a tick that drains
    * four queued inputs rewinds four times, each to its own moment — and an input
    * recovered from a later datagram is judged at the moment it was built at.
    */
-  renderTick: number;
-  /** How far past `renderTick`, in [0, 1). The client's own interpolation factor, in server-tick space. */
-  renderFrac: number;
+  drawn: RenderMoment | null;
 }
 
 /**
@@ -46,15 +55,16 @@ export interface InputStep {
 export interface InputMessage extends InputStep {
   seq: number;
   /**
-   * Where the client says it ended up after applying `input`. The server
+   * Where the client says its feet ended up after applying `input`. The server
    * re-simulates the same input and compares, so this rides inside the input
    * message rather than in one of its own: the claim *is* this `seq`'s result,
    * and nothing has to correlate the two.
    *
    * A claim is never adopted. It is evidence, and a client is free to lie in it.
-   * Null for an input recovered from `InputPacket.earlier`, which carries none.
+   * Null for an input recovered from `InputPacket.earlier`, which carries none,
+   * and for one this server wrote itself (a bot's).
    */
-  claim: MovementState | null;
+  claim: Vec3 | null;
 }
 
 /**
@@ -68,7 +78,7 @@ export interface InputMessage extends InputStep {
 export interface InputPacket extends InputStep {
   /** The newest input's. `earlier[i]` is `seq - earlier.length + i`, so theirs are not sent. */
   seq: number;
-  claim: MovementState;
+  claim: Vec3;
   /** Oldest first, at most `REDUNDANT_INPUTS`. No claims: drift is measured on the newest. */
   earlier: InputStep[];
 }
@@ -76,7 +86,7 @@ export interface InputPacket extends InputStep {
 /**
  * How many earlier inputs a datagram repeats. Two survives any two consecutive
  * losses — 33 ms of a dropped link at 60 Hz — and three in a row at a 5% loss
- * rate is one input in 8000. Each costs 91 bits, and a datagram's worth then
+ * rate is one input in 8000. Each costs 92 bits, and a datagram's worth then
  * stays inside `MAX_INPUTS_PER_TICK`'s four, so a recovered gap drains in a tick.
  */
 export const REDUNDANT_INPUTS = 2;
@@ -85,11 +95,11 @@ export const REDUNDANT_INPUTS = 2;
 export function inputsOf(packet: InputPacket): InputMessage[] {
   const n = packet.earlier.length;
   const out: InputMessage[] = packet.earlier.map((step, i) => ({ ...step, seq: (packet.seq - n + i) & 0xffff, claim: null }));
-  out.push({ seq: packet.seq, dt: packet.dt, input: packet.input, claim: packet.claim, renderTick: packet.renderTick, renderFrac: packet.renderFrac });
+  out.push({ seq: packet.seq, dt: packet.dt, input: packet.input, claim: packet.claim, drawn: packet.drawn });
   return out;
 }
 
-export const inputSchema = struct({
+const inputSchema = struct({
   yaw,
   pitch,
   forward: axis,
@@ -109,11 +119,13 @@ export const inputSchema = struct({
  */
 const renderFrac = unit;
 
+/** One bit for an input that drew nobody, and 24 more for one that did. */
+const drawn = nullable(struct({ tick: uint(16), frac: renderFrac })) satisfies Codec<RenderMoment | null>;
+
 const inputStep = struct({
   dt: seconds,
   input: inputSchema,
-  renderTick: uint(16),
-  renderFrac,
+  drawn,
 }) satisfies Codec<InputStep>;
 
 export const inputMessage = struct({
@@ -121,9 +133,8 @@ export const inputMessage = struct({
   seq: uint(16),
   dt: seconds,
   input: inputSchema,
-  claim: movementSchema,
-  renderTick: uint(16),
-  renderFrac,
+  claim: vec3,
+  drawn,
   /** Two bits of count: room for three, though a client sends `REDUNDANT_INPUTS`. */
   earlier: array(inputStep, 2),
 }) satisfies Codec<InputPacket>;

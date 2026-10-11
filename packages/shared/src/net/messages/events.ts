@@ -2,7 +2,7 @@
 //
 // Every other field on the wire is state. A snapshot says where everyone stands
 // and what health they have, so a client that missed one is repaired by the next
-// — which is why `leave` can be a hint and membership the authority. An event is
+// — which is why nothing announces a departure: membership says it. An event is
 // not like that: nothing later in the stream mentions it, so a lost one is lost
 // for good unless something here resends it.
 //
@@ -13,8 +13,9 @@
 // (game-server/src/net/server.ts), so a "reliable event" message would be a
 // retry with a promise attached. This is the same retry, said out loud: an event
 // rides in the snapshot tail, carries a monotonic `id`, and is repeated for as
-// long as it is worth repeating. The client keeps the newest id it has seen and
-// drops anything at or below it, so a repeat costs bytes and nothing else.
+// long as it is worth repeating. The client remembers the ids it has taken and
+// drops any it sees again, so a repeat costs bytes and nothing else — and ids
+// need not arrive in order, which is what lets a full tail take turns.
 //
 // -- The kinds want opposite things, and that is the whole design -------------
 //
@@ -33,43 +34,42 @@
 // reason, but it is fifty times the size: ninety-odd bytes of initial conditions
 // against twenty. So it is repeated too, and capped per tail
 // (`MAX_SPAWNS_PER_SNAPSHOT`) where a death is not — seven of them at once would
-// be a datagram nobody should send. A **despawn** is the rarest of the four and
-// exists for the one case a rule cannot derive.
+// be a datagram nobody should send. Nothing says a body has gone: a kind's
+// lifetime and its cap are in `ENTITY_POLICY`, so both ends free the same entity
+// on the same tick without being told.
 //
 // An **announcement** is a death's argument taken further, and it is the only
 // kind a *script* raises. A kill feed line that never arrives is contradicted by
 // a scoreboard the player can open; "the enemy has the flag" is contradicted by
 // nothing, and a player who missed it is misinformed for the rest of the round.
 // So it is repeated for twice a death's window (`ANNOUNCE_REPEAT_SECONDS`), which
-// it can afford: announcements are rare where deaths are not, it is the smallest
-// event here, and the tail already drops the *oldest* first — so a kind that is
-// held longer is the first thing given up under pressure rather than something
-// that crowds a death out.
+// it can afford: announcements are rare where deaths are not, and it is the
+// smallest event here.
 //
 // The mechanism is one field; the reliability is the retention, which is
-// `Match`'s to set per event.
+// `Match`'s to set per event. A tail too full to carry everything retained
+// carries it in turns (`EventOutbox.for`), so a cap delays an event by a few
+// ticks of its retention and never loses it.
 
 import { array, bool, enumOf, int, nullable, str, struct, uint, type Codec } from "../codec/schema.js";
 import { ragdollSpawn, type RagdollSpawn } from "./entities.js";
 import { ENTITY_KINDS, type EntityKindId } from "../../sim/entityKinds.js";
 import { DAMAGE_CAUSES, type DamageCause } from "../../game/damage.js";
-import { HIT_LOCATIONS, type HitLocation } from "../../sim/hitLocations.js";
 import { playerId, type PlayerId } from "./fields.js";
 
-export const GAME_EVENT_KINDS = ["hit", "death", "spawn", "despawn", "announce"] as const;
-export type GameEventKind = (typeof GAME_EVENT_KINDS)[number];
+/** The order is the format: a kind travels as its index. */
+const GAME_EVENT_KINDS = ["hit", "death", "spawn", "announce"] as const;
 
 /**
  * A round of yours cost somebody health. The server's own answer about its own
  * trace — a client is never told to draw one for a shot it merely thinks landed.
  *
- * Nobody is named: a marker says "that one counted", and who it counted against
- * is the kill feed's business.
+ * Nobody is named and nowhere is: a marker says "that one counted", and who it
+ * counted against is the kill feed's business.
  */
 export interface HitEvent {
   kind: "hit";
   id: number;
-  location: HitLocation;
   /** It was the round that put them down, which is what a different marker is drawn for. */
   lethal: boolean;
 }
@@ -102,27 +102,13 @@ export interface DeathEvent {
 export interface SpawnEvent {
   kind: "spawn";
   id: number;
-  /** Unique for the life of a match. `despawn` and any correction name this. */
+  /** Unique for the life of a match: what a physics world keys the body by. */
   entity: number;
   what: EntityKindId;
   /** The tick it was created on, low 16 bits. Its age, and so its step count, is measured from here. */
   tick: number;
   /** The kind's own payload. One kind today; a second is a branch in the codec below. */
   ragdoll: RagdollSpawn;
-}
-
-/**
- * One ended before its lifetime did.
- *
- * Not sent for a corpse: a kind's lifetime and its cap are in `ENTITY_POLICY`, so
- * both ends free the same entity on the same tick without being told. This is for
- * the case a rule cannot derive — a grenade that went off early.
- */
-export interface DespawnEvent {
-  kind: "despawn";
-  id: number;
-  entity: number;
-  tick: number;
 }
 
 /**
@@ -160,14 +146,13 @@ export interface AnnounceEvent {
  * player joining an hour in does not have to wait for the counter to wrap past
  * whatever it had reached.
  */
-export type GameEvent = HitEvent | DeathEvent | SpawnEvent | DespawnEvent | AnnounceEvent;
+export type GameEvent = HitEvent | DeathEvent | SpawnEvent | AnnounceEvent;
 
 /**
  * How many events one snapshot carries, and the field that counts them.
  *
  * Three bits, because the tail is a tail: a tick with more than seven live
- * events is a grenade in a crowd, and the ones dropped are the oldest, which
- * have already been sent many times over.
+ * events is a grenade in a crowd, and the retained ones then take turns.
  */
 const EVENT_COUNT_BITS = 3;
 export const MAX_SNAPSHOT_EVENTS = 2 ** EVENT_COUNT_BITS - 1;
@@ -175,12 +160,11 @@ export const MAX_SNAPSHOT_EVENTS = 2 ** EVENT_COUNT_BITS - 1;
 const eventKind = enumOf(GAME_EVENT_KINDS);
 /** Wraps at 16 bits, and the client's de-dupe compares the way `after` does. */
 const eventId = uint(16);
-const hitFields = struct({ location: enumOf(HIT_LOCATIONS) as Codec<HitLocation>, lethal: bool });
+const hitFields = struct({ lethal: bool });
 const deathFields = struct({ victim: playerId, killer: nullable(playerId), cause: enumOf(DAMAGE_CAUSES) as Codec<DamageCause> });
 /** 12 bits: a match that produced 4,096 corpses and grenades has other problems. */
 const entityId = uint(12);
 const spawnFields = struct({ entity: entityId, what: enumOf(ENTITY_KINDS) as Codec<EntityKindId>, tick: uint(16), ragdoll: ragdollSpawn });
-const despawnFields = struct({ entity: entityId, tick: uint(16) });
 
 /**
  * How long a name a gametype may publish, in UTF-8 bytes.
@@ -209,10 +193,10 @@ const announceFields = struct({
 /**
  * How many spawns one snapshot's tail may carry.
  *
- * A spawn is about 95 bytes, nearly all of it sixteen rotations. Seven of them
- * would be a 665-byte tail on top of a twelve-player snapshot's ~767, which is past
- * what a datagram should be asked to hold. They are repeated for half a second
- * anyway, so the rest ride the next ticks and nobody waits.
+ * A spawn is about 105 bytes, nearly all of it sixteen rotations. Seven of them
+ * would be a 734-byte tail on top of a twelve-player snapshot's ~1,010, which is
+ * past what a datagram should be asked to hold. More than this many held at once
+ * take turns across the ticks of their half second (`EventOutbox.for`).
  */
 export const MAX_SPAWNS_PER_SNAPSHOT = 2;
 
@@ -221,7 +205,7 @@ export const MAX_SPAWNS_PER_SNAPSHOT = 2;
  * mechanism: the kind and the id are common, and each case then writes its own
  * fields in its own order. A third kind is four lines here.
  */
-export const gameEvent: Codec<GameEvent> = {
+const gameEvent: Codec<GameEvent> = {
   write(w, event) {
     eventKind.write(w, event.kind);
     eventId.write(w, event.id);
@@ -234,9 +218,6 @@ export const gameEvent: Codec<GameEvent> = {
         return;
       case "spawn":
         spawnFields.write(w, event);
-        return;
-      case "despawn":
-        despawnFields.write(w, event);
         return;
       case "announce":
         announceFields.write(w, event);
@@ -253,8 +234,6 @@ export const gameEvent: Codec<GameEvent> = {
         return { kind, id, ...deathFields.read(r) };
       case "spawn":
         return { kind, id, ...spawnFields.read(r) };
-      case "despawn":
-        return { kind, id, ...despawnFields.read(r) };
       case "announce":
         return { kind, id, ...announceFields.read(r) };
     }

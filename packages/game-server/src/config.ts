@@ -36,6 +36,20 @@ function serviceToken(): string {
   return DEV_SERVICE_TOKEN;
 }
 
+/**
+ * The tick rate, held to what the wire can say: `joined` carries it in eight
+ * bits and an input's `dt` tops out at a quarter of a second
+ * (@3d/shared/net/messages/). Outside that it is fatal at boot, rather than a
+ * join that throws while it is being answered.
+ */
+function tickRate(): number {
+  const hz = num(process.env.TICK_RATE, TICK_RATE);
+  if (!Number.isInteger(hz) || hz < 4 || hz > 255) {
+    throw new Error(`TICK_RATE is ${hz}: it has to be a whole number of hertz from 4 to 255`);
+  }
+  return hz;
+}
+
 export const config = {
   /**
    * HTTP: geckos' signalling handshake and /healthz. Not the same port as the api, because dev reads one env file.
@@ -113,7 +127,7 @@ export const config = {
    * The fixed tick, hertz. The server decides it and every client is told in its
    * `joined` and accumulates to match, so this is the one place it is set.
    */
-  tickRate: num(process.env.TICK_RATE, TICK_RATE),
+  tickRate: tickRate(),
 
   /**
    * Metres between a client's claim and our replay of that *one step* before it

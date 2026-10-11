@@ -402,9 +402,9 @@ and has no business holding secrets. A second socket presenting a seated
 player's identity displaces the first rather than feeding one input queue from
 two.
 
-Nothing is sent to everyone on the instance any more. A `leave` goes to the game
-it happened in, because a client drops any player id it sees in one, and a player
-in another game must never be named at it.
+Nothing is sent to everyone on the instance. Nothing announces a departure
+either: a snapshot's membership is the authority, so a client drops whoever the
+newest one leaves out, and a player in another game is never named at it.
 
 ## The match
 
@@ -454,7 +454,7 @@ once: it was already keyed by a player id it did not mint.
 **Who is in charge.** This server is. A client still steps its own player and its
 own camera and never waits for us, so there is no input latency at any ping — but
 what it produces is a _prediction_. It sends what it did (`InputMessage.input`)
-and where it thinks that put it (`InputMessage.claim`); we re-simulate the same
+and where it thinks that put its feet (`InputMessage.claim`); we re-simulate the same
 input through the same `stepMovement` against the same collision, and **our answer
 is the one in the snapshot**. The claim is evidence, never adopted.
 
@@ -491,7 +491,12 @@ What the tick does, per player:
   retransmits, so `Match.receive` drops any input not newer (`@3d/shared/net/seq.ts`)
   than the newest it has — `ack` never goes back — and every datagram repeats the
   client's last `REDUNDANT_INPUTS` unacknowledged inputs (`InputPacket.earlier`,
-  each with its own `renderTick`, none with a claim), so a lost one costs no input.
+  each with the moment it was `drawn` at, none with a claim), so a lost one costs
+  no input. A new connection for a seated player starts both the order and the
+  `ack` again (`Match.resetInputs`).
+- **Acknowledges a seated player who has not spawned.** Nothing steps their
+  inputs, but the newest `seq` is echoed all the same (`UnspawnedInputs`), so a
+  client does not arrive at its spawn with a class menu's worth of input to replay.
 - **A game that throws on its tick ends**, alone: `GameTick.run` catches it,
   `Match.fail` marks it, and Housekeeping drops and reports it as `errored`.
 - Steps with the **client's own `dt`**, clamped to two ticks. Re-simulating the
@@ -517,17 +522,22 @@ one.
 They ride in a short tail on the snapshot rather than in a reliable message of
 their own, because geckos' `reliable` is resend-and-dedupe and not delivery — a
 retry with a promise attached. So the tail does the retrying explicitly, and a
-monotonic id lets the receiver throw the duplicates away. `joined` carries the
-count as it stands at that moment, which is what stops somebody joining an hour
-into a match from reading every id as ancient and ignoring it.
+monotonic id lets the receiver throw the duplicates away: the client remembers
+the ids it has taken (`SeenEvents`, `client/src/net/connection.ts`), so they may
+arrive in any order. `joined` carries the count as it stands at that moment,
+which is what stops somebody joining an hour into a match from reading every id
+as ancient and ignoring it.
 
 Retention is per event, not per kind. A hit marker goes to the shooter for one
 tick: its value is immediacy, and repeating it would misreport _when_. A death is
 broadcast for half a second, because a kill feed that silently drops a line is
 permanently wrong about the match.
 
-The tail is capped, and the cap keeps the **newest** — the oldest entries are the
-ones that have already been sent most often.
+The tail is capped at seven events and two spawns, and what does not fit **takes
+turns** (`EventOutbox.for`). A hit marker rides first, because its one tick is
+the only tail it gets. The retained events fill the rest starting from a
+different one each tick, so a cap delays one by a few ticks of its retention and
+loses none.
 
 **Which of a world's removable parts are present is state, so it is sent whole.**
 A world with `solid` nodes puts `presence` on every snapshot: one bit per solid,
@@ -546,13 +556,17 @@ between the last two it holds, so when it puts a crosshair on someone it is aimi
 at where they **were** — by its own ping plus that interpolation. To judge a shot
 at all, this server has to be able to put the world back that way.
 
-- **The client names the moment.** `InputMessage.renderTick` (the low 16 bits) and
-  `renderFrac` are what `RemotePlayers.renderTick()` reports: the server tick this
+- **The client names the moment.** `InputStep.drawn` — a `tick` (the low 16 bits)
+  and a `frac` — is what `RemotePlayers.renderTick()` reports: the server tick this
   client last drew peers at, and how far past it. Only the client knows.
+- **A client that drew nobody names none.** `drawn` is null from a client holding
+  fewer than two snapshots of anyone, and from a bot. Such a shot is judged one
+  tick back, which is where a bot sees the world, and is counted as neither
+  clamped nor implausible.
 - **Per input, not per tick.** A tick that drains four queued inputs rewinds four
   times, each to its own moment. That is why the fields are on the input.
 - **Low bits are enough**, because the tick named is always in the past:
-  `current - ((current - renderTick) & 0xffff)` recovers it, wrap-safe for anything
+  `current - ((current - tick) & 0xffff)` recovers it, wrap-safe for anything
   inside 32768 ticks against a window of sixty. A client cannot express "the
   future" at all — a tick ahead of the clock comes out ~65536 behind and the window
   catches it, which is a better guarantee than a check.
@@ -593,7 +607,7 @@ pace.
 The client's half, in `net/connection.ts` and `engine/controls/firstPerson.ts`:
 
 - **Every input is kept until it is acknowledged.** `Connection` holds a ring of
-  the last two seconds of `{ seq, input, dt }`, copied rather than referenced —
+  the last two seconds of `{ seq, input, dt, drawn }`, copied rather than referenced —
   `FirstPersonControls` refills one `PlayerInput` in place every tick, so keeping
   the reference would replay the newest command for every unacked step.
 - **A snapshot is split into three things**: our own authoritative state, everyone
@@ -689,8 +703,11 @@ weapons, so a client sees a server re-arm them — a respawn, a class taking
 effect, a script's `arm` — as a new count, and rebuilds both from the state
 ([player](../engine/player.md#state-for-the-network)).
 
-`joined` answers with `{ you, world, tickRate, gametype, spawned, classes }` —
-`spawned` false for a player who has yet to choose a class, true for one
+`joined` answers with `{ tickRate, gametype, rules, eventId, spawned, classes }`.
+It names neither the player nor the world: the ticket a client joined with says
+who it is, and `join` has already proved which world it holds. `rules` is the two
+things a HUD draws from — the health ceiling and whether a death counts down.
+`spawned` is false for a player who has yet to choose a class, true for one
 rejoining a game that already has them or one in a gametype without classes, and
 `classes` whether the class menu is offered at all. The gametype is there
 because a browser cannot otherwise resolve `PlayerState.team` — a three-bit index
@@ -730,9 +747,12 @@ delivery, and it is not on the raw path at all, so:
   index answers. A repeat that arrives after the spawn is the class already in
   hand, which changes nothing — and in particular re-arms nobody, or a repeat
   would be a free refill.
-- **`leave` is a hint.** Snapshot membership is authoritative — a client removes
-  anyone absent from the newest snapshot — so a lost `leave` heals on the next
-  tick instead of leaving a body standing in the map.
+- **Nobody is told that a player left.** Snapshot membership is authoritative — a
+  client removes anyone absent from the newest snapshot — so there is no message
+  to lose and no body left standing in the map.
+- **A snapshot older than one already taken is dropped** by the client
+  (`Connection.receive`), as is one that overtook its `joined`. The channel is
+  unordered, and an old one applied late would rewind everybody a tick.
 
 ## Navigation and bots
 
@@ -771,10 +791,10 @@ player. `removeBot(id)` takes one out.
 Each tick, before the inputs are drained, `MatchBots.think` hands each bot's controller
 (`src/bots.ts`) a `BotTurn` — its movement, the match's `NavPlanner`, its
 objective (asking the scripts' `botObjective`), and the match's `BrainContext` — and queues the input it writes as a client's would arrive: `dt` one
-tick, rounded as the wire rounds it, `seq` counting up, and `renderTick` the last
-tick stepped with `renderFrac` 0. That last one matters for its shots: a bot sees
-the world as the previous tick left it, and a `renderTick` of 0 would be clamped
-to the rewind floor, a quarter of a second back. From there a bot is stepped,
+tick, rounded as the wire rounds it, with no `seq`, no claim and no moment it was
+`drawn` at. That last one matters for its shots: a bot sees the world as the
+previous tick left it, which is where a shot naming no moment is judged. From
+there a bot is stepped,
 shot, killed and respawned by the same code as a player, and snapshotted with
 everyone else, so a client sees one as a player and **nothing on the wire
 changed**. Until the world's graph is baked a bot's controller is not asked and it
@@ -794,8 +814,9 @@ What a bot is not:
   `Games.finished` calls empty, what the heartbeat reports as this instance's
   players, what gates the scripts' `tick` hook, and what `full` compares with the
   lobby size. A bot keeps no game alive and takes nobody's seat.
-- **Not measured.** It claims nothing, so no drift is recorded for it, and it has
-  no `sentTick`, so the implausible-rewind check never applies to it.
+- **Not measured.** It claims nothing, so no drift is recorded for it; it has no
+  `seq`, so its `ack` stays 0; and it names no moment, so no rewind of its is
+  counted as clamped or implausible.
 
 The default side (`sideFor`) still balances by every member, bots included: a
 gametype that adds bots puts people and bots on their sides itself (`chase` does

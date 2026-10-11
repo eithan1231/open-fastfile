@@ -759,7 +759,7 @@ not in any snapshot.
 
 ### Being hit, and dying
 
-The event tail already carries both, already de-duplicated by `unseenEvents`, so
+The event tail already carries both, already de-duplicated by `SeenEvents`, so
 nothing is heard twice.
 
 A **hit marker** is feedback: `mp_hit_alert`, on `ui`, flat, never repeated —

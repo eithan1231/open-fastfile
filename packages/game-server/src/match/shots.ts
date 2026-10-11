@@ -183,7 +183,7 @@ export class Shots {
         // with friendly fire off, or one a script ignored, or one that met a
         // location the weapon file scores at zero, draws nothing.
         if (victim && victim.player.health < was) {
-          this.outbox.push({ kind: "hit", location: result.location, lethal: victim.player.dead }, shooter, 0);
+          this.outbox.push({ kind: "hit", lethal: victim.player.dead }, shooter, 0);
         }
       } else if (result?.kind === "actor") {
         const amount = shotDamage(held.def, result.location, result.distance, this.rules());
@@ -191,7 +191,7 @@ export class Shots {
         this.damage.hurt({ kind: "actor", actor: result.id, amount, by: shooter, cause: "bullet", location: result.location });
         // A marker only for a round that cost it something, as for a player.
         if (this.actors.health(result.id) < was) {
-          this.outbox.push({ kind: "hit", location: result.location, lethal: !this.actors.alive(result.id) }, shooter, 0);
+          this.outbox.push({ kind: "hit", lethal: !this.actors.alive(result.id) }, shooter, 0);
         }
       }
     }
@@ -201,8 +201,8 @@ export class Shots {
    * What a shot from `shooter` hits: nothing, the map, or somebody.
    *
    * `direction` is a unit vector and `range` the bullet's reach in metres;
-   * `message` is the input the shot came with, whose `renderTick`/`renderFrac`
-   * name the moment the shooter was drawing — every other player is judged there
+   * `message` is the input the shot came with, whose `drawn` names the moment
+   * the shooter was drawing — every other player is judged there
    * rather than here, and the moment is worked out once for the whole shot.
    *
    * **The nearest of everything wins**, and the map is one of the candidates: a

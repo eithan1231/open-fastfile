@@ -597,7 +597,6 @@ export class Actors {
         action,
         phase,
         traversal,
-        dead: actor.diedAt !== null,
       });
     }
     return out;

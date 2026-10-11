@@ -93,9 +93,9 @@ Not in the state, on purpose:
   indices.
 
 `restore` rebuilds the weapon when the state names a different one, so a peer who
-changes weapon is followed. A server re-anchoring to a client's claim uses
-`reanchor`, which takes movement alone: a claim carries no weapon, and restoring
-a made-up `PlayerState` from one would disarm the player every tick.
+changes weapon is followed. `reanchor` is the movement half of it. A server calls
+neither for a client's claim: a claim is the feet alone, compared and never
+adopted.
 
 ## One step
 
@@ -343,9 +343,11 @@ end.
 ## What the server does with it
 
 `@3d/game-server`'s `match/` replays the same inputs through the same
-`stepMovement` against the same collision, and compares its answer to the state
-the client claimed alongside each input. It corrects nothing yet; it measures.
-The rest, including the two known reasons the two ends disagree today, is in
+`stepMovement` against the same collision, and its answer is the one every
+snapshot carries: the client takes it whole and replays its unacknowledged inputs
+on top. Where the client said its feet came to rest travels with each input and
+is only measured against that answer. The rest, including the two known reasons
+the two ends disagree today, is in
 [docs/server/README.md](../server/README.md#the-match).
 
 ## What a player can do
@@ -514,10 +516,9 @@ Open, and worth knowing before trusting a map:
   into one `kind`, so the per-side answer is not in the world file. On
   dome-mw3 every volume climbs from at least one side and five from three or
   more; whether the games allow each of those has not been checked in game.
-- **A server adopts a client's claimed mantle state**, as it adopts the rest of
-  their movement: phase 1 believes the client and corrects nothing. A climb is
-  the largest single thing that trust buys, and validating one belongs with the
-  correction loop rather than before it.
+- **A server replays a climb from the input, like the rest of a player's
+  movement**, against its own copy of the volumes. A client whose climb the
+  server's replay did not start is corrected out of it on the next snapshot.
 - **Two clips, not ten.** One step-up and one vault, stretched to whatever climb
   they are playing, instead of the games' seven height-indexed clips plus three
   vaults.
