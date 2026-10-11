@@ -11,15 +11,21 @@ import { UNIT } from "./units.js";
 // Every number here is the games' own, in their units (reverse/iw5-pmove/).
 
 export const RADIUS = 15 * UNIT;
-export const HEIGHT = 70 * UNIT;
 /**
- * The eye above the feet. A catalogue body posed standing puts its `tag_eye` at
- * 1.47–1.48 m and the top of its head at 1.62–1.69 m, and a round leaves from
- * here (`Match.trace`): an eye any higher sees and shoots over a wall from above
- * the head anyone could shoot back at.
+ * A standing body's capsule. For what means a body on its feet whatever this
+ * player is doing — a spawn, a navigation clearance. A player's hull as they
+ * are now is `hullHeight` (sim/stance.ts).
  */
-export const EYE_HEIGHT = 60 * UNIT;
+export const STAND_HEIGHT = 70 * UNIT;
+/**
+ * A standing body's eye above its feet: a catalogue body posed standing puts
+ * its `tag_eye` at 1.47–1.48 m. Where a spawn's eye is. Where a player sees and
+ * shoots from now is `eyeHeight` (sim/stance.ts).
+ */
+export const STAND_EYE_HEIGHT = 60 * UNIT;
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
+/** Ground is what is within this of the feet. */
+export const GROUND_REACH = 0.25 * UNIT;
 
 // -- Walking and running -----------------------------------------------------------
 
@@ -51,7 +57,7 @@ export interface MovementParams {
 
 export const PLAYER_MOVEMENT: MovementParams = {
   radius: RADIUS,
-  height: HEIGHT,
+  height: STAND_HEIGHT,
   walkSpeed: WALK_SPEED,
   runSpeed: RUN_SPEED,
   footing: WALKABLE_NORMAL_Y,
@@ -131,6 +137,48 @@ export type Move = WalkMove | MantleMove | LadderMove;
 /** The walk every state shares, so entering it allocates nothing. Frozen: a move's fields are only ever its own. */
 export const WALKING: WalkMove = Object.freeze({ kind: "walk" });
 
+/** The three stances, tallest first: a change goes one step along this at a time. */
+export const STANCES = ["stand", "crouch", "prone"] as const;
+export type StanceKind = (typeof STANCES)[number];
+
+export interface Standing {
+  kind: "stand";
+}
+
+export interface Crouching {
+  kind: "crouch";
+}
+
+/** Lying down. The body has a heading of its own, which the view leads and is held to (sim/stance.ts). */
+export interface Lying {
+  kind: "prone";
+  /** Which way the body lies, as a yaw: the head's end, with the feet behind it. */
+  heading: number;
+  /** The pitch the view's prone range is centred on, radians: the ground's slope along the view. */
+  torso: number;
+}
+
+/**
+ * Which hull, speed and rules a player has: the stance they are in or on the
+ * way down or up to. The eye lags it (`MovementState.eyeShift`).
+ */
+export type Stance = Standing | Crouching | Lying;
+
+/** The two stances every state shares, as `WALKING` is shared. Frozen: only lying down has fields. */
+export const STANDING: Standing = Object.freeze({ kind: "stand" });
+export const CROUCHING: Crouching = Object.freeze({ kind: "crouch" });
+
+/** The four ways the eye travels between two stances' heights, each with a curve of its own (sim/stance.ts). */
+export const EYE_PATHS = ["standToCrouch", "crouchToStand", "crouchToProne", "proneToCrouch"] as const;
+export type EyePath = (typeof EYE_PATHS)[number];
+
+/** The eye part-way between two stances' heights. */
+export interface EyeShift {
+  path: EyePath;
+  /** Seconds along it. */
+  elapsed: number;
+}
+
 /**
  * Everything about a player's movement that changes as they play, as plain
  * JSON-safe data (no three.js values, no Infinity): what a network sends.
@@ -156,6 +204,14 @@ export interface MovementState {
   landing: number;
   /** The move that owns this player's steps: walking, unless a climb or a ladder has taken over. */
   move: Move;
+  /** Standing, crouched or prone: the hull every query of a step is made with, from the first step of a change. */
+  stance: Stance;
+  /**
+   * The eye on its way to a stance's height, or null at rest at `stance`'s own.
+   * No stance changes while it runs, a sprint's stand apart — which is the
+   * whole of what stops a stance being spammed.
+   */
+  eyeShift: EyeShift | null;
   /**
    * Off a ladder by any way but a jump, and not yet back on the ground: no
    * ladder can be grabbed until they are. The game's pm_flags 0x1000.
@@ -232,6 +288,8 @@ export function createMovement(feet: Vec3, yaw: number, pitch: number): Movement
     jumpFrom: null,
     landing: 0,
     move: WALKING,
+    stance: STANDING,
+    eyeShift: null,
     ladderLock: false,
     sinceJump: JUMP_REPEAT,
     jumpHeld: false,

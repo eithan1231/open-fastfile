@@ -12,7 +12,7 @@ import * as THREE from "three";
 import { MantleView } from "../src/engine/mantleView.js";
 import { CollisionWorld } from "@3d/shared/collision/world.js";
 import { MantleVolumes } from "@3d/shared/sim/moves/mantle.js";
-import { createMovement, HEIGHT, RADIUS } from "@3d/shared/sim/movement.js";
+import { createMovement, RADIUS, STAND_HEIGHT as HEIGHT } from "@3d/shared/sim/movement.js";
 import type { ResolvedLadder, ResolvedMantle } from "@3d/shared/dsl/resolved.js";
 
 function volume(over: Partial<ResolvedMantle> = {}): ResolvedMantle {

@@ -25,7 +25,8 @@ import { roundTrip } from "../src/net/codec/schema.js";
 import { weaponSchema } from "../src/net/messages/player.js";
 import { hashString } from "../src/game/random.js";
 import { idleInput, type PlayerInput } from "../src/sim/input.js";
-import { clampPitch, RUN_SPEED } from "../src/sim/movement.js";
+import { clampPitch, RUN_SPEED, STAND_EYE_HEIGHT } from "../src/sim/movement.js";
+import { CROUCH_EYE_HEIGHT, PRONE_EYE_HEIGHT } from "../src/sim/stance.js";
 import { Player } from "../src/sim/player.js";
 import {
   addViewKick,
@@ -538,17 +539,31 @@ describe("the spread", () => {
   it("reads the accumulator against the weapon's own min and max", () => {
     const def = m4();
     // Cold is the minimum, saturated the maximum, and halfway is halfway.
-    expect(shotSpread(def, 0, 0)).toBe(3.5);
-    expect(shotSpread(def, 1, 0)).toBe(7);
-    expect(shotSpread(def, 0.5, 0)).toBe(5.25);
+    expect(shotSpread(def, 0, 0, STAND_EYE_HEIGHT)).toBe(3.5);
+    expect(shotSpread(def, 1, 0, STAND_EYE_HEIGHT)).toBe(7);
+    expect(shotSpread(def, 0.5, 0, STAND_EYE_HEIGHT)).toBe(5.25);
+  });
+
+  it("blends the stance's own min and max by the height of the eye", () => {
+    const def = m4({ spread: { ...M4_SPREAD, hipDuckedMin: 2.5, hipDuckedMax: 6, hipProneMin: 2, hipProneMax: 5 } });
+    expect(shotSpread(def, 0, 0, CROUCH_EYE_HEIGHT)).toBe(2.5);
+    expect(shotSpread(def, 1, 0, CROUCH_EYE_HEIGHT)).toBe(6);
+    expect(shotSpread(def, 0, 0, PRONE_EYE_HEIGHT)).toBe(2);
+    expect(shotSpread(def, 1, 0, PRONE_EYE_HEIGHT)).toBe(5);
+    // Half way down to a crouch is half way between the two pairs, and likewise below it.
+    expect(shotSpread(def, 0, 0, (STAND_EYE_HEIGHT + CROUCH_EYE_HEIGHT) / 2)).toBeCloseTo(3, 10);
+    expect(shotSpread(def, 1, 0, (CROUCH_EYE_HEIGHT + PRONE_EYE_HEIGHT) / 2)).toBeCloseTo(5.5, 10);
+    // A weapon file with no pair for a stance shoots as it does one stance up.
+    expect(shotSpread(m4(), 0, 0, PRONE_EYE_HEIGHT)).toBe(3.5);
+    expect(shotSpread(m4({ spread: { ...M4_SPREAD, hipDuckedMin: 2.5 } }), 0, 0, PRONE_EYE_HEIGHT)).toBe(2.5);
   });
 
   it("closes to the sights' own cone as the player aims", () => {
     const def = m4();
     // `spread.ads` is 0 on everything but a shotgun: aiming a settled M4 is exact.
-    expect(shotSpread(def, 0, 1)).toBe(0);
-    expect(shotSpread(def, 0, 0.5)).toBe(1.75);
-    expect(shotSpread(m4({ spread: { ...M4_SPREAD, ads: 2 } }), 0, 1)).toBe(2);
+    expect(shotSpread(def, 0, 1, STAND_EYE_HEIGHT)).toBe(0);
+    expect(shotSpread(def, 0, 0.5, STAND_EYE_HEIGHT)).toBe(1.75);
+    expect(shotSpread(m4({ spread: { ...M4_SPREAD, ads: 2 } }), 0, 1, STAND_EYE_HEIGHT)).toBe(2);
   });
 
   it("is no more accurate aimed than from the hip once the weapon is saturated", () => {
@@ -556,8 +571,8 @@ describe("the spread", () => {
     // runs from `spread.ads` up to the *hip* maximum, so aiming stops the weapon
     // opening further without undoing what a held magazine already did.
     const def = m4();
-    expect(shotSpread(def, 1, 1)).toBe(7);
-    expect(shotSpread(def, 1, 0)).toBe(7);
+    expect(shotSpread(def, 1, 1, STAND_EYE_HEIGHT)).toBe(7);
+    expect(shotSpread(def, 1, 0, STAND_EYE_HEIGHT)).toBe(7);
   });
 
   it("is nothing at all for a weapon whose definition carries no spread block", () => {
@@ -571,7 +586,7 @@ describe("the spread", () => {
     }
     expect(bare.data.spread).toBe(0);
     expect(bare.data.fired).toBeGreaterThan(0);
-    expect(shotSpread(bare.def, 1, 0)).toBe(0);
+    expect(shotSpread(bare.def, 1, 0, STAND_EYE_HEIGHT)).toBe(0);
   });
 });
 

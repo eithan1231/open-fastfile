@@ -52,6 +52,7 @@ const ground = {
     return result;
   },
   overlapsCapsule: () => false,
+  overlapsSweep: () => false,
   groundBelow: (from: { y: number }, distance: number, normal?: { x: number; y: number; z: number }) => {
     if (from.y < 0 || from.y - distance > 0) {
       return null;

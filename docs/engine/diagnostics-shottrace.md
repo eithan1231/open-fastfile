@@ -53,7 +53,7 @@ information:
   camera with — off the simulation's own angles and the weapon's **view** kick.
   The gun kick is not in it: it rocks the model and decides nothing
   ([player.md](player.md#recoil-is-two-kicks)). The origin is the feet plus
-  `EYE_HEIGHT`.
+  `eyeHeight(movement)`, the eye as the stance has it.
 - The kick it uses is the one sampled on the **previous** frame, not this one:
   a round leaves before its own recoil moves the view
   ([player.md](player.md#trace-then-kick)). The sample is per frame where the

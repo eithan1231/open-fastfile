@@ -87,9 +87,9 @@ export function footfallsCrossed(from: number, to: number): number[] {
  * The gaits the sound bank has, which are the game's own and not this engine's:
  * `walk`, `run`, `sprint`, `prone` and `scrape`. **There is no `crouch` family.**
  *
- * `prone` and `scrape` are unreachable today — the simulation has no stance below
- * standing and no slide — and are named because the bank names them, so the first
- * one to be built has somewhere to go rather than inventing an alias.
+ * `prone` and `scrape` are unreachable: a gait is chosen by speed alone
+ * (`gaitFor`), so a crouched or prone body steps as a slow walk, and nothing
+ * slides. They are named because the bank names them.
  */
 export type Gait = "walk" | "run" | "sprint" | "prone" | "scrape";
 

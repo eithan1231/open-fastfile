@@ -11,7 +11,8 @@
 import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import { focusOf, usableBy, usableThings, viewerAt, type PresenceView, type UsableThing } from "@3d/shared/game/focus.js";
 import type { Bounds } from "@3d/shared/game/volumes.js";
-import type { CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
+import type { CapsuleWorld } from "@3d/shared/sim/capsule.js";
+import type { MovementState } from "@3d/shared/sim/movement.js";
 import type { ClientScripts, ScriptSurroundings } from "./scripts.js";
 import type { UiState, UseFocusInfo } from "./uiBridge.js";
 
@@ -28,10 +29,8 @@ export interface FocusFrame {
   presence: PresenceView;
   /** A solid's bounds, by its place in `world.solids`. */
   partBounds: (index: number) => Bounds | undefined;
-  /** The predicted player: feet, and where the last step looked. */
-  feet: Vec3;
-  yaw: number;
-  pitch: number;
+  /** The predicted player: where they are, their stance, and where the last step looked. */
+  movement: Readonly<MovementState>;
   /** The scripts' view of the match, built only when something is in reach. */
   where: () => ScriptSurroundings;
 }
@@ -63,7 +62,7 @@ export class UseFocus {
     }
     let where: ScriptSurroundings | undefined;
     const surroundings = (): ScriptSurroundings => (where ??= frame.where());
-    const viewer = viewerAt(frame.feet, frame.yaw, frame.pitch);
+    const viewer = viewerAt(frame.movement, frame.movement.yaw, frame.movement.pitch);
     const thing = focusOf(frame.collision, this.things, frame.presence, viewer, (t) => {
       const { view, self } = surroundings();
       // Offline there is no roster, and the player is still somebody a script can ask about.

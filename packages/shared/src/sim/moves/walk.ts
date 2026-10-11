@@ -13,6 +13,7 @@ import type { Vec3 } from "../capsule.js";
 import type { PlayerInput } from "../input.js";
 import type { MovementEnv } from "../movementEnv.js";
 import { GRAVITY, JUMP_REPEAT, JUMP_SPEED, LAND_WINDOW, LAND_WINDOW_HIGH, type MovementState } from "../movementState.js";
+import { groundAccel, lyingFits, speedScale } from "../stance.js";
 import { airSlide, alongGround, groundSlide, groundWithin, standing, STEP_HEIGHT } from "../stepSlide.js";
 import { UNIT } from "../units.js";
 
@@ -23,9 +24,11 @@ const STRAFE_SCALE = 0.8;
 const BACK_SCALE = 0.7;
 /** In a sprint the strafe keys count for this much, so a sprint curves rather than strafes. */
 const SPRINT_STRAFE_SCALE = 0.667;
-/** Per second, this many times the speed asked for — or STOP_SPEED, if that is more — is added on the ground. */
-const GROUND_ACCEL = 9;
-/** The same in the air, where the keys only nudge and letting go keeps the takeoff's speed. */
+/**
+ * Per second, this many times the speed asked for — or STOP_SPEED, if that is
+ * more — is added in the air, where the keys only nudge and letting go keeps
+ * the takeoff's speed. On the ground it is the stance's (`groundAccel`).
+ */
 const AIR_ACCEL = 1;
 /** Per second, this share of the speed is lost on the ground. */
 const FRICTION = 5.5;
@@ -73,19 +76,22 @@ export function stopDistance(speed: number): number {
 const wish: Vec3 = { x: 0, y: 0, z: 0 };
 const ground: Vec3 = { x: 0, y: 0, z: 0 };
 const probe: Vec3 = { x: 0, y: 0, z: 0 };
+/** Where a lying body was before a move, to go back to if it ends somewhere it cannot lie. */
+const lain = { feet: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, grounded: false };
 
 /**
- * One step of the walk. `pressed` is a new press of jump this step and
- * `sprinting` whether this step sprints: sim/movement.ts decides both once,
- * from the state the step starts from.
+ * One step of the walk. `pressed` is a new press of jump this step that may
+ * jump, `sprinting` whether this step sprints, and `still` that the keys move
+ * nothing: sim/movement.ts decides all three once, from the state the step
+ * starts from.
  */
-export function walk(s: MovementState, input: PlayerInput, dt: number, env: MovementEnv, pressed: boolean, sprinting: boolean): void {
+export function walk(s: MovementState, input: PlayerInput, dt: number, env: MovementEnv, pressed: boolean, sprinting: boolean, still: boolean): void {
   const v = s.velocity;
   if (!s.grounded) {
     // Broken ground drops a walk for a tick at a time, and a press on that tick
     // must not be lost: a walk that is not rising jumps off ground in JUMP_REACH.
     if (!(pressed && s.sinceJump >= JUMP_REPEAT && s.jumpFrom === null && v.y <= 0 && groundWithin(s, env, JUMP_REACH))) {
-      fall(s, input, dt, env);
+      fall(s, input, dt, env, still);
       return;
     }
   }
@@ -106,12 +112,12 @@ export function walk(s: MovementState, input: PlayerInput, dt: number, env: Move
     s.jumpFrom = s.feet.y;
     s.sinceJump = 0;
     s.grounded = false;
-    fall(s, input, dt, env);
+    fall(s, input, dt, env, still);
     return;
   }
 
   friction(v, s.landing, dt);
-  const speed = wishFor(s, input, sprinting ? env.body.runSpeed : env.body.walkSpeed, sprinting, true);
+  const speed = wishFor(s, input, (sprinting ? env.body.runSpeed : env.body.walkSpeed) * speedScale(s), sprinting, true, still);
   if (speed === 0 && v.x === 0 && v.z === 0) {
     // Standing still: nowhere to go, and nothing to ask of the ground but whether it is there.
     s.grounded = standing(s, env);
@@ -122,17 +128,19 @@ export function walk(s: MovementState, input: PlayerInput, dt: number, env: Move
   const sloped = groundUnder(s, env);
   alongGround(v, ground);
   alongGround(wish, ground);
-  accelerate(v, speed, GROUND_ACCEL, dt);
+  accelerate(v, speed, groundAccel(s), dt);
+  hold(s);
   groundSlide(s, dt, env, sloped);
+  keepLying(s, env);
 }
 
 /** The walk in the air, from a jump or a fall: the keys nudge, gravity pulls, and a landing takes the fall's cost. */
-function fall(s: MovementState, input: PlayerInput, dt: number, env: MovementEnv): void {
+function fall(s: MovementState, input: PlayerInput, dt: number, env: MovementEnv, still: boolean): void {
   const v = s.velocity;
   // A landing's grip is the ground's; leaving it again ends it.
   s.landing = 0;
-  // In the air the keys ask for the walk speed whatever is held: a sprint is not flown.
-  accelerate(v, wishFor(s, input, env.body.walkSpeed, false, false), AIR_ACCEL, dt);
+  // In the air the keys ask for the walk speed whatever is held: neither a sprint nor a stance is flown.
+  accelerate(v, wishFor(s, input, env.body.walkSpeed, false, false, still), AIR_ACCEL, dt);
   airSlide(s, dt, env);
   if (s.grounded) {
     if (v.y < 0 && (v.y * v.y) / (2 * GRAVITY) >= FALL_HEIGHT) {
@@ -140,6 +148,39 @@ function fall(s: MovementState, input: PlayerInput, dt: number, env: MovementEnv
     }
     v.y = 0;
   }
+}
+
+/** Remember where a lying body is before a move. */
+function hold(s: Readonly<MovementState>): void {
+  if (s.stance.kind !== "prone") {
+    return;
+  }
+  lain.feet.x = s.feet.x;
+  lain.feet.y = s.feet.y;
+  lain.feet.z = s.feet.z;
+  lain.velocity.x = s.velocity.x;
+  lain.velocity.y = s.velocity.y;
+  lain.velocity.z = s.velocity.z;
+  lain.grounded = s.grounded;
+}
+
+/**
+ * Undo the crawl since `hold` if it left a lying body where it cannot lie: its
+ * legs in a wall, or over a drop. The games' `PM_VerifyPronePosition`. Only a
+ * move along the ground is undone: undoing a fall would hang the body in the
+ * air, and sim/stance.ts brings one that fell into something up to a crouch.
+ */
+function keepLying(s: MovementState, env: MovementEnv): void {
+  if (s.stance.kind !== "prone" || lyingFits(s, s.stance, env.world)) {
+    return;
+  }
+  s.feet.x = lain.feet.x;
+  s.feet.y = lain.feet.y;
+  s.feet.z = lain.feet.z;
+  s.velocity.x = lain.velocity.x;
+  s.velocity.y = lain.velocity.y;
+  s.velocity.z = lain.velocity.z;
+  s.grounded = lain.grounded;
 }
 
 function scale(v: Vec3, by: number): void {
@@ -172,11 +213,11 @@ function groundUnder(s: Readonly<MovementState>, env: MovementEnv): boolean {
 /**
  * The direction the keys ask for, as a flat unit vector in `wish`, and the
  * speed they ask for along it: `speed` forward, and on the ground less for
- * sideways and backward. Zero, and no direction, with nothing held.
+ * sideways and backward. Zero, and no direction, with nothing held or `still`.
  */
-function wishFor(s: Readonly<MovementState>, input: PlayerInput, speed: number, sprinting: boolean, onGround: boolean): number {
-  const forward = input.forward;
-  const right = sprinting ? input.right * SPRINT_STRAFE_SCALE : input.right;
+function wishFor(s: Readonly<MovementState>, input: PlayerInput, speed: number, sprinting: boolean, onGround: boolean, still: boolean): number {
+  const forward = still ? 0 : input.forward;
+  const right = still ? 0 : sprinting ? input.right * SPRINT_STRAFE_SCALE : input.right;
   const held = Math.hypot(forward, right);
   wish.y = 0;
   if (held === 0) {

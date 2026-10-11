@@ -37,6 +37,7 @@ export function movementOnly(world: CapsuleWorld): CapsuleWorld {
     },
     resolveCapsule: (p, r, h, out) => world.resolveCapsule(p, r, h, out),
     overlapsCapsule: (p, r, h) => world.overlapsCapsule(p, r, h),
+    overlapsSweep: (from, to, r) => world.overlapsSweep(from, to, r),
     groundBelow: (p, d) => world.groundBelow(p, d),
     surfaceAt: (p, d) => world.surfaceAt(p, d),
     traceRay: () => {

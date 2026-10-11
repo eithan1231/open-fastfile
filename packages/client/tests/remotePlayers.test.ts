@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { HEIGHT, RADIUS } from "@3d/shared/sim/movement.js";
+import { RADIUS, STAND_HEIGHT as HEIGHT } from "@3d/shared/sim/movement.js";
 import type { PlayerSnapshot } from "@3d/shared/net/messages/snapshot.js";
 import { createMovement } from "@3d/shared/sim/movement.js";
 import { lerpMovement } from "@3d/shared/sim/interpolate.js";

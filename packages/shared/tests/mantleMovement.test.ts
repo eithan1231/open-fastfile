@@ -14,7 +14,7 @@ import { idleInput, type PlayerInput } from "../src/sim/input.js";
 import {
   createMovement,
   EMPTY_HANDS,
-  HEIGHT,
+  STAND_HEIGHT as HEIGHT,
   movementEnv,
   PLAYER_MOVEMENT,
   RADIUS,

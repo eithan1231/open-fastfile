@@ -1,4 +1,4 @@
-// Collider view (`C`): draws the collision you cannot otherwise see.
+// Collider view (`X`): draws the collision you cannot otherwise see.
 //
 //   annotated   `collide: box` proxies and entrance ramps as wireframe boxes,
 //               plus an imported map's clip groups (its own invisible walls) as
@@ -74,7 +74,7 @@ const PART_MATERIAL = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
-/** How much of the collision the view is drawing. `C` cycles these in order. */
+/** How much of the collision the view is drawing. `X` cycles these in order. */
 export type ColliderMode = "off" | "annotated" | "everything";
 
 const MODES: ColliderMode[] = ["off", "annotated", "everything"];
@@ -149,7 +149,7 @@ export class ColliderView {
     return this.mode;
   }
 
-  /** Advance to the next mode and return it. `C` calls this. */
+  /** Advance to the next mode and return it. `X` calls this. */
   nextMode(): ColliderMode {
     return MODES[(MODES.indexOf(this.mode) + 1) % MODES.length]!;
   }

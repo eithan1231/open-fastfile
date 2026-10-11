@@ -166,5 +166,5 @@ function open(extra: THREE.Mesh[]): { world: CollisionWorld } {
 
 // The player's own step, recorded. Change these only for a change to movement
 // itself, never for a change to how it is parameterised.
-const GOLDEN_DIGEST = 101378431;
+const GOLDEN_DIGEST = 4215198362;
 const GOLDEN_FEET = [-6.908113784947503, 0.1977723213313607, 8.301383073673922];

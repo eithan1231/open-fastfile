@@ -86,7 +86,7 @@ export interface InputPacket extends InputStep {
 /**
  * How many earlier inputs a datagram repeats. Two survives any two consecutive
  * losses — 33 ms of a dropped link at 60 Hz — and three in a row at a 5% loss
- * rate is one input in 8000. Each costs 92 bits, and a datagram's worth then
+ * rate is one input in 8000. Each costs 94 bits, and a datagram's worth then
  * stays inside `MAX_INPUTS_PER_TICK`'s four, so a recovered gap drains in a tick.
  */
 export const REDUNDANT_INPUTS = 2;
@@ -106,6 +106,8 @@ const inputSchema = struct({
   right: axis,
   run: bool,
   jump: bool,
+  crouch: bool,
+  prone: bool,
   fire: bool,
   ads: bool,
   reload: bool,

@@ -21,7 +21,7 @@ import type { NavGraph } from "@3d/shared/nav/graph.js";
 import { HEADER_FLAGS } from "@3d/shared/nav/vocab.js";
 import { isBotId } from "@3d/shared/net/messages/fields.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { movementRules } from "@3d/shared/sim/worldRules.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
@@ -56,6 +56,10 @@ class FlatGround {
     return position.y < 0;
   }
 
+  overlapsSweep(from: { y: number }, to: { y: number }, radius: number): boolean {
+    return Math.min(from.y, to.y) < radius;
+  }
+
   traceRay(): null {
     return null;
   }
@@ -79,7 +83,7 @@ class FlatGround {
 
 function world(): ResolvedWorld {
   return {
-    spawn: { position: { x: 0, y: EYE_HEIGHT, z: 0 }, look: { x: 0, y: EYE_HEIGHT, z: -1 } },
+    spawn: { position: { x: 0, y: STAND_EYE_HEIGHT, z: 0 }, look: { x: 0, y: STAND_EYE_HEIGHT, z: -1 } },
     spawnPoints: [],
     triggers: [],
     mantles: [],

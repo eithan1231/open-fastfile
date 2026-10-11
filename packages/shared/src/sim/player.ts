@@ -11,19 +11,21 @@ import { mayCarry } from "./weaponCategory.js";
 import {
   clampPitch,
   createMovement,
-  EYE_HEIGHT,
   horizontalSpeed,
   movementEnv,
   NO_CLIMBS,
   PLAYER_MOVEMENT,
+  STAND_EYE_HEIGHT,
   stepMovement,
   wantsSprint,
   type CapsuleWorld,
   type MovementEnv,
   type MovementRules,
   type MovementState,
+  type StanceKind,
   type Vec3,
 } from "./movement.js";
+import { capPitch, capYaw } from "./view.js";
 import type { Holder } from "./recoil.js";
 import type { WeaponController, WeaponData } from "./weapon.js";
 import { fittedSlots, NOTHING_FITTED, sameFitted, type Fitted, type WeaponId, type WeaponRegistry } from "./weaponRegistry.js";
@@ -194,7 +196,9 @@ export class Player {
   /** Where a step happens: the collision, this body, and the climbs the world allows (`setClimbs`). */
   private env: MovementEnv;
   /** What the held weapon says about each step, refilled in place. */
-  private readonly stepCarry = { sprint: true };
+  private readonly stepCarry = { sprint: true, braced: false };
+  /** What the last step returned (`stepMovement`). Not state: only whoever made that step may act on it. */
+  private forced: StanceKind | null = null;
   /** What the held weapon is asked for each step, refilled in place; `setInput` copies what it keeps. */
   private readonly weaponInput = { trigger: false, ads: false, sprint: false };
   /** What the held weapon is told about its holder each step, refilled in place (sim/recoil.ts). */
@@ -396,6 +400,7 @@ export class Player {
     // rather than kept, so a client replaying from a corrected state stops at
     // exactly the step the server did.
     if (this.fallOut === "die" && this.outOfWorld) {
+      this.forced = null;
       return;
     }
     const climbing = this.body.move.kind !== "walk";
@@ -406,7 +411,7 @@ export class Player {
     if (weapon) {
       this.weaponInput.trigger = input.fire && !climbing;
       this.weaponInput.ads = input.ads && !climbing;
-      this.weaponInput.sprint = wantsSprint(this.body, input);
+      this.weaponInput.sprint = wantsSprint(this.body, input, this.env);
       weapon.setInput(this.weaponInput);
       if (climbing) {
         this.stow();
@@ -423,10 +428,34 @@ export class Player {
       this.unstow();
     }
     this.stepCarry.sprint = this.held?.sprinting ?? true;
-    stepMovement(this.body, input, dt, this.env, this.stepCarry);
+    this.stepCarry.braced = this.held?.braced ?? false;
+    this.forced = stepMovement(this.body, input, dt, this.env, this.stepCarry);
     if (this.fallOut === "respawn" && this.outOfWorld) {
       this.respawn();
+      // Put back standing, whatever the keys had asked for.
+      this.forced = "stand";
     }
+  }
+
+  /**
+   * The stance the last step held this player to against the keys it was
+   * given, or null. For whoever turns a key into `PlayerInput.crouch` and
+   * `prone`, straight after a step of its own: a toggle falls back to this.
+   */
+  get forcedStance(): StanceKind | null {
+    return this.forced;
+  }
+
+  /**
+   * The view this player may hold, asked for `yaw` and `pitch` (sim/view.ts):
+   * what a camera shows of mouse movement no step has spent yet.
+   */
+  viewYaw(yaw: number): number {
+    return capYaw(this.body, yaw, this.env);
+  }
+
+  viewPitch(pitch: number): number {
+    return capPitch(this.body, pitch);
   }
 
   /** Past the world's kill plane. With `die`, held there until somebody deals with it. */
@@ -578,7 +607,7 @@ export class Player {
     const dy = lookAt.y - eye.y;
     const dz = lookAt.z - eye.z;
     this.spawn = {
-      feet: { x: eye.x, y: eye.y - EYE_HEIGHT, z: eye.z },
+      feet: { x: eye.x, y: eye.y - STAND_EYE_HEIGHT, z: eye.z },
       yaw: Math.atan2(-dx, -dz),
       pitch: Math.atan2(dy, Math.hypot(dx, dz)),
     };

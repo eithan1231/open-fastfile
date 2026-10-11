@@ -14,7 +14,7 @@ import { loadResolvedWorld } from "@3d/shared/worlds/load.js";
 import type { WorldSource } from "@3d/shared/worlds/source.js";
 import type { ResolvedLadder } from "@3d/shared/dsl/resolved.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { createMovement, EMPTY_HANDS, HEIGHT, movementEnv, PLAYER_MOVEMENT, RADIUS, stepMovement } from "@3d/shared/sim/movement.js";
+import { createMovement, EMPTY_HANDS, movementEnv, PLAYER_MOVEMENT, RADIUS, STAND_HEIGHT as HEIGHT, stepMovement } from "@3d/shared/sim/movement.js";
 import { movementRules } from "@3d/shared/sim/worldRules.js";
 import { buildServerCollision } from "../src/collision.js";
 

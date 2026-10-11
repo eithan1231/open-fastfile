@@ -11,7 +11,7 @@ import { hasErrors } from "../src/dsl/diagnostics.js";
 import type { ResolvedLadder } from "../src/dsl/resolved.js";
 import { LadderVolumes, NO_LADDERS } from "../src/sim/moves/ladder.js";
 import { UNIT } from "../src/sim/units.js";
-import { HEIGHT, RADIUS } from "../src/sim/movement.js";
+import { RADIUS, STAND_HEIGHT as HEIGHT } from "../src/sim/movement.js";
 
 const BODY = { radius: RADIUS, height: HEIGHT };
 

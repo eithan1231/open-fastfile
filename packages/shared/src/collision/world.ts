@@ -605,13 +605,26 @@ export class CollisionWorld {
 
   /** See `CapsuleWorld.overlapsCapsule`. Stops at the first triangle it finds. */
   overlapsCapsule(position: Vec3, radius: number, height: number, mask: QueryMask = UNMASKED): boolean {
-    const scratch = this.scratch;
-    const { segment, localSegment } = scratch;
+    const { segment } = this.scratch;
     segment.start.set(position.x, position.y + radius, position.z);
     segment.end.set(position.x, position.y + Math.max(height - radius, radius), position.z);
+    return this.sinks(segment, radius, mask, false);
+  }
 
+  /** See `CapsuleWorld.overlapsSweep`. A surface the line passes clean through counts, however far its edges are. */
+  overlapsSweep(from: Vec3, to: Vec3, radius: number, mask: QueryMask = UNMASKED): boolean {
+    const { segment } = this.scratch;
+    segment.start.set(from.x, from.y, from.z);
+    segment.end.set(to.x, to.y, to.z);
+    return this.sinks(segment, radius, mask, true);
+  }
+
+  /** Whether the capsule about `segment` sinks into the map or a prop; `through`, also whether the segment pierces one. */
+  private sinks(segment: THREE.Line3, radius: number, mask: QueryMask, through: boolean): boolean {
+    const scratch = this.scratch;
+    const { localSegment } = scratch;
     for (const tree of this.capsuleTrees(mask)) {
-      if (sinksInto(tree, segment, radius, OVERLAP_SKIN, scratch.bounds, scratch)) {
+      if (sinksInto(tree, segment, radius, OVERLAP_SKIN, scratch.bounds, scratch, through)) {
         return true;
       }
     }
@@ -621,7 +634,7 @@ export class CollisionWorld {
       }
       localSegment.start.copy(segment.start).applyMatrix4(hull.inverse);
       localSegment.end.copy(segment.end).applyMatrix4(hull.inverse);
-      if (sinksInto(hull.bvh, localSegment, radius / hull.scale, OVERLAP_SKIN / hull.scale, scratch.localBounds, scratch)) {
+      if (sinksInto(hull.bvh, localSegment, radius / hull.scale, OVERLAP_SKIN / hull.scale, scratch.localBounds, scratch, through)) {
         return true;
       }
     }
@@ -817,8 +830,12 @@ function pushOutOfBvh(
   });
 }
 
-/** Whether any triangle of `bvh` comes closer than `radius - skin` to `segment`. */
-function sinksInto(bvh: MeshBVH, segment: THREE.Line3, radius: number, skin: number, bounds: THREE.Box3, scratch: Scratch): boolean {
+/**
+ * Whether any triangle of `bvh` comes closer than `radius - skin` to `segment`.
+ * The distance is to a triangle's edges and to the segment's ends, so a segment
+ * through the middle of a large one is far from it: `through` counts that too.
+ */
+function sinksInto(bvh: MeshBVH, segment: THREE.Line3, radius: number, skin: number, bounds: THREE.Box3, scratch: Scratch, through: boolean): boolean {
   bounds.makeEmpty();
   bounds.expandByPoint(segment.start);
   bounds.expandByPoint(segment.end);
@@ -827,8 +844,23 @@ function sinksInto(bvh: MeshBVH, segment: THREE.Line3, radius: number, skin: num
   const { triPoint, capsulePoint } = scratch;
   return bvh.shapecast({
     intersectsBounds: (box) => box.intersectsBox(bounds),
-    intersectsTriangle: (tri) => tri.closestPointToSegment(segment, triPoint, capsulePoint) < radius - skin,
+    intersectsTriangle: (tri) => tri.closestPointToSegment(segment, triPoint, capsulePoint) < radius - skin || (through && pierces(tri, segment)),
   });
+}
+
+const piercedPlane = new THREE.Plane();
+const piercedAt = new THREE.Vector3();
+
+/** Whether `segment` passes through `tri` between its ends. */
+function pierces(tri: THREE.Triangle, segment: THREE.Line3): boolean {
+  tri.getPlane(piercedPlane);
+  const a = piercedPlane.distanceToPoint(segment.start);
+  const b = piercedPlane.distanceToPoint(segment.end);
+  if (a * b >= 0) {
+    return false;
+  }
+  piercedAt.lerpVectors(segment.start, segment.end, a / (a - b));
+  return tri.containsPoint(piercedAt);
 }
 
 /** Whether a hull's world AABB could touch the capsule at all. */
@@ -873,6 +905,10 @@ class MaskedWorld implements CapsuleWorld {
 
   overlapsCapsule(position: Vec3, radius: number, height: number): boolean {
     return this.collision.overlapsCapsule(position, radius, height, this.mask);
+  }
+
+  overlapsSweep(from: Vec3, to: Vec3, radius: number): boolean {
+    return this.collision.overlapsSweep(from, to, radius, this.mask);
   }
 
   groundBelow(from: Vec3, distance: number, normal?: Vec3): number | null {

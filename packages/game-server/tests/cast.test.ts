@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { ResolvedWorld, GameKey } from "@3d/shared/dsl/resolved.js";
 import { catalogueViewOf } from "@3d/shared/game/catalogueView.js";
 import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import type { WeaponDef } from "@3d/shared/sim/weaponDef.js";
 import { NO_BODIES } from "../src/bodies.js";
@@ -47,6 +47,10 @@ class FlatGround {
     return position.y < 0;
   }
 
+  overlapsSweep(from: { y: number }, to: { y: number }, radius: number): boolean {
+    return Math.min(from.y, to.y) < radius;
+  }
+
   /** Nothing here is shot at; the floor is for standing on. */
   traceRay(): null {
     return null;
@@ -73,10 +77,10 @@ class FlatGround {
 function world(game: GameKey | undefined, spawns: { mode?: string; team?: string; start: boolean; x: number }[] = []): ResolvedWorld {
   return {
     game,
-    spawn: { position: { x: 0, y: EYE_HEIGHT, z: 0 }, look: { x: 0, y: EYE_HEIGHT, z: -1 } },
+    spawn: { position: { x: 0, y: STAND_EYE_HEIGHT, z: 0 }, look: { x: 0, y: STAND_EYE_HEIGHT, z: -1 } },
     spawnPoints: spawns.map((s) => ({
-      position: { x: s.x, y: EYE_HEIGHT, z: 0 },
-      look: { x: s.x, y: EYE_HEIGHT, z: -1 },
+      position: { x: s.x, y: STAND_EYE_HEIGHT, z: 0 },
+      look: { x: s.x, y: STAND_EYE_HEIGHT, z: -1 },
       modes: s.mode === undefined ? undefined : [s.mode],
       team: s.team,
       start: s.start,

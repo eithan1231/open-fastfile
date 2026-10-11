@@ -223,7 +223,8 @@ export class MantleView {
       this.liveLadder = null;
       return null;
     }
-    this.liveLadder = ladderAhead(movement, this.ladders, PLAYER_MOVEMENT);
+    // Neither is offered to a body the simulation would refuse: no ladder lying down, no climb but standing.
+    this.liveLadder = movement.stance.kind === "prone" ? null : ladderAhead(movement, this.ladders, PLAYER_MOVEMENT);
     this.ladderObject.visible = this.liveLadder !== null;
     if (this.liveLadder) {
       const box = corners(this.liveLadder.ladder, this.scratch);
@@ -234,7 +235,7 @@ export class MantleView {
       });
       position.needsUpdate = true;
     }
-    const found = this.query.find(movement.feet, movement.yaw, PLAYER_MOVEMENT, world);
+    const found = movement.stance.kind === "stand" ? this.query.find(movement.feet, movement.yaw, PLAYER_MOVEMENT, world) : null;
     // Redrawn every frame it is found: the path starts at the player's feet,
     // and the face — so the landing — changes as they walk round the volume.
     this.live = found;

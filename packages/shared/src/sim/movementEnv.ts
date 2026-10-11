@@ -38,7 +38,9 @@ export function movementEnv(world: CapsuleWorld, rules: MovementRules, body: Mov
 export interface Carry {
   /** A sprint may run: false while the weapon is doing something a sprint waits for (a reload, the sights, the trigger). */
   readonly sprint: boolean;
+  /** The weapon is aimed or firing, which holds a lying body where it is: nobody crawls while they shoot. */
+  readonly braced: boolean;
 }
 
-/** Nothing in hand, so nothing holds a sprint back. */
-export const EMPTY_HANDS: Carry = { sprint: true };
+/** Nothing in hand, so nothing holds a sprint back or a crawl still. */
+export const EMPTY_HANDS: Carry = { sprint: true, braced: false };

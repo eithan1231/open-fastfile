@@ -28,7 +28,7 @@ import type { HttpFetch } from "@3d/shared/protocol/http.js";
 import { MODEL_FACING } from "@3d/shared/rig/character.js";
 import { couldHit, POSE_MARGIN, readHitboxes, type Hitbox } from "@3d/shared/rig/hitboxes.js";
 import type { Vec3 } from "@3d/shared/sim/capsule.js";
-import { createMovement, HEIGHT, RADIUS, type MovementState } from "@3d/shared/sim/movement.js";
+import { createMovement, RADIUS, STAND_HEIGHT as HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
 import { mantleDuration } from "@3d/shared/sim/moves/mantle.js";
 import { bodyYaw } from "@3d/shared/sim/pose.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";

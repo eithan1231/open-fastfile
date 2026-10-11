@@ -11,11 +11,11 @@ import { array, bool, enumOf, nullable, quant, scaled, struct, uint, union, type
 import { CLIP_ROLES, type ClipRole } from "../../sim/weaponDef.js";
 import { MAX_BURST, MAX_CLIP_RATE, MAX_CLIP_SIZE, MAX_FIRE_TIME, WEAPON_STATES, type WeaponData } from "../../sim/weapon.js";
 import { KICK_LIMIT, KICK_SPEED_LIMIT, VIEW_KICK_LIMIT, VIEW_KICK_SPEED_LIMIT } from "../../sim/recoil.js";
-import type { MovementState } from "../../sim/movement.js";
+import { EYE_PATHS, type MovementState } from "../../sim/movement.js";
 import { MAX_HEALTH, type PlayerState } from "../../sim/player.js";
 import { MAX_ATTACHMENT_SLOTS, MAX_FITTED_ATTACHMENTS, MAX_WEAPONS } from "../../sim/weaponRegistry.js";
 import { MAX_POINTS } from "../../game/matchValues.js";
-import { axis, climb, combatTimer, landTimer, metres, pitch, shortTimer, unit, vec3, weaponTimer, yaw } from "./fields.js";
+import { axis, climb, combatTimer, eyeTimer, landTimer, metres, pitch, shortTimer, unit, vec3, weaponTimer, yaw } from "./fields.js";
 
 export const movementSchema = struct({
   feet: vec3,
@@ -36,6 +36,17 @@ export const movementSchema = struct({
     mantle: { target: vec3, left: shortTimer, rise: climb, over: bool },
     ladder: { facing: yaw },
   }),
+  /**
+   * Two bits standing or crouched, and a lying body's heading and torso pitch
+   * only while somebody lies. A bit more for an eye at rest, and its path and
+   * clock while it moves: a standing player costs three bits here.
+   */
+  stance: union("kind", {
+    stand: {},
+    crouch: {},
+    prone: { heading: yaw, torso: pitch },
+  }),
+  eyeShift: nullable(struct({ path: enumOf(EYE_PATHS), elapsed: eyeTimer })),
   ladderLock: bool,
   sinceJump: shortTimer,
   jumpHeld: bool,

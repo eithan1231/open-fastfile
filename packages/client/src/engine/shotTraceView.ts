@@ -43,7 +43,7 @@ import type { ShotTraceMessage, ShotTraceMet } from "@3d/shared/net/messages/sho
 import type { CharacterRig } from "@3d/shared/rig/character.js";
 import { BoundHitboxes, readHitboxes, type Hitbox } from "@3d/shared/rig/hitboxes.js";
 import type { CapsuleWorld, RayHit, Vec3 } from "@3d/shared/sim/capsule.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { eyeHeight } from "@3d/shared/sim/stance.js";
 import { aimAngles, aimDirection, coneSample, shotSpread, shotStream, spreadDirection, type Aim } from "@3d/shared/sim/recoil.js";
 import { BULLET_RANGE, type WeaponDef } from "@3d/shared/sim/weaponDef.js";
 import { hitboxUrl, type SidecarSource } from "./hitboxView.js";
@@ -82,7 +82,7 @@ export interface TracedBody {
  * that this file cannot reach for anything else about them.
  */
 export interface Shooter {
-  readonly movement: { readonly feet: Readonly<Vec3>; readonly yaw: number; readonly pitch: number };
+  readonly movement: { readonly feet: Readonly<Vec3>; readonly yaw: number; readonly pitch: number } & Parameters<typeof eyeHeight>[0];
   readonly weapon:
     | {
         /** For the cone's width, which is the weapon's own `spread` block read against how hot it is. */
@@ -327,13 +327,14 @@ export class ShotTraceView {
     // (@3d/shared/sim/recoil.ts). These are the two calls `Shots.fire` makes,
     // in this order and on the same kick — the one from before this shot's own.
     const feet = movement.feet;
-    const from = { x: feet.x, y: feet.y + EYE_HEIGHT, z: feet.z };
+    const up = eyeHeight(movement);
+    const from = { x: feet.x, y: feet.y + up, z: feet.z };
     // And the cone the round is allowed to wander in, which is the third of the
     // three things a server judges a shot by. Predicted here off the same seed
     // and the same ordinal, so a client that draws this ray is drawing the one
     // the server will trace — a diagnostic that ignored the cone would report a
     // divergence on every round of every weapon that has one.
-    const cone = weaponDef ? shotSpread(weaponDef, this.drawnHeat.spread, this.drawnHeat.ads) : 0;
+    const cone = weaponDef ? shotSpread(weaponDef, this.drawnHeat.spread, this.drawnHeat.ads, up) : 0;
     for (let i = 0; i < count; i++) {
       const ordinal = (before + i + 1) & 0xffff;
       const direction = aimDirection(aimAngles(movement, kick, this.aim), this.direction);

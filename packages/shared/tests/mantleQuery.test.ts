@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
 import { MantleVolumes, MAX_CLIMB, MIN_CLIMB } from "../src/sim/moves/mantle.js";
-import { HEIGHT, RADIUS } from "../src/sim/movement.js";
+import { RADIUS, STAND_HEIGHT as HEIGHT } from "../src/sim/movement.js";
 import type { ResolvedMantle } from "../src/dsl/resolved.js";
 
 const BODY = { radius: RADIUS, height: HEIGHT };

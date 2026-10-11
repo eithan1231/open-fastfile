@@ -20,7 +20,7 @@ import { DEFAULT_GAMETYPE } from "@3d/shared/game/gametypes/registry.js";
 import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
 import { createPath, NavSearch } from "@3d/shared/nav/astar.js";
 import type { NavGraph } from "@3d/shared/nav/graph.js";
-import { EYE_HEIGHT, type Vec3 } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT, type Vec3 } from "@3d/shared/sim/movement.js";
 import { idleInput } from "@3d/shared/sim/input.js";
 import { chaseGametype, CHASE_GAMETYPE } from "@3d/shared/game/gametypes/chase.js";
 import type { Script } from "@3d/shared/game/hooks.js";
@@ -386,7 +386,11 @@ describe.skipIf(!exported)("bots on dome-mw3", () => {
         tick: (ctx) => {
           const state = ctx.state(HUMAN);
           if (state && Math.hypot(state.feet.x - at.x, state.feet.z - at.z) > 0.5) {
-            ctx.spawn(HUMAN, { position: { x: at.x, y: at.y + EYE_HEIGHT, z: at.z }, look: { x: at.x, y: at.y + EYE_HEIGHT, z: at.z - 1 }, start: false });
+            ctx.spawn(HUMAN, {
+              position: { x: at.x, y: at.y + STAND_EYE_HEIGHT, z: at.z },
+              look: { x: at.x, y: at.y + STAND_EYE_HEIGHT, z: at.z - 1 },
+              start: false,
+            });
           }
         },
       },

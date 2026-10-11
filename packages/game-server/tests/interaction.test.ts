@@ -18,7 +18,7 @@ import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
 import type { Script } from "@3d/shared/game/hooks.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT, WALK_SPEED } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT, WALK_SPEED } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { presenceFor } from "@3d/shared/worlds/presence.js";
 import { NO_BODIES } from "../src/bodies.js";
@@ -34,7 +34,7 @@ function trigger(id: number, over: Partial<ResolvedTrigger>): ResolvedTrigger {
 function world(): ResolvedWorld {
   return {
     name: "doorway",
-    spawn: { position: { x: 0, y: EYE_HEIGHT, z: 0 }, look: { x: 0, y: EYE_HEIGHT, z: -1 } },
+    spawn: { position: { x: 0, y: STAND_EYE_HEIGHT, z: 0 }, look: { x: 0, y: STAND_EYE_HEIGHT, z: -1 } },
     spawnPoints: [],
     triggers: [
       trigger(10, { tags: ["start_zone", "player_area"], position: { x: 0, y: 1, z: 0 }, size: { x: 4, y: 3, z: 4 } }),

@@ -21,7 +21,7 @@ import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { aimAngles, aimDirection, type ViewKick } from "@3d/shared/sim/recoil.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
@@ -101,6 +101,7 @@ const ground = {
     return result;
   },
   overlapsCapsule: (position: { y: number }) => position.y < 0,
+  overlapsSweep: (from: { y: number }, to: { y: number }, radius: number) => Math.min(from.y, to.y) < radius,
   groundBelow: (from: { y: number }, distance: number, normal?: { x: number; y: number; z: number }) => {
     if (from.y < 0 || from.y - distance > 0) {
       return null;
@@ -286,7 +287,7 @@ describe("where a round leaves", () => {
     // The gun was at rest when the trigger went: a first round has nothing behind
     // it, so its line is the bare line of sight and nothing else.
     expect(first.drawn).toEqual({ pitch: 0, yaw: 0, pitchVel: 0, yawVel: 0 });
-    expect(first.shot.from).toEqual({ x: 0, y: EYE_HEIGHT, z: 0 });
+    expect(first.shot.from).toEqual({ x: 0, y: STAND_EYE_HEIGHT, z: 0 });
     expect(apart(first.shot.direction, lineFor(null))).toBeLessThan(1e-9);
 
     // And the kick it took is real and large, or the line above would be the

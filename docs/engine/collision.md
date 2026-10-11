@@ -380,7 +380,10 @@ exporter writes them as world-file nodes precisely so that nothing can sweep
 them into a collision mesh by accident. `sim/moves/mantle.ts` holds them, and asks the
 collision the rest through `CapsuleWorld`: where the ledge is
 (`groundBelow`, a ray straight down) and whether the capsule fits on the way
-(`overlapsCapsule`, which treats touching as clear).
+(`overlapsCapsule`, which treats touching as clear). A lying body's legs are
+asked with the one query that is not upright, `overlapsSweep`: a ball carried
+along a line, which also counts a surface the line passes clean through
+([player.md](player.md#prone-blocked)).
 
 The game's own mantle brushes carry contents `0x01000000`, which blocks nobody,
 so `scripts/cod/collision.py` already drops them from the collision mesh. That
@@ -397,7 +400,7 @@ with plain numbers, so the collision layer needs no per-face flags.
 
 ## Seeing it
 
-Collider view (`C`, dev builds) has three states: off; proxies and clip
+Collider view (`X`, dev builds) has three states: off; proxies and clip
 brushes; and everything the BVHs were actually built from, plus every prop hull
 at its placement. The second is an interpretation of the scene graph; the third
 reads `CollisionWorld.debugSurfaces()` and cannot disagree with what stops you.

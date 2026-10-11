@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { CollisionWorld } from "@3d/shared/collision/world.js";
 import { FirstPersonControls, type DeviceInput } from "../src/engine/controls/firstPerson.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT, horizontalSpeed, RUN_SPEED, WALK_SPEED } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT, horizontalSpeed, RUN_SPEED, WALK_SPEED } from "@3d/shared/sim/movement.js";
 import { Player, type PlayerState } from "@3d/shared/sim/player.js";
 import { WeaponController } from "@3d/shared/sim/weapon.js";
 import { weaponDef } from "@3d/shared/testing/weaponDef.js";
@@ -89,7 +89,7 @@ describe("Player", () => {
   it("respawns below the kill plane, facing the spawn's way", () => {
     const player = new Player(new CollisionWorld()); // nothing to stand on
     // A spawn's `at` is an eye, so the feet it implies are an eye height under it.
-    const eye = 10 + EYE_HEIGHT;
+    const eye = 10 + STAND_EYE_HEIGHT;
     player.setSpawn({ x: 5, y: eye, z: 0 }, { x: 6, y: eye, z: 0 });
     player.setKillPlane(0);
     player.place({ x: 0, y: 1, z: 0 }, 0, 0);
@@ -104,7 +104,7 @@ describe("Player", () => {
   /** In a match the fall is a death, and both ends stop the player at the same step for the server to deal it. */
   it("holds them where they fell instead, when passing the kill plane is a death", () => {
     const player = new Player(new CollisionWorld());
-    player.setSpawn({ x: 5, y: 10 + EYE_HEIGHT, z: 0 }, { x: 6, y: 10 + EYE_HEIGHT, z: 0 });
+    player.setSpawn({ x: 5, y: 10 + STAND_EYE_HEIGHT, z: 0 }, { x: 6, y: 10 + STAND_EYE_HEIGHT, z: 0 });
     player.setKillPlane(0);
     player.setFallOut("die");
     player.place({ x: 0, y: 1, z: 0 }, 0, 0);

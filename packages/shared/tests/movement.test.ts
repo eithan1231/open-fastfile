@@ -45,10 +45,10 @@ function setup(...extra: THREE.Mesh[]) {
   const state = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
   const input = idleInput(0, 0);
   const env = movementEnv(collision, NO_CLIMBS, PLAYER_MOVEMENT);
-  const options = { sprintAllowed: true };
+  const options = { sprintAllowed: true, braced: false };
   const run = (seconds: number, each?: () => void) => {
     for (let t = 0; t < seconds - 1e-9; t += DT) {
-      stepMovement(state, input, DT, env, { sprint: options.sprintAllowed });
+      stepMovement(state, input, DT, env, { sprint: options.sprintAllowed, braced: options.braced });
       each?.();
     }
   };
@@ -223,11 +223,11 @@ describe("a jump", () => {
   });
 
   it("ends a sprint: the flight coasts at the takeoff's speed and adds nothing to it", () => {
-    const { state, input, run, jump } = setup();
+    const { state, input, env, run, jump } = setup();
     input.forward = 1;
     input.run = true;
     run(1);
-    expect(wantsSprint(state, input)).toBe(true);
+    expect(wantsSprint(state, input, env)).toBe(true);
     jump();
     const takeoff = horizontalSpeed(state);
     expect(takeoff).toBeCloseTo(RUN_SPEED, 1);
@@ -235,27 +235,27 @@ describe("a jump", () => {
     run(0.5, () => {
       expect(state.grounded).toBe(false);
       // Run is still held, and the one sprint rule says no all the same.
-      expect(wantsSprint(state, input)).toBe(false);
+      expect(wantsSprint(state, input, env)).toBe(false);
       fastest = Math.max(fastest, horizontalSpeed(state));
     });
     expect(fastest).toBeLessThanOrEqual(takeoff + 1e-9);
   });
 
   it("never reaches the run speed from a walk by holding run in the air", () => {
-    const { state, input, run, jump } = setup();
+    const { state, input, env, run, jump } = setup();
     input.forward = 1;
     run(1);
     jump();
     input.run = true;
     let fastest = 0;
     run(0.55, () => {
-      expect(wantsSprint(state, input)).toBe(false);
+      expect(wantsSprint(state, input, env)).toBe(false);
       fastest = Math.max(fastest, horizontalSpeed(state));
     });
     expect(fastest).toBeLessThanOrEqual(WALK_SPEED + 1e-9);
     // And the ground under a held run key sprints again.
     run(2.5);
-    expect(wantsSprint(state, input)).toBe(true);
+    expect(wantsSprint(state, input, env)).toBe(true);
     expect(horizontalSpeed(state)).toBeCloseTo(RUN_SPEED, 5);
   });
 });

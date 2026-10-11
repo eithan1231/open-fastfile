@@ -21,7 +21,8 @@
 // moving caster would leave its shadow behind.
 
 import * as THREE from "three";
-import { createMovement, HEIGHT, RADIUS, type MovementState } from "@3d/shared/sim/movement.js";
+import { createMovement, PLAYER_MOVEMENT, RADIUS, STANCES, type MovementState, type StanceKind } from "@3d/shared/sim/movement.js";
+import { hullHeight, stanceHeight } from "@3d/shared/sim/stance.js";
 import { lerpMovement, teleported } from "@3d/shared/sim/interpolate.js";
 import { bodyIndex } from "@3d/shared/game/cast.js";
 import { releaseRig } from "@3d/shared/rig/release.js";
@@ -104,7 +105,8 @@ export class RemotePlayers {
    * rig — exactly right, since the old one is on the floor.
    */
   private readonly handedOver = new Set<string>();
-  private readonly geometry: THREE.CapsuleGeometry;
+  /** A capsule per stance, each the hull the collision resolves for it. */
+  private readonly geometry: Record<StanceKind, THREE.CapsuleGeometry>;
   private readonly material: THREE.Material;
   /** The world's characters, if it ships any. Set on mount and cleared on leaving. */
   private kit: CharacterKit | undefined;
@@ -116,9 +118,10 @@ export class RemotePlayers {
 
   constructor() {
     this.root.name = "remote-players";
-    // The capsule's own maths: a segment of HEIGHT - 2*RADIUS with a cap at each
-    // end, so what is drawn is what the collision resolves.
-    this.geometry = new THREE.CapsuleGeometry(RADIUS, HEIGHT - 2 * RADIUS, 4, 12);
+    // The capsule's own maths: a segment of the hull's height less 2*RADIUS with
+    // a cap at each end, so what is drawn is what the collision resolves.
+    const capsule = (kind: StanceKind): THREE.CapsuleGeometry => new THREE.CapsuleGeometry(RADIUS, stanceHeight(kind, PLAYER_MOVEMENT) - 2 * RADIUS, 4, 12);
+    this.geometry = { stand: capsule("stand"), crouch: capsule("crouch"), prone: capsule("prone") };
     // Unlit on purpose. A lit material would depend on the world's lighting, and
     // an imported map is lightmapped — its dynamic lights barely touch a dynamic
     // object, so a Lambert capsule renders near-black and reads as "not drawn".
@@ -231,8 +234,13 @@ export class RemotePlayers {
       }
 
       // A character stands on its feet, where the state's origin already is; a
-      // capsule's origin is its middle, so it is lifted by half its height.
-      const lift = remote.rig ? 0 : HEIGHT / 2;
+      // capsule's origin is its middle, so it is lifted by half its height —
+      // the stance's, as the capsule drawn is.
+      let lift = 0;
+      if (!remote.rig) {
+        (object as THREE.Mesh).geometry = this.geometry[drawn.stance.kind];
+        lift = hullHeight(drawn, PLAYER_MOVEMENT) / 2;
+      }
       object.position.set(drawn.feet.x, drawn.feet.y + lift, drawn.feet.z);
       object.rotation.y = bodyYaw(drawn) + (remote.rig ? MODEL_FACING : 0);
       remote.rig?.animator.update(drawn, remote.weapon, dt);
@@ -328,7 +336,9 @@ export class RemotePlayers {
   dispose(): void {
     this.clear();
     this.kit = undefined;
-    this.geometry.dispose();
+    for (const kind of STANCES) {
+      this.geometry[kind].dispose();
+    }
     this.material.dispose();
   }
 
@@ -358,7 +368,7 @@ export class RemotePlayers {
         this.kit = undefined;
       }
     }
-    const mesh = new THREE.Mesh(this.geometry, this.material);
+    const mesh = new THREE.Mesh(this.geometry.stand, this.material);
     // It moves, so it keeps its own matrices; it must not cast, because the
     // shadow map is not redrawn per frame.
     mesh.castShadow = false;

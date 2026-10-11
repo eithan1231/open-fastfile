@@ -8,7 +8,8 @@ import { shotDamage, type CombatRules } from "@3d/shared/game/rules.js";
 import { couldHit, POSE_MARGIN } from "@3d/shared/rig/hitboxes.js";
 import type { CapsuleWorld, RayHit, Vec3 } from "@3d/shared/sim/capsule.js";
 import type { HitLocation } from "@3d/shared/sim/hitLocations.js";
-import { createMovement, EYE_HEIGHT, HEIGHT, RADIUS, type MovementState } from "@3d/shared/sim/movement.js";
+import { createMovement, RADIUS, STAND_HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
+import { eyeHeight } from "@3d/shared/sim/stance.js";
 import { aimAngles, aimDirection, coneSample, shotSpread, shotStream, spreadDirection, type Aim, type ReadKick } from "@3d/shared/sim/recoil.js";
 import { DEFAULT_SURFACE } from "@3d/shared/sim/surfaces.js";
 import type { WeaponController } from "@3d/shared/sim/weapon.js";
@@ -154,13 +155,16 @@ export class Shots {
     const shooter = member.id;
     const movement = member.player.movement;
     const { feet } = movement;
-    const eye = { x: feet.x, y: feet.y + EYE_HEIGHT, z: feet.z };
+    // The eye as their stance has it, as the step left it: a round leaves from
+    // where they see from, and its cone is the stance's by the same height.
+    const up = eyeHeight(movement);
+    const eye = { x: feet.x, y: feet.y + up, z: feet.z };
     // Degrees wide, from how hot the weapon was before this step and how far into
     // the sights they had got. **This server decides it**: the width is the
     // weapon's own numbers, and where in it each round lands is drawn from the
     // same seeded stream the recoil is, so a client has nothing to send and
     // nothing to bend. It predicts the identical cone from the identical seed.
-    const cone = heat ? shotSpread(held.def, heat.spread, heat.ads) : 0;
+    const cone = heat ? shotSpread(held.def, heat.spread, heat.ads, up) : 0;
     for (let i = 0; i < count; i++) {
       const ordinal = (before + i + 1) & 0xffff;
       // Per round rather than per step: two rounds of a burst share an aim and
@@ -246,10 +250,11 @@ export class Shots {
       // The broad phase, against the capsule rather than a pose — posing is the
       // expensive half and almost nobody survives this. The capsule is dropped as
       // well as widened by `POSE_MARGIN`: a vaulting body hangs its legs below the
-      // feet the simulation moves, and the boxes there are hittable.
+      // feet the simulation moves, and the boxes there are hittable. A standing
+      // capsule whatever their stance: it bounds the pose, and the pose stands.
       const feet = rewound.feet;
       const envelope = { x: feet.x, y: feet.y - POSE_MARGIN, z: feet.z };
-      if (couldHit(from, to, envelope, RADIUS, HEIGHT + POSE_MARGIN, POSE_MARGIN) === null) {
+      if (couldHit(from, to, envelope, RADIUS, STAND_HEIGHT + POSE_MARGIN, POSE_MARGIN) === null) {
         continue;
       }
 

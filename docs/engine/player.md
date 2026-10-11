@@ -17,29 +17,31 @@ keyboard, mouse ─▶ FirstPersonControls ─▶ PlayerInput ─▶ Player.step
                                                                               that produced it (net/connection)
 ```
 
-| File                                      | What                                                                 |
-| ----------------------------------------- | -------------------------------------------------------------------- |
-| `shared` `sim/input.ts`                   | `PlayerInput`: one step's command                                    |
-| `shared` `sim/movement.ts`                | `stepMovement`: which move owns a step, and the sprint rule          |
-| `shared` `sim/movementState.ts`           | `MovementState`, the body, and the numbers more than one move reads  |
-| `shared` `sim/movementEnv.ts`             | `MovementEnv` and `Carry`: what a step is made in, and with          |
-| `shared` `sim/moves/walk.ts`              | Walking, running, jumping, falling and landing                       |
-| `shared` `sim/stepSlide.ts`               | The end of a free step: the move, the step up and down, the ground   |
-| `shared` `sim/gait.ts`                    | The stride clock and the pose blends                                 |
-| `shared` `sim/moves/ladder.ts`            | The world's ladders, the grab and the climb                          |
-| `shared` `sim/weapon.ts`                  | `WeaponController` and `WeaponData`: the held weapon's state machine |
-| `shared` `sim/weaponDef.ts`               | `WeaponDef`: what a weapon _is_, read off the exporter's GLB         |
-| `shared` `sim/weaponRegistry.ts`          | The catalogue: every weapon both ends can build, and its `hash`      |
-| `shared` `sim/player.ts`                  | `Player`: steps both on one input; `snapshot` / `restore`            |
-| `shared` `sim/capsule.ts`                 | `CapsuleWorld`: the three.js-free view of collision a step gets      |
-| `shared` `sim/moves/mantle.ts`            | The world's mantle volumes, the query a step makes, and the climb    |
-| `client` `engine/controls/firstPerson.ts` | Devices → `PlayerInput`, the held pose, the camera                   |
+| File                                      | What                                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------- |
+| `shared` `sim/input.ts`                   | `PlayerInput`: one step's command                                      |
+| `shared` `sim/movement.ts`                | `stepMovement`: which move owns a step, and the sprint rule            |
+| `shared` `sim/movementState.ts`           | `MovementState`, the body, and the numbers more than one move reads    |
+| `shared` `sim/movementEnv.ts`             | `MovementEnv` and `Carry`: what a step is made in, and with            |
+| `shared` `sim/moves/walk.ts`              | Walking, running, jumping, falling and landing                         |
+| `shared` `sim/stepSlide.ts`               | The end of a free step: the move, the step up and down, the ground     |
+| `shared` `sim/stance.ts`                  | Standing, crouched and prone: the hull, the eye, and where a body fits |
+| `shared` `sim/view.ts`                    | The caps a move puts on the view, for the step and the camera alike    |
+| `shared` `sim/gait.ts`                    | The stride clock and the pose blends                                   |
+| `shared` `sim/moves/ladder.ts`            | The world's ladders, the grab and the climb                            |
+| `shared` `sim/weapon.ts`                  | `WeaponController` and `WeaponData`: the held weapon's state machine   |
+| `shared` `sim/weaponDef.ts`               | `WeaponDef`: what a weapon _is_, read off the exporter's GLB           |
+| `shared` `sim/weaponRegistry.ts`          | The catalogue: every weapon both ends can build, and its `hash`        |
+| `shared` `sim/player.ts`                  | `Player`: steps both on one input; `snapshot` / `restore`              |
+| `shared` `sim/capsule.ts`                 | `CapsuleWorld`: the three.js-free view of collision a step gets        |
+| `shared` `sim/moves/mantle.ts`            | The world's mantle volumes, the query a step makes, and the climb      |
+| `client` `engine/controls/firstPerson.ts` | Devices → `PlayerInput`, the held pose, the camera                     |
 
 ## State for the network
 
 Everything that changes as a player plays is one plain object,
 `Player.snapshot()`, a `PlayerState`: `movement` (feet, velocity, view angles,
-ground and jump timers), `weapon` (`WeaponData`), and **which** weapon that is —
+ground and jump timers, the [stance](#stance) and the eye's way to it), `weapon` (`WeaponData`), and **which** weapon that is —
 `weaponIndex` into the weapon catalogue plus `attachments`, the slots the fitted
 ones occupy in that weapon's own list, `swapping`, and `stowed` (the weapon is
 away for a climb, see [below](#the-weapon-on-a-climb)). The weapon on their
@@ -55,8 +57,10 @@ JSON copy in lockstep with the original, and `tests/movement.test.ts` does the
 same for movement alone, so a field left out of the state fails a test.
 
 `PlayerInput` is the other half: absolute view angles, the movement axes, and
-run, jump, fire, aim and use held, reload and swap pressed. Angles are absolute,
-not deltas, so a lost command cannot skew the aim. A server that holds a player's
+run, jump, crouch, prone, fire, aim and use held, reload and swap pressed. Angles
+are absolute, not deltas, so a lost command cannot skew the aim; `crouch` and
+`prone` are levels for the same reason, and whether a key holds or toggles one is
+the client's business ([below](#stance)). A server that holds a player's
 state and replays their inputs reproduces what the player saw.
 
 **`use` is a level, and the server takes its edge.** Nothing in the step reads
@@ -102,8 +106,9 @@ adopted.
 ## One step
 
 `Player.step(input, dt)` runs the weapon first and then movement. The weapon
-reads only the input. Movement asks the weapon whether a sprint may run
-(`WeaponController.sprinting`). Nothing else connects the two.
+reads only the input. Movement asks the weapon two things: whether a sprint may
+run (`WeaponController.sprinting`), and whether it is aimed or firing
+(`braced`), which holds a prone body still. Nothing else connects the two.
 
 **The step is `stepMovement(state, input, dt, env, carry)`** (`sim/movement.ts`).
 `env` is what the step is made in and does not change while a world is loaded
@@ -112,7 +117,11 @@ reads only the input. Movement asks the weapon whether a sprint may run
 its two speeds and its `footing`. A player's is `PLAYER_MOVEMENT`
 (`tests/movementParams.test.ts` holds a digest of its step); an actor's kind names
 its own ([actors](actors.md)). `carry` is what is in the hands, as far as movement
-cares: whether it lets a sprint run.
+cares: whether it lets a sprint run, and whether it is `braced`.
+
+The step returns the stance it held the player to against the keys it was given,
+or null (`Player.forcedStance`). Nothing in the simulation reads it; it is for
+whoever turned a key into the input.
 
 **Exactly one move owns a step**: `state.move` is `walk`, `mantle` or `ladder`,
 a union, and each is a module under `sim/moves/` that the step dispatches to.
@@ -196,9 +205,14 @@ Three pieces, all in `sim/recoil.ts`:
    — the textbook correction — every weapon would be twice as inaccurate as its
    own numbers describe.
 
-`hipDuckedMin`/`Max` and the prone pair are exported and dormant: the game blends
-its three stance pairs on view height and this engine has no stance, so only the
-standing pair is reachable. `turnAdd` is 0 on all 135 catalogue weapons.
+**The hip cone follows the eye, not the stance.** A weapon carries a min and max
+for standing, ducked and prone, and `shotSpread` blends between two of the three
+pairs by how high the eye is (`eyeHeight`): prone into ducked below the crouched
+eye, ducked into standing above it. So the cone tightens across the whole of a
+change of stance, and a round fired halfway down is halfway there. A weapon with
+no pair for a stance uses the one above it. The server measures the eye after the
+step the round was fired on, as it does the rest of the shot.
+`turnAdd` is 0 on all 135 catalogue weapons.
 
 ### The server owns the cone
 
@@ -323,7 +337,8 @@ Three things about it are easy to get wrong, and all three are load-bearing:
   simply not register, occasionally, on a fast display. So devices are polled
   every frame and presses are latched until a tick spends them, which also means
   a tap reaches exactly one tick when a frame runs several.
-- **The camera interpolates position and the view kick, but not the aim.** It
+- **The camera interpolates position, the eye's height and the view kick, but
+  not the aim.** It
   draws between the last two ticks by `accumulator / tickDt`, and snaps instead of
   sliding when a tick moved the feet further than a sprint could. The player's own
   angles are the live ones: a tick of latency on aiming is felt immediately, and
@@ -369,12 +384,15 @@ stops take a moment. Every number is the games' own, written in their units
 and `sim/stepSlide.ts`; where each comes from, and what was read to find it, is
 [reverse/iw5-pmove](../../reverse/iw5-pmove/README.md).
 
-- **The body** is a capsule of radius 15 and height 70, with the eye at 60.
+- **The body** is a capsule of radius 15 and height 70, with the eye at 60,
+  standing. Crouched and prone it is shorter, and so is the eye: see
+  [stance](#stance).
 - **Walk** at 190 units a second forward, 0.8 of that sideways and 0.7 backward.
   A diagonal is no faster than its faster axis.
 - **Run** at 1.5 times the walk, with one definition for movement, the weapon
   and the pose alike (`wantsSprint`): run held, moving forward, jump not held,
-  walking, and not in a jump. The weapon must allow it as well: firing, aiming
+  walking, not in a jump, and standing or with the head room to stand. The
+  weapon must allow it as well: firing, aiming
   or reloading drops the player to a walk until it is done. A sprint's sideways
   share is 0.667.
 - **Sprint to fire.** The trigger takes the weapon out of a sprint, and the round
@@ -386,7 +404,7 @@ and `sim/stepSlide.ts`; where each comes from, and what was read to find it, is
   start coming up _during_ the sprint-out, so aiming out of a run is one motion
   and firing out of one is not.
 - **Jump** 39 units high, against a gravity of 800 a second squared. A jump is a
-  press: made on the ground, on the step the key goes down. A key held, or
+  press: made standing, on the ground, on the step the key goes down. A key held, or
   pressed in the air, jumps nothing when the ground comes back, and no jump
   follows another within half a second (`JUMP_REPEAT`). The one allowance is
   for broken ground, which drops a walk for a tick at a time: a press made
@@ -412,7 +430,7 @@ and `sim/stepSlide.ts`; where each comes from, and what was read to find it, is
   rather than forbidding it — and set down. It is kept only if it got further
   along the way the move was going, so sliding along a ledge is never a step, and
   only onto something that can be stood on. A step in a jump is the same, onto
-  nothing higher than the jump itself reaches.
+  nothing higher than the jump itself reaches. Prone, a step is 10 units.
 - **A step down**: a walk that leaves the ground stays on whatever is within 9
   units below it. Further is a fall.
 - **Every step up or down costs speed**, by how much of 18 units it was: 0.2 for
@@ -425,7 +443,9 @@ ledge met from beside. What does not carry over: velocity is not clipped along a
 wall, a kerb under a third of the radius is ridden up without the step's cost,
 and a blocked step goes a tenth of the radius past where it was stopped.
 
-- **Mantle check**: while jump is held and no ladder is.
+- **Crouch and go prone** (`C` and left `Ctrl`). See [stance](#stance).
+- **Mantle check**: while jump is held and no ladder is, by a player who began
+  the step standing.
 - **Mantle** a ledge between 0.35 m and 1.45 m by jumping into it, where the
   world declares a `mantle` volume. See below.
 - **Climb a ladder** by walking or falling into one the world declares: the view
@@ -448,8 +468,126 @@ Options panel. The aim is also scaled by the view's zoom
 across the screen is the same at 15° as at 65°; without that, every gain in
 magnification is a loss of the same factor in precision.
 
-Not there yet: crouch and prone, fall damage, aiming slowing the walk (the
+Not there yet: fall damage, aiming slowing the walk (the
 weapon file's `adsMoveSpeedScale` is not exported), and shots that hit anything.
+
+## Stance
+
+A player stands, crouches or lies prone (`sim/stance.ts`). Every rule and number
+here is the games', and [reverse/iw5-stance](../../reverse/iw5-stance/README.md)
+has where each was read and what it looked like there.
+
+|        | Hull height | Eye | Speed | Acceleration |
+| ------ | ----------- | --- | ----- | ------------ |
+| Stand  | 70          | 60  | 1     | 9            |
+| Crouch | 50          | 40  | 0.65  | 12           |
+| Prone  | 30          | 11  | 0.15  | 19           |
+
+**The stance is a target and the eye follows it.** `MovementState.stance` is
+where the player is going, and it switches at once: the hull every collision
+query is made with (`hullHeight`) and the acceleration change on the step the
+stance does. The eye takes 200 ms between standing and a crouch and 400 ms to or
+from prone, along a table of heights rather than a line — going prone dips,
+bounces and settles — and `MovementState.eyeShift` is which table and how far
+along (`eyeHeight`). The stance moves **one step at a time, and only while the
+eye is at rest**, so standing to prone is a crouch for 200 ms on the way. Speed
+switches with the hull, except to and from prone, where it follows the eye
+across. A stance that turns against a table under way turns the eye round where
+it is.
+
+**Nothing reads a standing constant for where a player is now.** The hull is
+`hullHeight(state, body)` and the eye `eyeHeight(state)`: the camera, a round's
+origin, the hip cone, the use key's reach, a part's "is anyone in the way", and a
+peer's capsule all ask. `STAND_HEIGHT` and `STAND_EYE_HEIGHT` are left for what
+is about a standing body — a spawn, the clearance a navigation link needs.
+
+What the keys ask for, against what the world allows (`stepStance`):
+
+- **Going down needs no room; coming up needs head room** for the taller hull.
+  Without it the player stays as they are, and from prone gets as far as a crouch
+  if that fits.
+- **Jump, pressed crouched or prone, stands the player up** and does not jump.
+  Nothing is left of that press; a new one, standing, jumps.
+- **A sprint stands a player up at once**, the eye catching up, and so needs the
+  room to stand before it starts. **Asking to crouch or lie down ends one**: a
+  sprint is not run while either level is held.
+- **Prone needs the ground.** Asked for in the air, it waits. A prone body that
+  falls with its legs in something, or slides on ground too steep to stand on,
+  comes up to a crouch.
+- **Going prone starts a landing's grip** (`state.landing`), which is what stops
+  a running body sliding as it drops.
+- **A ladder is climbed standing** and a lying player cannot take hold of one. A
+  climb is started standing, and during one only the eye moves.
+- **Prone under a weapon that is aimed or firing, the movement keys do nothing**
+  (`Carry.braced`).
+
+### Prone blocked
+
+A lying body is longer than its hull, and the hull is all that collides. So
+lying down is allowed only where the rest of it fits (`proneFits`): the legs
+need a clear run behind the view — shorter against a wall if they fit raised or
+laid along the slope — the waist and the feet need ground under them, the torso
+may not slope past 45° nor the legs fold too far from it, and nothing may stand
+up under the body between the three. Refused, the player stays as they were.
+
+The same test holds everything a lying player then does:
+
+- **The body turns after the view** (`Lying.heading`), at 55° a second while
+  crawling, while prone is asked for, or once the view is 80° off it — and no
+  further than the turned body fits.
+- **The view is held to what the body allows**: turned back by whole degrees
+  until the twisted body fits, never more than 85° from the heading, and within
+  45° of the torso's pitch, which follows the slope under it (`Lying.torso`).
+  The degree is searched for rather than walked to, taking a body that fits at
+  one twist to fit at every smaller one, so a view thrown at a wall costs a dozen
+  tests and not eighty-five.
+- **A crawl that ends where the body does not fit is undone**, position and
+  velocity both, so a player cannot back their legs into a wall or over a drop.
+  Only a move along the ground is: a fall is never undone, and a body that falls
+  with its legs in something comes up to a crouch on the next step.
+
+The games ask all of it with box traces. Here a trace is a ball carried along
+its line (`CapsuleWorld.overlapsSweep`) and the ground under a point is a ray
+(`groundBelow`), so a narrow gap a box would not enter, a ball's round end does.
+
+**It is the dearest thing a step does.** A body lying still costs what a
+standing one does; one whose view is turning asks the fit two to four times a
+step, five collision queries each, which is two to four times a standing walk.
+
+### The view caps are one mechanism
+
+A move may cap the view: a ladder in the air, and lying prone. `sim/view.ts` is
+the one place either is applied (`capYaw`, `capPitch`), a function of the state
+and the angle asked for. The step applies it to the input, and
+`FirstPersonControls` asks `Player.viewYaw` and `viewPitch` the same question of
+the mouse movement no step has spent yet, so the camera stops at a cap rather
+than swinging past it and back.
+
+### On the wire, and at the keys
+
+`stance` is a union, two bits, with a heading and a torso pitch only when prone;
+`eyeShift` is one bit at rest, and a path and twelve bits of clock while the eye
+moves. A standing player's state costs three bits for all of it. An input carries
+`crouch` and `prone` as two bits.
+
+The keys toggle (`engine/controls/firstPerson.ts`): `C` crouches, left `Ctrl`
+goes prone, and the key of the stance already asked for stands. The toggle is a
+latch on the client, sent as levels, and it **follows the simulation**: after
+each of its own ticks it takes `Player.forcedStance`, so a jump that stood the
+player up, or a refusal for want of room, leaves the next press meaning what it
+says. A press of run stands the latch up too, which is what lets a sprint start
+from a crouch: of the run key and a stance key, the later press wins. It is set from the predicted state on arrival, and to standing by a
+death.
+
+Bots and actors never set either level.
+
+Open:
+
+- **Nothing has been seen in game.**
+- **A peer's body does not crouch or lie down.** Its capsule is the stance's
+  hull; its rig, and the hit boxes posed from it, stand.
+- **The first-person weapon does not move with the stance.**
+- **Nothing tells a player that prone was refused.**
 
 ## Mantling
 
@@ -632,9 +770,8 @@ rise and 128 u/s along the ground — along the view when looking away from the
 ladder, mirrored off it when looking at it, so always away.
 
 **The view is capped** at 100° from facing the ladder while in the air on one
-(`ladderYaw`, the game's `bg_ladder_yawcap`). The step applies it to the input
-and `FirstPersonControls` to the mouse movement no step has spent yet, so the
-camera stops at the cap rather than swinging past it and back.
+(`ladderYaw`, the game's `bg_ladder_yawcap`), through
+[the one mechanism](#the-view-caps-are-one-mechanism) a prone body's caps use.
 
 **On the wire**, `MovementState` carries `ladder` (nullable: one bit, and a yaw
 while climbing), `ladderLock`, `sinceJump` (stopping at 0.5 s, the longest rule)

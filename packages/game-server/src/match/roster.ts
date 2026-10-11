@@ -187,10 +187,10 @@ export class Roster {
     return { feet: { x: feet.x, y: feet.y, z: feet.z }, yaw, alive: !member.player.dead, health: member.player.health, team: this.teamOf(id) };
   }
 
-  /** Whether a living member is standing inside `part`. */
+  /** Whether a living member is inside `part`. */
   occupied(part: CapsuleWorld): boolean {
     for (const member of this.members.values()) {
-      if (!member.player.dead && capsuleIn(part, member.player.movement.feet)) {
+      if (!member.player.dead && capsuleIn(part, member.player.movement)) {
         return true;
       }
     }

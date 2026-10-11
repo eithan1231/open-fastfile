@@ -90,6 +90,12 @@ export interface CapsuleWorld {
    */
   overlapsCapsule(position: Vec3, radius: number, height: number): boolean;
   /**
+   * Whether a ball of `radius` carried in a straight line from `from` to `to`
+   * sinks into anything on the way, both ends included: `overlapsCapsule` for a
+   * capsule that need not stand upright. What a lying body's legs are asked with.
+   */
+  overlapsSweep(from: Vec3, to: Vec3, radius: number): boolean;
+  /**
    * The height of the first standable surface straight down from `from`, no
    * further than `distance` below it, or null. Standable is WALKABLE_NORMAL_Y.
    * Writes the surface's unit normal, pointing up, into `normal` when given.

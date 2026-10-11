@@ -79,6 +79,7 @@ function flatWorld(surface: string): CapsuleWorld {
       return result;
     },
     overlapsCapsule: () => false,
+    overlapsSweep: () => false,
     groundBelow: (_from, _distance, normal) => {
       if (normal) {
         normal.x = 0;

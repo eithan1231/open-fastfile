@@ -12,7 +12,7 @@
 // open and shut it. A file's START_DISCONNECTED links begin behind one.
 
 import type { Vec3 } from "../sim/capsule.js";
-import { HEIGHT, RADIUS } from "../sim/movement.js";
+import { RADIUS, STAND_HEIGHT } from "../sim/movement.js";
 import type { NavGraph } from "./graph.js";
 import { NavLinkGrid } from "./grid.js";
 import { LINK_FLAGS } from "./vocab.js";
@@ -141,7 +141,7 @@ export class NavMatchState {
       const a = graph.source[l]! * 3;
       const b = graph.target[l]! * 3;
       const low = Math.min(f[a + 1]!, f[b + 1]!);
-      const high = Math.max(f[a + 1]!, f[b + 1]!) + HEIGHT;
+      const high = Math.max(f[a + 1]!, f[b + 1]!) + STAND_HEIGHT;
       if (high < box.center.y - box.halfExtents.y || low > box.center.y + box.halfExtents.y) {
         continue;
       }

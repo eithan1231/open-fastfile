@@ -128,6 +128,8 @@ function distinctive(): MovementState {
     jumpFrom: 2.25,
     landing: 0.33,
     move: { kind: "mantle", target: { x: 9, y: 8, z: 7 }, left: 0.44, rise: 1.25, over: true },
+    stance: { kind: "prone", heading: 1.1, torso: -0.2 },
+    eyeShift: { path: "crouchToProne", elapsed: 0.21 },
     ladderLock: true,
     sinceJump: 0.55,
     jumpHeld: true,

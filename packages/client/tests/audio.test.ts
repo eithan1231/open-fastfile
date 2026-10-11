@@ -997,6 +997,7 @@ describe("footsteps", () => {
         return result;
       },
       overlapsCapsule: () => false,
+      overlapsSweep: () => false,
       groundBelow: (_from, _distance, normal) => {
         if (normal) {
           normal.x = 0;
@@ -1200,6 +1201,7 @@ describe("weapons", () => {
         return result;
       },
       overlapsCapsule: () => false,
+      overlapsSweep: () => false,
       groundBelow: (_from, _distance, normal) => {
         if (normal) {
           normal.x = 0;

@@ -10,8 +10,9 @@
 
 import type { EntityId, ResolvedWorld, UseMode } from "../dsl/resolved.js";
 import type { CapsuleWorld, RayHit, Vec3 } from "../sim/capsule.js";
-import { EYE_HEIGHT, HEIGHT, RADIUS } from "../sim/movement.js";
+import { PLAYER_MOVEMENT, RADIUS, type MovementState } from "../sim/movement.js";
 import { aimDirection } from "../sim/recoil.js";
+import { eyeHeight, hullHeight } from "../sim/stance.js";
 import { UNITS_PER_M } from "../sim/units.js";
 import { presentIn } from "../sim/worldRules.js";
 import type { GameView, PlayerView } from "./context.js";
@@ -61,11 +62,12 @@ export interface UseVerdict {
 /** What a thing no script has an opinion about is: usable, from any angle. */
 export const DEFAULT_USE: UseVerdict = { look: false };
 
-/** Where a player stands and looks from. `view` is a unit vector. */
+/** Where a player is and looks from. `view` is a unit vector, and `height` their capsule's as their stance has it. */
 export interface Viewer {
   readonly feet: Vec3;
   readonly eye: Vec3;
   readonly view: Vec3;
+  readonly height: number;
 }
 
 /** Which solids are present: a `Presence`, or anything else that can answer by index. */
@@ -103,9 +105,15 @@ export function usableThings(
   return things;
 }
 
-/** Where a player standing at `feet` looks from, facing `yaw`/`pitch` (sim/input.ts's angles). */
-export function viewerAt(feet: Vec3, yaw: number, pitch: number): Viewer {
-  return { feet, eye: { x: feet.x, y: feet.y + EYE_HEIGHT, z: feet.z }, view: aimDirection({ yaw, pitch }, { x: 0, y: 0, z: 0 }) };
+/** Where a player in state `s` looks from, facing `yaw`/`pitch` (sim/input.ts's angles): the eye and the hull of their stance. */
+export function viewerAt(s: Readonly<MovementState>, yaw: number, pitch: number): Viewer {
+  const { feet } = s;
+  return {
+    feet,
+    eye: { x: feet.x, y: feet.y + eyeHeight(s), z: feet.z },
+    view: aimDirection({ yaw, pitch }, { x: 0, y: 0, z: 0 }),
+    height: hullHeight(s, PLAYER_MOVEMENT),
+  };
 }
 
 /**
@@ -125,7 +133,7 @@ export function usableBy(scripts: readonly Script[], view: GameView, thing: Usab
 /**
  * The thing `viewer` would use now, or null.
  *
- * - `touch`: the player's upright body (the capsule's radius and height) overlaps
+ * - `touch`: the player's body (the capsule's radius, and its height as they stand, crouch or lie) overlaps
  *   its volume. No angle and no line of sight; it scores `touchScore`.
  * - `near`: the eye is within `reach` of its centre — inside is not needed — and
  *   a trace from the eye to the centre is clear. For a solid the trace stops
@@ -142,7 +150,7 @@ export function focusOf(
   viewer: Viewer,
   usable: (thing: UsableThing) => UseVerdict | null,
 ): UsableThing | null {
-  const { eye, view, feet } = viewer;
+  const { eye, view, feet, height } = viewer;
   const ranked: { thing: UsableThing; score: number; distance: number }[] = [];
   for (const thing of things) {
     if (thing.kind === "solid" && !presence.has(thing.index)) {
@@ -154,7 +162,7 @@ export function focusOf(
     const distance = Math.hypot(dx, dy, dz);
     // Standing on the centre is looking straight at it.
     const dot = distance > 0 ? (view.x * dx + view.y * dy + view.z * dz) / distance : 1;
-    if (thing.use === "touch" ? !touches(thing.volume, feet, RADIUS, HEIGHT) : distance > USE_RULE.reach) {
+    if (thing.use === "touch" ? !touches(thing.volume, feet, RADIUS, height) : distance > USE_RULE.reach) {
       continue;
     }
     const verdict = usable(thing);

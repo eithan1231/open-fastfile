@@ -16,6 +16,13 @@ export interface PlayerInput {
   run: boolean;
   /** Held. A level and not an edge: the step finds the press, and only a press jumps. */
   jump: boolean;
+  /**
+   * Wants to be crouched, or prone: levels, held for as long as that is the
+   * stance asked for, and both false to stand. Whether a key toggles or holds
+   * one is its sender's business; what the step makes of them is sim/stance.ts.
+   */
+  crouch: boolean;
+  prone: boolean;
   /** Held: the trigger. */
   fire: boolean;
   /** Held: aiming down the sights. */
@@ -34,5 +41,19 @@ export interface PlayerInput {
 
 /** Nothing held, looking at `yaw`/`pitch`. */
 export function idleInput(yaw: number, pitch: number): PlayerInput {
-  return { yaw, pitch, forward: 0, right: 0, run: false, jump: false, fire: false, ads: false, reload: false, swap: false, use: false };
+  return {
+    yaw,
+    pitch,
+    forward: 0,
+    right: 0,
+    run: false,
+    jump: false,
+    crouch: false,
+    prone: false,
+    fire: false,
+    ads: false,
+    reload: false,
+    swap: false,
+    use: false,
+  };
 }

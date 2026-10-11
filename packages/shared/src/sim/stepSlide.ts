@@ -13,11 +13,13 @@
 
 import { SLOPE_NORMAL_Y, WALKABLE_NORMAL_Y, type CapsuleResolution, type CapsuleWorld, type Vec3 } from "./capsule.js";
 import type { MovementEnv } from "./movementEnv.js";
-import { GRAVITY, JUMP_HEIGHT, type MovementParams, type MovementState } from "./movementState.js";
+import { GRAVITY, GROUND_REACH, JUMP_HEIGHT, type MovementParams, type MovementState } from "./movementState.js";
+import { hullHeight } from "./stance.js";
 import { UNIT } from "./units.js";
 
-/** The tallest ledge a blocked move steps onto. */
+/** The tallest ledge a blocked move steps onto, and the tallest a lying body crawls onto. */
 export const STEP_HEIGHT = 18 * UNIT;
+const PRONE_STEP_HEIGHT = 10 * UNIT;
 /** A lift shorter than this is no step: there is no head room for one. */
 const STEP_MIN = 1 * UNIT;
 /** How much taller than the lift a ledge may measure and still be stepped onto: what finding it by halving leaves. */
@@ -30,8 +32,6 @@ const STEP_ACROSS = 0.1;
 const STEP_STRETCH = 4;
 /** A walk that leaves the ground stays on whatever is within this below it. Further is a fall. */
 const STICK_DOWN = 9 * UNIT;
-/** Ground is what is within this of the feet. */
-const GROUND_REACH = 0.25 * UNIT;
 /** A step or a drop taller than this costs speed (`stepCost`). */
 const STEP_COST_MIN = 0.5 * UNIT;
 /** Rising off ground faster than this along its normal is leaving it, not standing on it. */
@@ -51,6 +51,8 @@ const start: Vec3 = { x: 0, y: 0, z: 0 };
 const startVelocity: Vec3 = { x: 0, y: 0, z: 0 };
 const move: Vec3 = { x: 0, y: 0, z: 0 };
 const plain: Vec3 = { x: 0, y: 0, z: 0 };
+/** How tall the capsule being moved is: its stance's hull, set by each entry below before anything else. */
+let tall = 0;
 /** Where the capsule came to rest after a move, and what it rests on. */
 const rest: CapsuleResolution = { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
 /** What a query that only asks what is under a position found there. */
@@ -74,7 +76,7 @@ function collide(s: MovementState, world: CapsuleWorld, body: MovementParams, re
   s.feet.x += move.x;
   s.feet.y += move.y - reach;
   s.feet.z += move.z;
-  const at = world.resolveCapsule(s.feet, body.radius, body.height, rest).position;
+  const at = world.resolveCapsule(s.feet, body.radius, tall, rest).position;
   // Pushed down while rising, more than sideways: the head hit something. A
   // wall's push can carry a fraction of a millimetre of down in it, which must
   // not end a jump, or a ladder climb, along it.
@@ -97,7 +99,7 @@ function groundAt(feet: Readonly<Vec3>, world: CapsuleWorld, body: MovementParam
   probe.x = feet.x;
   probe.y = feet.y - GROUND_REACH;
   probe.z = feet.z;
-  return stands(world.resolveCapsule(probe, body.radius, body.height, under), body);
+  return stands(world.resolveCapsule(probe, body.radius, tall, under), body);
 }
 
 /** `v` laid onto the plane of `normal` along its own heading, at the speed it had. */
@@ -147,7 +149,7 @@ const enum Step {
  * against a ledge, not yet on its corner.
  */
 function step(s: MovementState, world: CapsuleWorld, body: MovementParams, height: number, fromGround: boolean, ceiling: number | null, mount: boolean): Step {
-  const { radius, height: tall } = body;
+  const { radius } = body;
 
   // Up, as far as there is room overhead.
   probe.x = start.x;
@@ -286,13 +288,13 @@ function stickDown(s: MovementState, world: CapsuleWorld, body: MovementParams):
   }
   // Just into it, so the resolver lifts the feet onto it and says what it is.
   probe.y = ground - GROUND_REACH;
-  let at = world.resolveCapsule(probe, body.radius, body.height, under);
-  if (stands(at, body) && world.overlapsCapsule(at.position, body.radius, body.height)) {
+  let at = world.resolveCapsule(probe, body.radius, tall, under);
+  if (stands(at, body) && world.overlapsCapsule(at.position, body.radius, tall)) {
     // Pushed off the ground into something beside it: once more, from there.
     copy(probe, at.position);
-    at = world.resolveCapsule(probe, body.radius, body.height, under);
+    at = world.resolveCapsule(probe, body.radius, tall, under);
   }
-  if (!stands(at, body) || world.overlapsCapsule(at.position, body.radius, body.height)) {
+  if (!stands(at, body) || world.overlapsCapsule(at.position, body.radius, tall)) {
     return false;
   }
   // Down, and on the way it was going: ground the capsule does not fit onto
@@ -316,6 +318,8 @@ function stickDown(s: MovementState, world: CapsuleWorld, body: MovementParams):
  */
 export function groundSlide(s: MovementState, dt: number, env: MovementEnv, sloped: boolean): void {
   const { world, body } = env;
+  tall = hullHeight(s, body);
+  const stepUp = s.stance.kind === "prone" ? PRONE_STEP_HEIGHT : STEP_HEIGHT;
   const v = s.velocity;
   copy(start, s.feet);
   copy(startVelocity, v);
@@ -339,13 +343,13 @@ export function groundSlide(s: MovementState, dt: number, env: MovementEnv, slop
     probe.z = start.z + move.z;
     probe.x += (s.feet.x - probe.x) / flat;
     probe.z += (s.feet.z - probe.z) / flat;
-    copy(s.feet, world.resolveCapsule(probe, body.radius, body.height, rest).position);
+    copy(s.feet, world.resolveCapsule(probe, body.radius, tall, rest).position);
     bumped = true;
   }
   const onGround = stands(rest, body);
   copy(plain, s.feet);
 
-  const stepped = bumped || sloped ? step(s, world, body, STEP_HEIGHT, true, null, bumped && !onGround) : Step.None;
+  const stepped = bumped || sloped ? step(s, world, body, stepUp, true, null, bumped && !onGround) : Step.None;
   if (stepped === Step.None || stepped === Step.Refused) {
     s.grounded = onGround || stickDown(s, world, body);
   } else {
@@ -354,7 +358,7 @@ export function groundSlide(s: MovementState, dt: number, env: MovementEnv, slop
 
   // Every step up or down costs speed, by how far it is of a whole step.
   if (Math.abs(s.feet.y - plain.y) > STEP_COST_MIN) {
-    const cost = 0.2 + 0.8 * Math.max(0, 1 - Math.abs(s.feet.y - start.y) / STEP_HEIGHT);
+    const cost = 0.2 + 0.8 * Math.max(0, 1 - Math.abs(s.feet.y - start.y) / stepUp);
     v.x *= cost;
     v.y *= cost;
     v.z *= cost;
@@ -379,6 +383,7 @@ function besideLedge(s: Readonly<MovementState>, body: MovementParams): boolean 
  */
 export function airSlide(s: MovementState, dt: number, env: MovementEnv): void {
   const { world, body } = env;
+  tall = hullHeight(s, body);
   const v = s.velocity;
   copy(start, s.feet);
   // The move is made at the mean of the vertical speed before and after
@@ -406,7 +411,7 @@ export function airSlide(s: MovementState, dt: number, env: MovementEnv): void {
     probe.x = s.feet.x + rest.normal.x * off;
     probe.y = start.y + move.y;
     probe.z = s.feet.z + rest.normal.z * off;
-    copy(s.feet, world.resolveCapsule(probe, body.radius, body.height, rest).position);
+    copy(s.feet, world.resolveCapsule(probe, body.radius, tall, rest).position);
     bumped = true;
   }
   copy(plain, s.feet);
@@ -445,6 +450,7 @@ export function airSlide(s: MovementState, dt: number, env: MovementEnv): void {
  */
 export function ladderSlide(s: MovementState, dt: number, env: MovementEnv, canStep: boolean): void {
   const { world, body } = env;
+  tall = hullHeight(s, body);
   const v = s.velocity;
   copy(start, s.feet);
   copy(startVelocity, v);
@@ -466,6 +472,7 @@ export function ladderSlide(s: MovementState, dt: number, env: MovementEnv, canS
 
 /** Whether a capsule standing still at `s.feet` is on the ground: what a walk step with nowhere to go ends with. */
 export function standing(s: Readonly<MovementState>, env: MovementEnv): boolean {
+  tall = hullHeight(s, env.body);
   return env.world.ready && groundAt(s.feet, env.world, env.body);
 }
 
@@ -477,5 +484,5 @@ export function groundWithin(s: Readonly<MovementState>, env: MovementEnv, reach
   probe.x = s.feet.x;
   probe.y = s.feet.y - reach;
   probe.z = s.feet.z;
-  return stands(env.world.resolveCapsule(probe, env.body.radius, env.body.height, under), env.body);
+  return stands(env.world.resolveCapsule(probe, env.body.radius, hullHeight(s, env.body), under), env.body);
 }

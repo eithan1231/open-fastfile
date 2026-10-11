@@ -12,7 +12,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
-import { GRAVITY, HEIGHT, RADIUS } from "../src/sim/movement.js";
+import { GRAVITY, RADIUS, STAND_HEIGHT as HEIGHT } from "../src/sim/movement.js";
 import type { HullPlacement } from "../src/collision/hulls.js";
 
 const DT = 1 / 60;

@@ -75,8 +75,8 @@ describe("InputManager", () => {
     lock(true);
     const toggle = vi.fn();
     im.on("colliders", toggle);
-    key("keydown", "KeyC");
-    key("keydown", "KeyC", { repeat: true });
+    key("keydown", "KeyX");
+    key("keydown", "KeyX", { repeat: true });
     expect(toggle).toHaveBeenCalledTimes(1);
     key("keydown", "Space");
     expect(im.takePressed("jump")).toBe(true);
@@ -127,12 +127,27 @@ describe("InputManager", () => {
     im.context = "world";
     const colliders = vi.fn();
     im.on("colliders", colliders);
-    const copy = key("keydown", "KeyC", { ctrlKey: true });
-    expect(copy.defaultPrevented).toBe(false);
+    const cut = key("keydown", "KeyX", { ctrlKey: true });
+    expect(cut.defaultPrevented).toBe(false);
     const field = document.createElement("input");
     document.body.appendChild(field);
-    field.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyC", bubbles: true, cancelable: true }));
+    field.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyX", bubbles: true, cancelable: true }));
     expect(colliders).not.toHaveBeenCalled();
+  });
+
+  it("takes Control pressed on its own as a key, which is what goes prone", () => {
+    const im = setup();
+    im.context = "world";
+    lock(true);
+    // The browser reports the modifier as held on its own keydown.
+    key("keydown", "ControlLeft", { ctrlKey: true });
+    expect(im.takePressed("prone")).toBe(true);
+    // And a key pressed under it is still the browser's.
+    key("keydown", "KeyC", { ctrlKey: true });
+    expect(im.takePressed("crouch")).toBe(false);
+    key("keyup", "ControlLeft");
+    key("keydown", "KeyC");
+    expect(im.takePressed("crouch")).toBe(true);
   });
 
   it("takes mouse buttons only with the pointer locked: the click that locks it is not a shot", () => {

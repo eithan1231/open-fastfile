@@ -150,7 +150,7 @@ export class Overlays {
    * them you could climb now.
    *
    * Its own toggle rather than a third collider mode: a mantle volume is not a
-   * collider, and rolling it into `C` would suggest it stops you.
+   * collider, and rolling it into `X` would suggest it stops you.
    */
   toggleMantles(): void {
     const showing = !this.mantles.visible;

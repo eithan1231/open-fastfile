@@ -22,7 +22,8 @@
 
 import { hashString, seeded } from "@3d/shared/game/random.js";
 import type { CapsuleWorld, RayHit, Vec3 } from "@3d/shared/sim/capsule.js";
-import { EYE_HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
+import type { MovementState } from "@3d/shared/sim/movement.js";
+import { eyeHeight } from "@3d/shared/sim/stance.js";
 import { aimAngles, aimDirection, coneSample, shotSpread, shotStream, spreadDirection, type Aim } from "@3d/shared/sim/recoil.js";
 import { DEFAULT_SURFACE, type SurfaceType } from "@3d/shared/sim/surfaces.js";
 import type { WeaponData } from "@3d/shared/sim/weapon.js";
@@ -205,7 +206,7 @@ export class WeaponAudio {
       }
       const feet = state.movement.feet;
       this.eye.x = feet.x;
-      this.eye.y = feet.y + EYE_HEIGHT;
+      this.eye.y = feet.y + eyeHeight(state.movement);
       this.eye.z = feet.z;
       for (const event of tracked.watcher.observe(state.weaponIndex, def, state.weapon ?? undefined, false)) {
         const layer = event.kind === "fire" ? FIRE_LAYER : NOTE_LAYER;
@@ -262,10 +263,11 @@ export class WeaponAudio {
     }
     const movement = shooter.movement;
     const feet = movement.feet;
+    const up = eyeHeight(movement);
     this.eye.x = feet.x;
-    this.eye.y = feet.y + EYE_HEIGHT;
+    this.eye.y = feet.y + up;
     this.eye.z = feet.z;
-    const cone = shotSpread(def, this.drawnHeat.spread, this.drawnHeat.ads);
+    const cone = shotSpread(def, this.drawnHeat.spread, this.drawnHeat.ads, up);
     const direction = aimDirection(aimAngles(movement, this.drawnKick, this.aim), this.direction);
     spreadDirection(direction, cone, coneSample(shotStream(shooter.seed, ordinal), this.cone));
     const hit = this.world.traceRay(this.eye, direction, BULLET_RANGE, "shots", this.mapHit);

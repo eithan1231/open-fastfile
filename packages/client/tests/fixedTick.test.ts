@@ -13,7 +13,7 @@ import { FirstPersonControls, type DeviceInput } from "../src/engine/controls/fi
 import { roundInput, type InputPacket } from "@3d/shared/net/messages/input.js";
 import { decodePacket, encodePacket, MessageType } from "@3d/shared/net/packet.js";
 
-type Action = "forward" | "back" | "left" | "right" | "run" | "jump" | "fire" | "ads" | "reload" | "use";
+type Action = "forward" | "back" | "left" | "right" | "run" | "jump" | "crouch" | "prone" | "fire" | "ads" | "reload" | "use";
 
 /** A floor at y=0: enough for a step to be grounded and for jumps to mean something. */
 const ground: CapsuleWorld = {
@@ -30,6 +30,7 @@ const ground: CapsuleWorld = {
     return result;
   },
   overlapsCapsule: (position: Vec3) => position.y < 0,
+  overlapsSweep: (from: Vec3, to: Vec3, radius: number) => Math.min(from.y, to.y) < radius,
   groundBelow: (from: Vec3, distance: number, normal?: Vec3) => {
     if (from.y < 0 || from.y - distance > 0) {
       return null;
@@ -229,5 +230,95 @@ describe("the fixed tick", () => {
     controls.update(TICK_DT);
     // One frame's worth, not the hundred that went by while it was held.
     expect(ticks).toHaveLength(1);
+  });
+});
+
+describe("the stance keys", () => {
+  const stances = (ticks: PlayerInput[], from: number): string[] => ticks.slice(from).map((t) => (t.prone ? "prone" : t.crouch ? "crouch" : "stand"));
+
+  it("toggle: a press sends the level on every tick after it, and the same key again stands", () => {
+    const { devices, controls, ticks } = setup();
+    devices.press("crouch");
+    controls.update(TICK_DT * 3);
+    expect(stances(ticks, 0)).toEqual(["crouch", "crouch", "crouch"]);
+    devices.press("prone");
+    controls.update(TICK_DT * 2);
+    expect(stances(ticks, 3)).toEqual(["prone", "prone"]);
+    devices.press("crouch");
+    controls.update(TICK_DT);
+    devices.press("crouch");
+    controls.update(TICK_DT * 2);
+    expect(stances(ticks, 5)).toEqual(["crouch", "stand", "stand"]);
+    // The levels survive the pointer leaving: a menu does not stand anyone up.
+    devices.press("prone");
+    controls.update(TICK_DT);
+    devices.locked = false;
+    controls.update(TICK_DT * 2);
+    expect(stances(ticks, 8)).toEqual(["prone", "prone", "prone"]);
+  });
+
+  it("stands for a press of run, and goes down again for a stance key pressed after it", () => {
+    const { devices, controls, ticks } = setup();
+    devices.press("crouch");
+    controls.update(TICK_DT);
+    devices.press("run");
+    controls.update(TICK_DT);
+    devices.press("prone");
+    controls.update(TICK_DT);
+    expect(stances(ticks, 0)).toEqual(["crouch", "stand", "prone"]);
+  });
+
+  it("follows a stand the simulation forced, so the next press crouches again", () => {
+    const { devices, controls, ticks } = setup();
+    const frames = (count: number) => {
+      for (let i = 0; i < count; i++) {
+        controls.update(TICK_DT);
+      }
+    };
+    frames(5);
+    devices.press("crouch");
+    frames(30);
+    expect(controls.player.movement.stance.kind).toBe("crouch");
+
+    // Jump, crouched: the step stands the player up instead of jumping, and says so.
+    const before = ticks.length;
+    devices.press("jump");
+    frames(30);
+    expect(controls.player.movement.stance.kind).toBe("stand");
+    expect(controls.player.movement.grounded).toBe(true);
+    expect(controls.player.movement.jumpFrom).toBeNull();
+    // The tick that carried the press still said crouch; none after it does.
+    const after = stances(ticks, before);
+    expect(after[0]).toBe("crouch");
+    expect(new Set(after.slice(1))).toEqual(new Set(["stand"]));
+
+    devices.press("crouch");
+    frames(30);
+    expect(controls.player.movement.stance.kind).toBe("crouch");
+
+    // A press of run stands the latch up, and the sprint the player with it.
+    devices.hold("forward");
+    devices.press("run");
+    devices.hold("run");
+    frames(3);
+    devices.release("run");
+    frames(40);
+    expect(controls.player.movement.stance.kind).toBe("stand");
+    expect(ticks.at(-1)!.crouch).toBe(false);
+  });
+
+  it("takes its latch from the state it is put in", () => {
+    const { devices, controls, ticks } = setup();
+    devices.press("prone");
+    for (let i = 0; i < 60; i++) {
+      controls.update(TICK_DT);
+    }
+    expect(controls.player.movement.stance.kind).toBe("prone");
+    // Killed and put back standing: the keys ask for nothing.
+    controls.player.place({ x: 0, y: 0, z: 0 }, 0, 0);
+    controls.arrive();
+    const before = ticks.length;
+    controls.update(TICK_DT * 2);
+    expect(stances(ticks, before)).toEqual(["stand", "stand"]);
   });
 });

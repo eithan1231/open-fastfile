@@ -17,6 +17,7 @@ import type { Vec3 } from "../capsule.js";
 import type { PlayerInput } from "../input.js";
 import type { MovementEnv } from "../movementEnv.js";
 import { JUMP_SPEED, WALKING, type LadderMove, type MovementParams, type MovementState } from "../movementState.js";
+import { hullHeight } from "../stance.js";
 import { ladderSlide } from "../stepSlide.js";
 import { UNIT } from "../units.js";
 
@@ -185,10 +186,8 @@ export function ladderNormal(ladder: Readonly<LadderMove>): { x: number; z: numb
 
 /**
  * The yaw a player in state `s` may look along, asked for `yaw`: off the ground
- * on a ladder, no further than LADDER_YAW_CAP from facing it. A step applies it
- * to the input; the camera applies it to the mouse movement no step has spent
- * yet (engine/controls/firstPerson.ts), as the game writes the overshoot into
- * the view's delta angles.
+ * on a ladder, no further than LADDER_YAW_CAP from facing it. One of the caps
+ * sim/view.ts applies, for the step and the camera alike.
  */
 export function ladderYaw(s: Readonly<MovementState>, yaw: number): number {
   if (s.move.kind !== "ladder" || s.grounded) {
@@ -214,6 +213,15 @@ function ladderReach(s: Readonly<MovementState>): number {
   return s.grounded ? LADDER_REACH_GROUND : LADDER_REACH_AIR;
 }
 
+/** The capsule a probe from `s` is cut from: the body as its stance has it. Scratch, refilled per call. */
+const hull: LadderBody = { radius: 0, height: 0 };
+
+function hullOf(s: Readonly<MovementState>, body: MovementParams): LadderBody {
+  hull.radius = body.radius;
+  hull.height = hullHeight(s, body);
+  return hull;
+}
+
 /**
  * The ladder side the grab check's probe meets from `s`, or null: along the
  * view, or straight back into the ladder when climbing one in the air. What the
@@ -228,7 +236,7 @@ export function ladderAhead(s: Readonly<MovementState>, ladders: LadderVolumes, 
     dirX = -normal.x;
     dirZ = -normal.z;
   }
-  return ladders.trace(s.feet, dirX, dirZ, ladderReach(s), body);
+  return ladders.trace(s.feet, dirX, dirZ, ladderReach(s), hullOf(s, body));
 }
 
 /**
@@ -238,11 +246,12 @@ export function ladderAhead(s: Readonly<MovementState>, ladders: LadderVolumes, 
  * to a ladder, but straight back into the ladder once climbing it in the air, so
  * looking away does not let go. Standing, only a player pushing forward holds
  * on, which is how stepping off at the bottom works. A first grab checks a
- * second probe straight in along the side's normal, as the game does.
+ * second probe straight in along the side's normal, as the game does. Nobody
+ * lying down grabs one.
  */
 export function checkLadder(s: MovementState, input: PlayerInput, env: MovementEnv): void {
   const { ladders, body } = env;
-  if (s.ladderLock) {
+  if (s.ladderLock || s.stance.kind === "prone") {
     return;
   }
   if (s.sinceJump < LADDER_GRAB_DELAY) {
@@ -254,7 +263,7 @@ export function checkLadder(s: MovementState, input: PlayerInput, env: MovementE
     if (s.move.kind === "ladder") {
       return;
     }
-    if (ladders.trace(s.feet, -hit.x, -hit.z, ladderReach(s), body)) {
+    if (ladders.trace(s.feet, -hit.x, -hit.z, ladderReach(s), hullOf(s, body))) {
       s.move = { kind: "ladder", facing: Math.atan2(-hit.x, -hit.z) };
       // Whatever jump brought them here is over; the next ground is not its landing.
       s.jumpFrom = null;

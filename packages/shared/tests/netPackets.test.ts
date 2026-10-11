@@ -84,6 +84,8 @@ describe("packets", () => {
       right: -0.5,
       run: true,
       jump: false,
+      crouch: false,
+      prone: true,
       fire: true,
       ads: false,
       reload: true,
@@ -451,12 +453,12 @@ describe("packets", () => {
     //
     // Two bits of an input's count of repeated inputs fit the slack of its last
     // byte, so a client with nothing outstanding sends what it did. In play it
-    // repeats `REDUNDANT_INPUTS` (two) of them, 92 bits each — twelve of `dt`, 55
+    // repeats `REDUNDANT_INPUTS` (two) of them, 94 bits each — twelve of `dt`, 57
     // of command and 25 of the moment it was aimed at, with no seq and no claim —
-    // which is 23 bytes more, the price of a lost datagram costing no input.
+    // which is 24 bytes more, the price of a lost datagram costing no input.
     expect(encodePacket(MessageType.input, input).length).toBeLessThanOrEqual(27);
     const repeated = { ...input, earlier: Array.from({ length: REDUNDANT_INPUTS }, () => input) };
-    expect(encodePacket(MessageType.input, repeated).length).toBeLessThanOrEqual(50);
+    expect(encodePacket(MessageType.input, repeated).length).toBeLessThanOrEqual(51);
     expect(encodePacket(MessageType.snapshot, snapshot).length).toBeLessThanOrEqual(94);
 
     // Still most of an order of magnitude, which is what justifies the machinery.
@@ -503,7 +505,7 @@ describe("packets", () => {
    * — and therefore whether it needs one more byte — depends on how many players
    * the snapshot carried.
    */
-  it("costs nothing for a quiet tail, two bytes for a hit marker and twenty-one for a death", () => {
+  it("costs nothing for a quiet tail, three bytes for a hit marker and twenty-one for a death", () => {
     const { player } = setupPlayer();
     const state = player.snapshot();
     const quiet: SnapshotMessage = { tick: 1, ack: 1, presence: null, players: [{ id: "abc12345", state }], actors: [], counters: [], events: [] };
@@ -530,11 +532,11 @@ describe("packets", () => {
     };
 
     expect(size([])).toBe(encodePacket(MessageType.snapshot, quiet).length);
-    // Two or three, by where the tail starts. Here it is two.
-    expect(size([{ kind: "hit", id: 1, lethal: false }])).toBe(size([]) + 2);
+    // Two or three, by where the tail starts. Here it is three.
+    expect(size([{ kind: "hit", id: 1, lethal: false }])).toBe(size([]) + 3);
     // Twenty-one: the two ids, and three bits of cause.
     expect(size([death])).toBe(size([]) + 21);
-    expect(size([{ kind: "announce", id: 5, what: "go", team: null, value: null, player: null }])).toBe(size([]) + 5);
+    expect(size([{ kind: "announce", id: 5, what: "go", team: null, value: null, player: null }])).toBe(size([]) + 6);
     // Fourteen or fifteen, by where the tail starts: a name is bytes and
     // everything around it is bits, 117 of them. Here it is fifteen.
     expect(size([{ kind: "announce", id: 5, what: "flagTaken", team: 1, value: 3, player: null }])).toBe(size([]) + 15);

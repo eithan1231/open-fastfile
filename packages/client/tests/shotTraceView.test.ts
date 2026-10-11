@@ -30,7 +30,7 @@ import type { ShotTraceMessage } from "@3d/shared/net/messages/shotTrace.js";
 import { HITBOX_FORMAT_VERSION } from "@3d/shared/rig/hitboxes.js";
 import { bindPoseOf } from "@3d/shared/rig/character.js";
 import type { CapsuleWorld, RayHit, Vec3 } from "@3d/shared/sim/capsule.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT, STANDING } from "@3d/shared/sim/movement.js";
 import { aimAngles, aimDirection } from "@3d/shared/sim/recoil.js";
 import type { CharacterSet } from "../src/scene/character.js";
 import type { SidecarSource } from "../src/engine/hitboxView.js";
@@ -71,7 +71,7 @@ function armed(over: Partial<typeof AWKWARD> = {}): Armed {
   // that agreement). `coned` is the fixture for tests that do want one.
   const weapon = { def: it.def, data: { fired: 0, viewKick: { pitch: it.kickPitch, yaw: it.kickYaw }, spread: 0, ads: 0 } };
   return {
-    shooter: { movement: { feet: it.feet, yaw: it.yaw, pitch: it.pitch }, weapon, seed: it.seed },
+    shooter: { movement: { feet: it.feet, yaw: it.yaw, pitch: it.pitch, stance: STANDING, eyeShift: null }, weapon, seed: it.seed },
     fire: (rounds = 1) => {
       weapon.data.fired = (weapon.data.fired + rounds) & 0xffff;
     },
@@ -94,6 +94,7 @@ function ground(wallAt: number | null = null): CapsuleWorld {
       return result;
     },
     overlapsCapsule: () => false,
+    overlapsSweep: () => false,
     groundBelow: () => null,
     // Nothing here has a surface; a flat test floor is `default` either way.
     surfaceAt: () => null,
@@ -163,7 +164,7 @@ describe("the client's own trace", () => {
     who.fire();
     view.update(who.shooter, ground(), [], undefined, 1 / 60);
 
-    expect(view.held[0]!.from).toEqual({ x: 3, y: 1 + EYE_HEIGHT, z: -7 });
+    expect(view.held[0]!.from).toEqual({ x: 3, y: 1 + STAND_EYE_HEIGHT, z: -7 });
     view.dispose();
   });
 
@@ -309,7 +310,7 @@ describe("pairing the two answers", () => {
     });
     return {
       ordinal: 1,
-      from: { x: AWKWARD.feet.x, y: AWKWARD.feet.y + EYE_HEIGHT, z: AWKWARD.feet.z },
+      from: { x: AWKWARD.feet.x, y: AWKWARD.feet.y + STAND_EYE_HEIGHT, z: AWKWARD.feet.z },
       direction,
       distance: BULLET_RANGE,
       met: "none",
@@ -359,7 +360,7 @@ describe("pairing the two answers", () => {
     who.fire();
     view.update(who.shooter, ground(), [], undefined, 0);
     // A server that stopped the same round at 30 m where this end saw open air.
-    const from = { x: 0, y: EYE_HEIGHT, z: 0 };
+    const from = { x: 0, y: STAND_EYE_HEIGHT, z: 0 };
     view.serverTrace(serverSaid({ from, direction: { x: 0, y: 0, z: -1 }, distance: 30, met: "world" }));
 
     expect(view.counts.divergence).toBeCloseTo(BULLET_RANGE - 30, 4);

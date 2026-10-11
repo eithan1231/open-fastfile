@@ -225,7 +225,7 @@ read without their segment. Guard: segments applied; a map over 65,536
 vertices without them is refused.
 
 **Walking into nothing.** Usually the map's own clip brushes, which is correct.
-Press `C` to see them; picking one names its contents and clip material.
+Press `X` to see them; picking one names its contents and clip material.
 
 **Wireframes showing starbursts of lines across the map.** Zero-area triangles
 from clipping. Guard: repeated vertices dropped; the export asserts none

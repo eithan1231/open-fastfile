@@ -3,6 +3,7 @@
 // One entry in the frame's update list ("presenters").
 
 import { shotSpread } from "@3d/shared/sim/recoil.js";
+import { eyeHeight } from "@3d/shared/sim/stance.js";
 import type { CurrentWorld } from "./currentWorld.js";
 import type { Hud } from "./hud.js";
 import type { MatchController } from "./match.js";
@@ -76,8 +77,8 @@ export class Presenters {
    * open its cone by the amount it just zoomed in.
    */
   private updateCone(): void {
-    const weapon = this.systems.firstPerson.player.weapon;
-    const cone = weapon ? shotSpread(weapon.def, weapon.data.spread, weapon.data.ads) : 0;
+    const { weapon, movement } = this.systems.firstPerson.player;
+    const cone = weapon ? shotSpread(weapon.def, weapon.data.spread, weapon.data.ads, eyeHeight(movement)) : 0;
     const half = Math.tan((this.systems.viewer.camera.fov / 2) * DEG);
     this.ui.hud.cone.value = cone > 0 && half > 0 ? Math.tan(cone * DEG) / half : 0;
     // The same prediction and for the same reason: the crosshair gives way to the
@@ -99,16 +100,13 @@ export class Presenters {
       this.useFocus.update(null);
       return;
     }
-    const { feet, yaw, pitch } = player.movement;
     this.useFocus.update({
       world,
       mode: live.presence.mode,
       collision: live,
       presence: live.presence,
       partBounds: (index) => collision.partBounds(index),
-      feet,
-      yaw,
-      pitch,
+      movement: player.movement,
       where: () => this.match.surroundings(session, world),
     });
   }

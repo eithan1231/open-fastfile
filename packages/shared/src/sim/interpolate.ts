@@ -21,7 +21,8 @@
 // failure; this has `tests/interpolate.test.ts`, which round-trips a state with every
 // field distinct and compares the whole object.
 
-import { WALKING, type Move, type MovementState } from "./movementState.js";
+import { CROUCHING, STANDING, WALKING, type EyeShift, type Move, type MovementState, type Stance } from "./movementState.js";
+import { eyePathSeconds, reversedEyePath } from "./stance.js";
 
 /** Turning from `a` to `b` the short way round, so crossing ±π does not spin the body. */
 export function shortestTurn(a: number, b: number): number {
@@ -98,7 +99,56 @@ export function copyMovement(src: MovementState, dst: MovementState): MovementSt
   dst.stride = src.stride;
 
   dst.move = copyMove(src.move, dst.move);
+  dst.stance = copyStance(src.stance, dst.stance);
+  dst.eyeShift = src.eyeShift === null ? null : writeEyeShift(dst.eyeShift, src.eyeShift.path, src.eyeShift.elapsed);
   return dst;
+}
+
+/** `src` as `dst` may keep it: its own object lying down, whose fields a step writes, reused when `dst` is lying too. */
+function copyStance(src: Stance, dst: Stance): Stance {
+  switch (src.kind) {
+    case "stand":
+      return STANDING;
+    case "crouch":
+      return CROUCHING;
+    case "prone":
+      if (dst.kind !== "prone") {
+        return { kind: "prone", heading: src.heading, torso: src.torso };
+      }
+      dst.heading = src.heading;
+      dst.torso = src.torso;
+      return dst;
+  }
+}
+
+/** An eye shift written into `into`, or a new one where there is none to reuse. */
+function writeEyeShift(into: EyeShift | null, path: EyeShift["path"], elapsed: number): EyeShift {
+  if (into === null) {
+    return { path, elapsed };
+  }
+  into.path = path;
+  into.elapsed = elapsed;
+  return into;
+}
+
+/**
+ * The eye between two ticks, as a shift of `out`'s own. Along one leg it is
+ * that leg's clock interpolated. A leg `to` no longer has is run to its end,
+ * where the next begins — unless `to` turned it round, which leaves the eye
+ * where `from` has it.
+ */
+function lerpEyeShift(from: EyeShift | null, to: EyeShift | null, k: number, out: EyeShift | null): EyeShift | null {
+  if (from === null) {
+    return null;
+  }
+  const { path, elapsed } = from;
+  if (to !== null && to.path === path) {
+    return writeEyeShift(out, path, elapsed + (to.elapsed - elapsed) * k);
+  }
+  if (to !== null && to.path === reversedEyePath(path)) {
+    return writeEyeShift(out, path, elapsed);
+  }
+  return writeEyeShift(out, path, elapsed + (eyePathSeconds(path) - elapsed) * k);
 }
 
 /** `src` as `dst` may keep it: its own object for a move with fields a step writes, reused when `dst` is already in that move. */
@@ -171,6 +221,9 @@ export function lerpMovement(from: MovementState, to: MovementState, t: number, 
   out.ladderLock = from.ladderLock;
   out.jumpHeld = from.jumpHeld;
   out.move = from.move;
+  out.stance = from.stance;
+  // The eye is drawn, and from it a peer's shot is placed: it moves between two ticks as the feet do.
+  out.eyeShift = lerpEyeShift(from.eyeShift, to.eyeShift, k, out.eyeShift === from.eyeShift || out.eyeShift === to.eyeShift ? null : out.eyeShift);
   // Timers count down within a tick, so they interpolate; they are also what a
   // landing's fade is timed by, and a body that snapped between two would flicker.
   out.landing = from.landing + (to.landing - from.landing) * k;

@@ -17,7 +17,7 @@
 // adds no link, since the bake saw a gap there.
 
 import type { CapsuleWorld, Vec3 } from "../sim/capsule.js";
-import { HEIGHT, RADIUS } from "../sim/movement.js";
+import { RADIUS, STAND_HEIGHT } from "../sim/movement.js";
 import { STEP_HEIGHT } from "../sim/stepSlide.js";
 import { LINK_STATUS, type NavGraph } from "./graph.js";
 import { NavLinkGrid } from "./grid.js";
@@ -60,7 +60,7 @@ export function linksThroughPart(
     const ay = feet[a + 1]!;
     const by = feet[b + 1]!;
     // Nothing a body on this link could reach: below the part, or wholly above it.
-    if (Math.max(ay, by) + HEIGHT < part.min.y || Math.min(ay, by) - PROBE_MAX_DROP > part.max.y) {
+    if (Math.max(ay, by) + STAND_HEIGHT < part.min.y || Math.min(ay, by) - PROBE_MAX_DROP > part.max.y) {
       continue;
     }
     const dx = feet[b]! - feet[a]!;

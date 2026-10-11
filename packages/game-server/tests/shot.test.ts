@@ -24,7 +24,7 @@ import { createApiClient, type ApiClient } from "@3d/shared/protocol/api.js";
 import type { HttpFetch } from "@3d/shared/protocol/http.js";
 import type { RayHit, Vec3 } from "@3d/shared/sim/capsule.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { aimAngles, aimDirection, coneSample, shotStream, type ViewKick } from "@3d/shared/sim/recoil.js";
 import { hashString } from "@3d/shared/game/random.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
@@ -68,6 +68,10 @@ class Ground {
 
   overlapsCapsule(position: { y: number }): boolean {
     return position.y < 0;
+  }
+
+  overlapsSweep(from: { y: number }, to: { y: number }, radius: number): boolean {
+    return Math.min(from.y, to.y) < radius;
   }
 
   groundBelow(from: { y: number }, distance: number, normal?: Vec3): number | null {
@@ -441,7 +445,7 @@ describe("a shot out of the replay", () => {
     const fire = (lag: number, height: number, limit = 200) => {
       for (let i = 0; i < limit; i++) {
         const feet = feetAt.get(match.tick - lag) ?? feetAt.get(match.tick)!;
-        const pitch = Math.atan2(feet.y + height - EYE_HEIGHT, Math.abs(feet.z));
+        const pitch = Math.atan2(feet.y + height - STAND_EYE_HEIGHT, Math.abs(feet.z));
         const { shots, named, kick, drawn: had } = step({ ...idleInput(0, pitch), fire: true }, lag);
         if (shots.length > 0) {
           return { shot: shots[0]!, named, feet: feetAt.get(named)!, pitch, kick, drawn: had };
@@ -503,7 +507,7 @@ describe("a shot out of the replay", () => {
 
   /** Eye to aim point, which is what a hit's `distance` is within the body's own depth. */
   function reach(feet: Vec3, height: number): number {
-    return Math.hypot(feet.z, feet.y + height - EYE_HEIGHT);
+    return Math.hypot(feet.z, feet.y + height - STAND_EYE_HEIGHT);
   }
 
   it("leaves the shooter's eye, down the line of sight they were drawn — before this round's own kick", async () => {
@@ -522,7 +526,7 @@ describe("a shot out of the replay", () => {
     // client's finished aim would fail.
     expect(first.drawn).toEqual({ pitch: 0, yaw: 0, pitchVel: 0, yawVel: 0 });
     const line = aimDirection(aimAngles({ yaw: 0, pitch: first.pitch }, first.drawn), { x: 0, y: 0, z: 0 });
-    expect(first.shot.from).toEqual({ x: 0, y: EYE_HEIGHT, z: 0 });
+    expect(first.shot.from).toEqual({ x: 0, y: STAND_EYE_HEIGHT, z: 0 });
 
     // The round does *not* leave dead along that line: it leaves inside the cone
     // the weapon's own `hipSpread` allows, which is a few degrees wide from the
@@ -649,7 +653,7 @@ describe("a shot out of the replay", () => {
     // Four inputs in one tick: the first aimed a fifth of a second ago, the rest
     // aimed at this instant. The trigger is down on all four, so the round leaves
     // on the first — and must be judged where that first input was looking.
-    const pitch = Math.atan2(past.y + CHEST - EYE_HEIGHT, Math.abs(past.z));
+    const pitch = Math.atan2(past.y + CHEST - STAND_EYE_HEIGHT, Math.abs(past.z));
     const firing: PlayerInput = { ...idleInput(0, pitch), fire: true };
     const shots = d.volley([
       { command: firing, lag: 12 },

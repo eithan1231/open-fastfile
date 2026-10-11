@@ -6,7 +6,7 @@ builds (`pnpm dev`). Their readouts are the debug overlay (`packages/client/src/
 | Key     | Tool                                                                                          |
 | ------- | --------------------------------------------------------------------------------------------- |
 | `` ` `` | Inspector: hover to read what is under the cursor (the crosshair while walking), click to pin |
-| `C`     | Collider view: off → proxies + clip brushes → everything that collides                        |
+| `X`     | Collider view: off → proxies + clip brushes → everything that collides                        |
 | `M`     | Climb view: mantle volumes and ladders as boxes, and the ones you could climb highlighted     |
 | `B`     | Hit boxes: the volumes a shot is traced against, on the peers wearing them                    |
 | `N`     | Surface view: the collision coloured by what CoD says each triangle is made of                |
@@ -20,11 +20,11 @@ builds (`pnpm dev`). Their readouts are the debug overlay (`packages/client/src/
 | `Q`     | Cycle quality (also in the pause menu)                                                        |
 | `Tab`   | Walk ↔ dollhouse                                                                              |
 
-`M` is its own toggle rather than a third `C` mode on purpose: a mantle volume
+`M` is its own toggle rather than a third `X` mode on purpose: a mantle volume
 is **not** a collider, and putting it under collider view would imply it stops
 you ([collision.md](collision.md#what-is-deliberately-not-a-collider)).
 
-`C`'s third state draws a world's removable parts in orange, and only the ones
+`X`'s third state draws a world's removable parts in orange, and only the ones
 present in this match: what it draws is what the view a player steps through
 collides with ([collision](collision.md#removable-parts)). It follows a part
 coming or going.
@@ -73,7 +73,7 @@ hashed from the name, so a surface is the same colour on every map; `default`
 is deliberately flat grey, because it is the answer for a face that says
 nothing rather than a colour anyone chose.
 
-Its own toggle rather than a fourth `C` mode, for `M`'s reason turned around:
+Its own toggle rather than a fourth `X` mode, for `M`'s reason turned around:
 this **is** the collider geometry, but what it shows is not what stops you. It
 is the one fact about a map that only a footstep can hear, so the only check is
 to look — walk onto the gantry and see whether it is the colour metal is.

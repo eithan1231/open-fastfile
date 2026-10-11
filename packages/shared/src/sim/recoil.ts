@@ -23,7 +23,8 @@
 // is a ratio of two of the games' own numbers and holds at any scale. What Modern
 // Warfare 3 itself does with them is `reverse/iw5-view-kick/README.md`.
 
-import { clampPitch, RUN_SPEED } from "./movement.js";
+import { clampPitch, RUN_SPEED, STAND_EYE_HEIGHT } from "./movement.js";
+import { CROUCH_EYE_HEIGHT, PRONE_EYE_HEIGHT } from "./stance.js";
 import type { WeaponDef, WeaponSpread } from "./weaponDef.js";
 
 const DEG = Math.PI / 180;
@@ -396,17 +397,30 @@ export function stepSpread(spread: number, s: WeaponSpread | undefined, shots: n
  * is that `spread.ads` is 0 on all but a shotgun and a few pistols, and that
  * somebody lining a shot up has usually let the weapon settle.
  *
- * `hipStandMin`/`Max` and not a stance triple because this engine has no stance:
- * the game blends its three pairs on view height, and only the standing pair is
- * ever reachable here (reverse/iw5-bullet-spread/README.md).
+ * The hip cone's two ends are the stance's, blended on `eye` — the shooter's
+ * eye height, m (`eyeHeight`, sim/stance.ts) — from the prone pair to the
+ * ducked one and from that to the standing one, so the cone follows the eye
+ * through a change of stance, its dips included (reverse/iw5-stance/). A weapon
+ * file without a stance's pair shoots as it does one stance up.
  */
-export function shotSpread(def: WeaponDef, heat: number, ads: number): number {
+export function shotSpread(def: WeaponDef, heat: number, ads: number, eye: number): number {
   const s = def.spread;
   if (!s) {
     return 0;
   }
-  const max = Math.min(SPREAD_LIMIT, s.hipStandMax ?? 0);
-  const min = Math.min(max, s.hipStandMin ?? 0);
+  const standMin = s.hipStandMin ?? 0;
+  const standMax = s.hipStandMax ?? 0;
+  const duckedMin = s.hipDuckedMin ?? standMin;
+  const duckedMax = s.hipDuckedMax ?? standMax;
+  const low = eye <= CROUCH_EYE_HEIGHT;
+  // Getting up from prone the eye dips under where it lay, which is no tighter than prone.
+  const share = low
+    ? Math.max(0, (eye - PRONE_EYE_HEIGHT) / (CROUCH_EYE_HEIGHT - PRONE_EYE_HEIGHT))
+    : (eye - CROUCH_EYE_HEIGHT) / (STAND_EYE_HEIGHT - CROUCH_EYE_HEIGHT);
+  const fromMin = low ? (s.hipProneMin ?? duckedMin) : duckedMin;
+  const fromMax = low ? (s.hipProneMax ?? duckedMax) : duckedMax;
+  const max = Math.min(SPREAD_LIMIT, fromMax + ((low ? duckedMax : standMax) - fromMax) * share);
+  const min = Math.min(max, fromMin + ((low ? duckedMin : standMin) - fromMin) * share);
   const hip = min + (max - min) * heat;
   const sights = Math.min(max, s.ads ?? 0);
   return hip + (sights + (max - sights) * heat - hip) * ads;

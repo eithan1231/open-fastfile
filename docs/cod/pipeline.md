@@ -403,7 +403,7 @@ welds, and writes one glTF mesh per group: `solid`, `soup`, a `clip:0x…` group
 per distinct brush contents value and a `clip:soup:0x…` one per soup contents.
 Brushes that do not block the player are dropped. Each group's `extras` carry
 its contents bits, what they block, the clip materials and per-brush triangle
-ranges, which is what lets the in-game collider view (`C`) and inspector name an
+ranges, which is what lets the in-game collider view (`X`) and inspector name an
 invisible wall. `collides: false` marks a group the engine's BVH leaves out —
 water, and the soup clips of the games whose `SOUP_CLIPS_COLLIDE_BY_GAME` entry
 says so ([reference.md](reference.md#collision)).

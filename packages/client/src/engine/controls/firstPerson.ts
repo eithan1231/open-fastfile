@@ -23,17 +23,17 @@
 
 import * as THREE from "three";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { clampPitch, EYE_HEIGHT, type CapsuleWorld, type Vec3 } from "@3d/shared/sim/movement.js";
-import { ladderYaw } from "@3d/shared/sim/moves/ladder.js";
+import type { CapsuleWorld, StanceKind, Vec3 } from "@3d/shared/sim/movement.js";
 import { roundDt, roundInput } from "@3d/shared/net/messages/input.js";
 import { TICK_RATE } from "@3d/shared/net/messages/fields.js";
 import { Player, type PlayerState } from "@3d/shared/sim/player.js";
 import { aimAngles, type Aim } from "@3d/shared/sim/recoil.js";
+import { eyeHeight } from "@3d/shared/sim/stance.js";
 import { DEFAULT_SENSITIVITY, radiansPerCount } from "../../input/sensitivity.js";
 
-type PlayerAction = "forward" | "back" | "left" | "right" | "run" | "jump" | "fire" | "ads" | "reload" | "swap" | "use";
+type PlayerAction = "forward" | "back" | "left" | "right" | "run" | "jump" | "crouch" | "prone" | "fire" | "ads" | "reload" | "swap" | "use";
 
-const PLAYER_ACTIONS: readonly PlayerAction[] = ["forward", "back", "left", "right", "run", "jump", "fire", "ads", "reload", "swap", "use"];
+const PLAYER_ACTIONS: readonly PlayerAction[] = ["forward", "back", "left", "right", "run", "jump", "crouch", "prone", "fire", "ads", "reload", "swap", "use"];
 
 /** The devices this reads. Satisfied by input/InputManager. */
 export interface DeviceInput {
@@ -122,10 +122,19 @@ export class FirstPersonControls {
   private zoom = 1;
   /** Presses seen on any frame since the last tick, so a tap between ticks is not lost. */
   private readonly pressed = new Set<PlayerAction>();
+  /**
+   * The stance the crouch and prone keys have asked for: what `PlayerInput`'s
+   * two levels are held at. The keys toggle it, and it follows the prediction
+   * wherever a step held the player to another stance (`Player.forcedStance`)
+   * or the player was placed afresh, so it never asks for what the simulation
+   * has just refused.
+   */
+  private stance: StanceKind = "stand";
   private accumulator = 0;
   private tickDt = 1 / TICK_RATE;
-  /** The feet before the most recent tick, and how far through to the next one we are drawing. */
+  /** The feet and the eye's height before the most recent tick, and how far through to the next one we are drawing. */
   private readonly previousFeet: Vec3 = { x: 0, y: 0, z: 0 };
+  private previousEye = 0;
   /**
    * The view kick as the tick before last left it, and the kick the camera is
    * actually drawn with — interpolated between the two the way the feet are.
@@ -230,9 +239,8 @@ export class FirstPersonControls {
     this.pending.yaw = this.pending.pitch = 0;
     this.pressed.clear();
     this.input.takeLook();
-    this.previousFeet.x = this.player.movement.feet.x;
-    this.previousFeet.y = this.player.movement.feet.y;
-    this.previousFeet.z = this.player.movement.feet.z;
+    this.stance = this.player.movement.stance.kind;
+    this.holdFeet();
     this.holdKick();
   }
 
@@ -268,6 +276,10 @@ export class FirstPersonControls {
     for (const { input, dt } of pending) {
       this.player.step(input, dt);
     }
+    // Nobody stays down across a death: the next life starts on its feet.
+    if (state.dead) {
+      this.stance = "stand";
+    }
 
     const { feet } = this.player.movement;
     const error = { x: predicted.x - feet.x, y: predicted.y - feet.y, z: predicted.z - feet.z };
@@ -290,9 +302,7 @@ export class FirstPersonControls {
     // The tick's own interpolation is measured from here, and `feet` has just
     // moved: leaving it would slide the camera from the old prediction to the new
     // answer, which is the very motion `smoothing` exists to own.
-    this.previousFeet.x = feet.x;
-    this.previousFeet.y = feet.y;
-    this.previousFeet.z = feet.z;
+    this.holdFeet();
   }
 
   update(dt: number): void {
@@ -370,6 +380,18 @@ export class FirstPersonControls {
 
   /** One fixed step: build the command, round it to what the wire would carry, step, hand it on. */
   private tick(): void {
+    // The stance keys toggle: the key for the stance asked for stands up. So
+    // does a press of run, before them: a sprint is not run while a stance is
+    // asked for, so the later key of the two is the one that wins.
+    if (this.pressed.has("run")) {
+      this.stance = "stand";
+    }
+    if (this.pressed.has("crouch")) {
+      this.stance = this.stance === "crouch" ? "stand" : "crouch";
+    }
+    if (this.pressed.has("prone")) {
+      this.stance = this.stance === "prone" ? "stand" : "prone";
+    }
     const input = this.readInput();
 
     // The symmetry rule (@3d/shared/net/packet.ts): quantized fields are lossy,
@@ -379,12 +401,12 @@ export class FirstPersonControls {
     const rounded = roundInput(input);
     const dt = roundDt(this.tickDt);
 
-    this.previousFeet.x = this.player.movement.feet.x;
-    this.previousFeet.y = this.player.movement.feet.y;
-    this.previousFeet.z = this.player.movement.feet.z;
+    this.holdFeet();
     this.holdKick();
 
     this.player.step(rounded, dt);
+    // A jump or a sprint stood them up, or there was no room for what was asked.
+    this.stance = this.player.forcedStance ?? this.stance;
 
     this.pending.yaw = this.pending.pitch = 0;
     this.pressed.clear();
@@ -405,19 +427,20 @@ export class FirstPersonControls {
    * kick is added once, at the camera, in `placeCamera`.
    */
   private viewYaw(): number {
-    const movement = this.player.movement;
-    return ladderYaw(movement, movement.yaw - this.pending.yaw);
+    return this.player.viewYaw(this.player.movement.yaw - this.pending.yaw);
   }
 
   private viewPitch(): number {
-    return clampPitch(this.player.movement.pitch - this.pending.pitch);
+    return this.player.viewPitch(this.player.movement.pitch - this.pending.pitch);
   }
 
-  /** This tick's keys and mouse as a PlayerInput; nothing held while the pointer is free. */
+  /** This tick's keys and mouse as a PlayerInput; nothing held while the pointer is free, and the stance as it was left. */
   private readInput(): PlayerInput {
     const c = this.command;
     c.yaw = this.viewYaw();
     c.pitch = this.viewPitch();
+    c.crouch = this.stance === "crouch";
+    c.prone = this.stance === "prone";
     if (!this.enabled) {
       c.forward = c.right = 0;
       c.run = c.jump = c.fire = c.ads = c.reload = c.swap = c.use = false;
@@ -471,6 +494,15 @@ export class FirstPersonControls {
     }
   }
 
+  /** Where the feet and the eye are now, kept so the next frame can draw between here and the next tick. */
+  private holdFeet(): void {
+    const movement = this.player.movement;
+    this.previousFeet.x = movement.feet.x;
+    this.previousFeet.y = movement.feet.y;
+    this.previousFeet.z = movement.feet.z;
+    this.previousEye = eyeHeight(movement);
+  }
+
   /** The kick as it stands now, kept so the next frame can draw between it and the next tick's. */
   private holdKick(): void {
     const kick = this.player.weapon?.data.viewKick;
@@ -487,11 +519,14 @@ export class FirstPersonControls {
       Math.abs(feet.z - previous.z) > TELEPORT_DISTANCE;
     const t = this.interpolating && !far ? Math.min(alpha, 1) : 1;
 
-    // Plus whatever is left of the last correction, which is the only place it is
-    // ever applied: the simulation is already exactly what the server said.
+    // The eye is the simulation's, stance and all, and is drawn between two ticks
+    // as the feet are. Plus whatever is left of the last correction, which is the
+    // only place it is ever applied: the simulation is already exactly what the
+    // server said.
+    const eye = this.previousEye + (eyeHeight(this.player.movement) - this.previousEye) * t;
     this.camera.position.set(
       previous.x + (feet.x - previous.x) * t + this.smoothing.x,
-      previous.y + (feet.y - previous.y) * t + EYE_HEIGHT + this.smoothing.y,
+      previous.y + (feet.y - previous.y) * t + eye + this.smoothing.y,
       previous.z + (feet.z - previous.z) * t + this.smoothing.z,
     );
     // The one place the *view* kick is applied on this end — the gun kick is not

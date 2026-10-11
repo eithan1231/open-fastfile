@@ -26,7 +26,7 @@ import {
 } from "@3d/shared/game/scripts/zombies/base.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { NO_BODIES } from "../src/bodies.js";
 import { Match } from "../src/match/match.js";
@@ -54,6 +54,7 @@ const ground = {
     return result;
   },
   overlapsCapsule: (position: { y: number }) => position.y < 0,
+  overlapsSweep: (from: { y: number }, to: { y: number }, radius: number) => Math.min(from.y, to.y) < radius,
   groundBelow: (from: { y: number }, distance: number, normal?: { x: number; y: number; z: number }) => {
     if (from.y < 0 || from.y - distance > 0) {
       return null;
@@ -119,7 +120,7 @@ function world(game: GameKey = "t5"): ResolvedWorld {
   return {
     name: "yard",
     game,
-    spawn: { position: { x: 0, y: EYE_HEIGHT, z: 0 }, look: { x: 0, y: EYE_HEIGHT, z: -1 } },
+    spawn: { position: { x: 0, y: STAND_EYE_HEIGHT, z: 0 }, look: { x: 0, y: STAND_EYE_HEIGHT, z: -1 } },
     spawnPoints: [],
     triggers,
     mantles: [],

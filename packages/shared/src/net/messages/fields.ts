@@ -11,6 +11,7 @@
 import { angle, f32, quant, quat as quatCodec, signed, str, struct, type Codec, type Quat } from "../codec/schema.js";
 import { LAND_WINDOW, type Vec3 } from "../../sim/movement.js";
 import { COMBAT_TIMER_MAX } from "../../sim/player.js";
+import { EYE_SHIFT_MAX } from "../../sim/stance.js";
 import { MAX_STATE_TIME } from "../../sim/weapon.js";
 
 /** Issued by the api for one match, or minted by a game server for a bot. Not a database id. */
@@ -86,6 +87,13 @@ export const shortTimer = quant(0, 1, 8);
 
 /** What is left of a landing: 8 bits over its whole window is 7 ms, under half a tick. */
 export const landTimer = quant(0, LAND_WINDOW, 8);
+
+/**
+ * How far along its path the eye is. Twelve bits is a tenth of a millisecond,
+ * finer than the short timers: the camera is placed from it, and where the eye
+ * moves fastest a millisecond is a fifth of a unit of view height.
+ */
+export const eyeTimer = quant(0, EYE_SHIFT_MAX, 12);
 
 /** A mantle's climb height, m. The tallest the games animate is 1.45 m; 8 bits is under a centimetre. */
 export const climb = quant(0, 2, 8);

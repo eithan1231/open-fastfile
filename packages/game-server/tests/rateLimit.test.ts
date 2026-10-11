@@ -21,7 +21,7 @@ import type { PlayerId } from "@3d/shared/net/messages/fields.js";
 import type { PlayerSnapshot } from "@3d/shared/net/messages/snapshot.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import type { Loadout } from "@3d/shared/sim/loadout.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import type { WeaponData, WeaponState } from "@3d/shared/sim/weapon.js";
 import type { WeaponDef } from "@3d/shared/sim/weaponDef.js";
@@ -56,6 +56,7 @@ const ground = {
     return result;
   },
   overlapsCapsule: (position: { y: number }) => position.y < 0,
+  overlapsSweep: (from: { y: number }, to: { y: number }, radius: number) => Math.min(from.y, to.y) < radius,
   groundBelow: (from: { y: number }, distance: number, normal?: { x: number; y: number; z: number }) => {
     if (from.y < 0 || from.y - distance > 0) {
       return null;
@@ -74,7 +75,7 @@ const ground = {
 
 function world(): ResolvedWorld {
   return {
-    spawn: { position: { x: 0, y: EYE_HEIGHT, z: 0 }, look: { x: 0, y: EYE_HEIGHT, z: -1 } },
+    spawn: { position: { x: 0, y: STAND_EYE_HEIGHT, z: 0 }, look: { x: 0, y: STAND_EYE_HEIGHT, z: -1 } },
     spawnPoints: [],
     triggers: [],
     mantles: [],

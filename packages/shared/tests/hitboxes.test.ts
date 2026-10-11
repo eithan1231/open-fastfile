@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { BoundHitboxes, couldHit, readHitboxes, HITBOX_FORMAT_VERSION } from "../src/rig/hitboxes.js";
 import { bindPoseOf, type CharacterRig } from "../src/rig/character.js";
-import { HEIGHT, RADIUS } from "../src/sim/movement.js";
+import { RADIUS, STAND_HEIGHT as HEIGHT } from "../src/sim/movement.js";
 
 const at = (x: number, y: number, z: number) => ({ x, y, z });
 

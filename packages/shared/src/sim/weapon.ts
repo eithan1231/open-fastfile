@@ -256,6 +256,11 @@ export class WeaponController {
     return this.d.state === "sprintIn" || this.d.state === "sprinting";
   }
 
+  /** Aimed at all, or firing: what holds a lying body where it is (`Carry.braced`). */
+  get braced(): boolean {
+    return this.d.ads > 0 || this.d.state === "firing";
+  }
+
   on(listener: WeaponListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

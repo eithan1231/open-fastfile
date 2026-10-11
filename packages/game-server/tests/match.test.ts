@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { Player } from "@3d/shared/sim/player.js";
 import { Match } from "../src/match/match.js";
 import { decodePacket, encodePacket, MessageType } from "@3d/shared/net/packet.js";
@@ -47,6 +47,10 @@ class FlatGround {
     return position.y < 0;
   }
 
+  overlapsSweep(from: { y: number }, to: { y: number }, radius: number): boolean {
+    return Math.min(from.y, to.y) < radius;
+  }
+
   /** Nothing here is shot at; the floor is for standing on. */
   traceRay(): null {
     return null;
@@ -73,7 +77,7 @@ class FlatGround {
 /** The least world that satisfies the rules Match applies: a spawn, no terrain, no rooms. */
 function world(): ResolvedWorld {
   return {
-    spawn: { position: { x: 0, y: EYE_HEIGHT, z: 0 }, look: { x: 0, y: EYE_HEIGHT, z: -1 } },
+    spawn: { position: { x: 0, y: STAND_EYE_HEIGHT, z: 0 }, look: { x: 0, y: STAND_EYE_HEIGHT, z: -1 } },
     spawnPoints: [],
     triggers: [],
     mantles: [],
@@ -94,8 +98,8 @@ function worldWithSpawns(xs: number[]): ResolvedWorld {
   return {
     ...world(),
     spawnPoints: xs.map((x) => ({
-      position: { x, y: EYE_HEIGHT, z: 0 },
-      look: { x, y: EYE_HEIGHT, z: -1 },
+      position: { x, y: STAND_EYE_HEIGHT, z: 0 },
+      look: { x, y: STAND_EYE_HEIGHT, z: -1 },
       modes: ["tdm"],
       start: true,
     })),

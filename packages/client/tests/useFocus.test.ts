@@ -7,7 +7,7 @@ import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import type { GameView } from "@3d/shared/game/context.js";
 import type { Script } from "@3d/shared/game/hooks.js";
 import type { CapsuleWorld } from "@3d/shared/sim/capsule.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { createMovement, STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { Presence } from "@3d/shared/worlds/presence.js";
 import type { AudioSystem } from "../src/engine/audio/system.js";
 import { ClientScripts } from "../src/app/scripts.js";
@@ -21,7 +21,7 @@ const air = { ready: true, traceRay: () => null } as unknown as CapsuleWorld;
 const world = {
   triggers: [
     { id: 1, tags: ["zone"], position: { x: 0, y: 1, z: 0 }, yaw: 0, size: { x: 4, y: 2, z: 4 } },
-    { id: 2, tags: ["zombie_door"], target: "backstage", use: "near", position: { x: 0, y: EYE_HEIGHT, z: -1 }, yaw: 0, size: { x: 1, y: 1, z: 0.1 } },
+    { id: 2, tags: ["zombie_door"], target: "backstage", use: "near", position: { x: 0, y: STAND_EYE_HEIGHT, z: -1 }, yaw: 0, size: { x: 1, y: 1, z: 0.1 } },
   ],
   solids: [],
 } as unknown as ResolvedWorld;
@@ -36,9 +36,7 @@ function setup(scripts: Script[] = []) {
     collision: air,
     presence,
     partBounds: () => undefined,
-    feet: { x: 0, y: 0, z: 0 },
-    yaw: 0,
-    pitch: 0,
+    movement: createMovement({ x: 0, y: 0, z: 0 }, 0, 0),
     where: () => ({ view: { gametype: { id: "test" }, map: "m" } as unknown as GameView, self: { id: "me", bot: false, points: 0 } }),
     ...over,
   });
@@ -72,7 +70,7 @@ describe("the use prompt", () => {
     const { ui, focus, frame } = setup();
     focus.update(frame());
     expect(ui.hud.use.value).not.toBeNull();
-    focus.update(frame({ feet: { x: 0, y: 0, z: 3 } }));
+    focus.update(frame({ movement: createMovement({ x: 0, y: 0, z: 3 }, 0, 0) }));
     expect(ui.hud.use.value).toBeNull();
     focus.update(frame());
     focus.update(null);
@@ -90,7 +88,7 @@ describe("the use prompt", () => {
     const { ui, focus, frame } = setup();
     focus.update(frame());
     const first = ui.hud.use.value;
-    focus.update(frame({ yaw: 0.01 }));
+    focus.update(frame({ movement: createMovement({ x: 0, y: 0, z: 0 }, 0.01, 0) }));
     expect(ui.hud.use.value).toBe(first);
   });
 });

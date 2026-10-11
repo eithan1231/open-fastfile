@@ -46,6 +46,7 @@ const ground = {
     return result;
   },
   overlapsCapsule: (position: { y: number }) => position.y < 0,
+  overlapsSweep: (from: { y: number }, to: { y: number }, radius: number) => Math.min(from.y, to.y) < radius,
   groundBelow: (from: { y: number }, distance: number, normal?: { x: number; y: number; z: number }) => {
     if (from.y < 0 || from.y - distance > 0) {
       return null;

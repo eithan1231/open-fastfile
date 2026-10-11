@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
 import { collisionGroupMesh } from "../src/collision/source.js";
-import { HEIGHT, RADIUS } from "../src/sim/movement.js";
+import { RADIUS, STAND_HEIGHT as HEIGHT } from "../src/sim/movement.js";
 import { Presence } from "../src/worlds/presence.js";
 
 const MATERIAL = new THREE.MeshBasicMaterial();

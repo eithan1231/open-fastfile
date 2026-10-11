@@ -21,7 +21,7 @@ import { linksThroughParts } from "@3d/shared/nav/parts.js";
 import { HEADER_FLAGS } from "@3d/shared/nav/vocab.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { movementRules } from "@3d/shared/sim/worldRules.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { basePresence, presenceFor } from "@3d/shared/worlds/presence.js";
@@ -34,7 +34,7 @@ const TICK_RATE = 60;
 function world(): ResolvedWorld {
   return {
     name: "doorway",
-    spawn: { position: { x: 0, y: EYE_HEIGHT, z: 0 }, look: { x: 0, y: EYE_HEIGHT, z: -1 } },
+    spawn: { position: { x: 0, y: STAND_EYE_HEIGHT, z: 0 }, look: { x: 0, y: STAND_EYE_HEIGHT, z: -1 } },
     spawnPoints: [],
     triggers: [],
     mantles: [],

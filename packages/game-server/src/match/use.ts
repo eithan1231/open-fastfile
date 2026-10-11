@@ -41,7 +41,7 @@ export class Interactions {
       return;
     }
     const player = this.view.player(member.id)!;
-    const viewer = viewerAt(member.player.movement.feet, input.yaw, input.pitch);
+    const viewer = viewerAt(member.player.movement, input.yaw, input.pitch);
     const thing = focusOf(this.collision, things, this.presence, viewer, (t) => usableBy(this.scripts.list, this.view, t, player));
     if (thing) {
       this.pressed.push({ id: member.id, thing });

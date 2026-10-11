@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
 import { idleInput } from "../src/sim/input.js";
-import { createMovement, EMPTY_HANDS, HEIGHT, movementEnv, NO_CLIMBS, PLAYER_MOVEMENT, RADIUS, stepMovement } from "../src/sim/movement.js";
+import { createMovement, EMPTY_HANDS, movementEnv, NO_CLIMBS, PLAYER_MOVEMENT, RADIUS, STAND_HEIGHT as HEIGHT, stepMovement } from "../src/sim/movement.js";
 import { STEP_HEIGHT } from "../src/sim/stepSlide.js";
 
 const DT = 1 / 60;

@@ -12,11 +12,11 @@ import type { ResolvedSolid, ResolvedTrigger } from "../../src/dsl/resolved.js";
 import { DEFAULT_USE, focusOf, USE_RULE, usableBy, usableThings, viewerAt, type UsableThing, type UseVerdict } from "../../src/game/focus.js";
 import type { GameView, PlayerView } from "../../src/game/context.js";
 import type { Script } from "../../src/game/hooks.js";
-import { EYE_HEIGHT } from "../../src/sim/movement.js";
+import { createMovement, STAND_EYE_HEIGHT } from "../../src/sim/movement.js";
 import { Presence } from "../../src/worlds/presence.js";
 
 const at = (x: number, y: number, z: number) => ({ x, y, z });
-const EYE = EYE_HEIGHT;
+const EYE = STAND_EYE_HEIGHT;
 
 function box(size: [number, number, number], centre: [number, number, number], part?: string): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size).translate(...centre));
@@ -61,7 +61,7 @@ function focus(
   yaw = 0,
   feet = at(0, 0, 0),
 ) {
-  return focusOf(world.collision.view(world.presence), things, world.presence, viewerAt(feet, yaw, 0), usable);
+  return focusOf(world.collision.view(world.presence), things, world.presence, viewerAt(createMovement(feet, yaw, 0), yaw, 0), usable);
 }
 
 describe("focusOf", () => {

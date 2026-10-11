@@ -7,6 +7,8 @@ export type Action =
   | "right"
   | "run"
   | "jump"
+  | "crouch"
+  | "prone"
   | "fire"
   | "ads"
   | "reload"
@@ -54,6 +56,9 @@ export const DEFAULT_BINDINGS: Bindings = {
   right: { keys: ["KeyD", "ArrowRight"], scope: "walk", label: "Move right" },
   run: { keys: ["ShiftLeft", "ShiftRight"], scope: "walk", label: "Run" },
   jump: { keys: ["Space"], scope: "walk", label: "Jump" },
+  // Toggles: a press of the key for the stance you are in stands you up.
+  crouch: { keys: ["KeyC"], scope: "walk", label: "Crouch" },
+  prone: { keys: ["ControlLeft"], scope: "walk", label: "Go prone" },
   fire: { keys: ["Mouse0"], scope: "walk", label: "Fire" },
   ads: { keys: ["Mouse2"], scope: "walk", label: "Aim down sights" },
   reload: { keys: ["KeyR"], scope: "walk", label: "Reload" },
@@ -67,7 +72,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   menu: { keys: ["Escape"], scope: "always", label: "Pause" },
   quality: { keys: ["KeyQ"], scope: "always", label: "Cycle quality" },
   inspector: { keys: ["Backquote"], scope: "world", label: "Inspector", dev: true },
-  colliders: { keys: ["KeyC"], scope: "world", label: "Collider view", dev: true },
+  colliders: { keys: ["KeyX"], scope: "world", label: "Collider view", dev: true },
   mantles: { keys: ["KeyM"], scope: "world", label: "Mantle volumes and ladders", dev: true },
   hitboxes: { keys: ["KeyB"], scope: "world", label: "Hit boxes on other players", dev: true },
   surfaces: { keys: ["KeyN"], scope: "world", label: "Collision by surface type", dev: true },
@@ -94,6 +99,9 @@ export function keyLabel(code: string): string {
   }
   if (code.startsWith("Shift")) {
     return "Shift";
+  }
+  if (code.startsWith("Control")) {
+    return "Ctrl";
   }
   return { Backquote: "`", Escape: "Esc", Space: "Space", Tab: "Tab" }[code] ?? code;
 }

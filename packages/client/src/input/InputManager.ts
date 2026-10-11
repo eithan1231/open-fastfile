@@ -192,7 +192,9 @@ export class InputManager {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     // Modified keys belong to the browser (Ctrl+C copies from a panel), and typing in a field to the UI.
-    if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) {
+    // Control pressed on its own modifies nothing: it is a key, and one a binding may name.
+    const modified = (e.ctrlKey && !e.code.startsWith("Control")) || e.metaKey || e.altKey;
+    if (modified || isTyping(e.target)) {
       return;
     }
     if (this.press(e.code, e.repeat)) {

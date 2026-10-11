@@ -14,7 +14,7 @@
 // a large solid touches none and stands on whatever is below it.
 
 import type { CapsuleWorld, Vec3 } from "../sim/capsule.js";
-import { HEIGHT, RADIUS } from "../sim/movement.js";
+import { RADIUS, STAND_HEIGHT } from "../sim/movement.js";
 import { STEP_HEIGHT } from "../sim/stepSlide.js";
 import type { NavNodes } from "./format.js";
 import { NODE_REASON, NODE_REASON_NAMES } from "./graph.js";
@@ -39,7 +39,7 @@ export const SNAP_NUDGE = 0.35;
 const LIP_SAMPLES = Array.from({ length: 8 }, (_, k) => [Math.cos((k * Math.PI) / 4) * RADIUS, Math.sin((k * Math.PI) / 4) * RADIUS] as const);
 
 /** A body's height above a step: what `bodyClear` tests, so a kerb or a slope underfoot is not "inside". */
-const UPPER_HEIGHT = HEIGHT - STEP_HEIGHT;
+const UPPER_HEIGHT = STAND_HEIGHT - STEP_HEIGHT;
 
 const probe: Vec3 = { x: 0, y: 0, z: 0 };
 const resolved = { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };

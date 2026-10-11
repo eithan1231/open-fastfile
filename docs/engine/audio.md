@@ -470,8 +470,8 @@ and cannot say whether they land on the beat.
   with the run key, which is the sprint clip. So the walk speed is the bank's
   `run` and the run speed is its `sprint`, and `walk` is what is left underneath — a
   landing's slowdown, a strafe into a wall, the first ticks off a standstill.
-  `prone` and `scrape` are **unreachable**: there is no stance below standing and
-  no slide, and neither is invented an alias here. The thresholds
+  `prone` and `scrape` are **unreachable**: a gait is chosen by speed alone, so a
+  crouched or prone player's steps are the `walk`'s, and there is no slide. The thresholds
   (`gaitFor`) sit _between_ the two plateaus rather than on them, because
   `accelerate` stops exactly at its target and a threshold there is decided by
   the last bit of a float — twice a second, for ever.

@@ -14,7 +14,7 @@ import * as THREE from "three";
 import type { PlayerInput } from "@3d/shared/sim/input.js";
 import { idleInput } from "@3d/shared/sim/input.js";
 import type { CapsuleResolution, CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { Player, type PlayerState } from "@3d/shared/sim/player.js";
 import { TICK_RATE } from "@3d/shared/net/messages/fields.js";
 import { FirstPersonControls, type DeviceInput } from "../src/engine/controls/firstPerson.js";
@@ -33,6 +33,7 @@ const ground: CapsuleWorld = {
     return result;
   },
   overlapsCapsule: (position: Vec3) => position.y < 0,
+  overlapsSweep: (from: Vec3, to: Vec3, radius: number) => Math.min(from.y, to.y) < radius,
   groundBelow: (from: Vec3, distance: number, normal?: Vec3) => {
     if (from.y < 0 || from.y - distance > 0) {
       return null;
@@ -234,6 +235,6 @@ describe("reconciliation", () => {
     controls.reconcile(state, []);
     controls.update(0);
     expect(camera.position.x).toBe(40);
-    expect(camera.position.y).toBe(EYE_HEIGHT);
+    expect(camera.position.y).toBe(STAND_EYE_HEIGHT);
   });
 });

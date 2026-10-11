@@ -14,8 +14,9 @@ import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import type { NavMatchState } from "@3d/shared/nav/dynamic.js";
 import type { SnapshotPresence } from "@3d/shared/net/messages/snapshot.js";
 import type { PhysicsWorld } from "@3d/shared/physics/world.js";
-import type { CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
-import { HEIGHT, RADIUS } from "@3d/shared/sim/movement.js";
+import type { CapsuleWorld } from "@3d/shared/sim/capsule.js";
+import { PLAYER_MOVEMENT, type MovementState } from "@3d/shared/sim/movement.js";
+import { hullHeight } from "@3d/shared/sim/stance.js";
 import type { WorldIndex } from "@3d/shared/worlds/worldIndex.js";
 import { solidsNamed, type Presence } from "@3d/shared/worlds/presence.js";
 
@@ -129,7 +130,7 @@ export class MatchParts {
   }
 }
 
-/** Whether a capsule standing at `feet` is inside `part`. */
-export function capsuleIn(part: CapsuleWorld, feet: Vec3): boolean {
-  return part.overlapsCapsule(feet, RADIUS, HEIGHT);
+/** Whether a player in state `s` is inside `part`: their capsule as their stance has it. */
+export function capsuleIn(part: CapsuleWorld, s: Readonly<MovementState>): boolean {
+  return part.overlapsCapsule(s.feet, PLAYER_MOVEMENT.radius, hullHeight(s, PLAYER_MOVEMENT));
 }
