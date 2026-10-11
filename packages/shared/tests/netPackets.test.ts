@@ -643,7 +643,7 @@ describe("the simulation over the wire", () => {
     expect(y.movement.feet.z).toBeCloseTo(x.movement.feet.z, 3);
     expect(y.movement.velocity.x).toBeCloseTo(x.movement.velocity.x, 3);
     expect(y.movement.grounded).toBe(x.movement.grounded);
-    expect(y.movement.jumped).toBe(x.movement.jumped);
+    expect(y.movement.jumpFrom === null).toBe(x.movement.jumpFrom === null);
     // The weapon's state machine is discrete: it must agree exactly, or a field
     // it branches on is missing from the schema.
     expect(y.weapon!.state).toBe(x.weapon!.state);

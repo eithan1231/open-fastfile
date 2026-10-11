@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import type { ResolvedWorld } from "@3d/shared/dsl/resolved.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { createMovement, EYE_HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
+import { createMovement, EYE_HEIGHT, WALKING, type MovementState } from "@3d/shared/sim/movement.js";
 import { lerpMovement } from "@3d/shared/sim/interpolate.js";
 import { TICK_RATE } from "@3d/shared/net/messages/fields.js";
 import { Match } from "../src/match/match.js";
@@ -37,17 +37,30 @@ const ground = {
     position: { x: number; y: number; z: number },
     _r: number,
     _h: number,
-    out?: { position: { x: number; y: number; z: number }; grounded: boolean },
+    out?: { position: { x: number; y: number; z: number }; grounded: boolean; normal: { x: number; y: number; z: number } },
   ) {
-    const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false };
+    const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
     result.position.x = position.x;
     result.position.y = Math.max(position.y, 0);
     result.position.z = position.z;
     result.grounded = position.y <= 0;
+    result.normal.x = 0;
+    result.normal.y = result.grounded ? 1 : 0;
+    result.normal.z = 0;
     return result;
   },
   overlapsCapsule: (position: { y: number }) => position.y < 0,
-  groundBelow: (from: { y: number }, distance: number) => (from.y >= 0 && from.y - distance <= 0 ? 0 : null),
+  groundBelow: (from: { y: number }, distance: number, normal?: { x: number; y: number; z: number }) => {
+    if (from.y < 0 || from.y - distance > 0) {
+      return null;
+    }
+    if (normal) {
+      normal.x = 0;
+      normal.y = 1;
+      normal.z = 0;
+    }
+    return 0;
+  },
   // Nothing here has a surface; a flat test floor is `default` either way.
   surfaceAt: () => null,
   traceRay: () => null,
@@ -348,17 +361,17 @@ describe("the ring itself", () => {
   });
 
   it("carries a climb into the past and out of it again", () => {
-    // The two nullable fields are the only things `copyMovement` allocates, and the
-    // only ones that can be stale: a player who has stopped climbing must not still
-    // be on a ladder in a slot that is reused.
+    // The move is the only thing `copyMovement` allocates, and the only thing
+    // that can be stale: a player who has stopped climbing must not still be on
+    // a ladder in a slot that is reused.
     const h = new PlayerHistory(3);
     const live = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
-    live.ladder = { facing: 1.25 };
+    live.move = { kind: "ladder", facing: 1.25 };
     h.record(1, live);
-    live.ladder = null;
+    live.move = WALKING;
     h.record(2, live);
-    expect(h.at(1)!.ladder).toEqual({ facing: 1.25 });
-    expect(h.at(2)!.ladder).toBeNull();
+    expect(h.at(1)!.move).toEqual({ kind: "ladder", facing: 1.25 });
+    expect(h.at(2)!.move.kind).toBe("walk");
   });
 
   it("samples a single tick when there is no next one to reach towards", () => {

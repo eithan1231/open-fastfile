@@ -10,8 +10,9 @@
 // disagree about moves a player metres.
 
 import type { ResolvedSpawn, ResolvedWorld } from "../dsl/resolved.js";
-import { LadderVolumes } from "./ladder.js";
-import { MantleVolumes } from "./mantle.js";
+import { LadderVolumes } from "./moves/ladder.js";
+import { MantleVolumes } from "./moves/mantle.js";
+import type { MovementRules } from "./movementEnv.js";
 import type { Player } from "./player.js";
 
 /** How far below the spawn a player has to fall before respawning, m. */
@@ -24,23 +25,15 @@ export function applyWorldRules(player: Player, world: ResolvedWorld, spawn?: Re
   player.setKillPlane(world.spawn.position.y - KILL_PLANE_MARGIN);
   const at = spawn ?? world.spawn;
   player.setSpawn(at.position, at.look);
-  // Built here rather than held by the caller: a world's mantle volumes are one
-  // of its rules, and this is the one place a world imposes those on a player.
-  const rules = movementRules(world);
-  player.setMantles(rules.mantles);
-  player.setLadders(rules.ladders);
-}
-
-/** The climbs a world allows, as a movement step takes them. */
-export interface MovementRules {
-  mantles: MantleVolumes;
-  ladders: LadderVolumes;
+  // Built here rather than held by the caller: a world's climbs are one of its
+  // rules, and this is the one place a world imposes those on a player.
+  player.setClimbs(movementRules(world));
 }
 
 /**
- * A world's mantle volumes and ladders, built the one way a player gets them.
- * The navigation bake simulates its links with these too (nav/validate.ts), so a
- * link it calls walkable is one a player in this world can walk.
+ * A world's mantle volumes and ladders, built the one way a mover gets them:
+ * a player here, an actor and the navigation bake (nav/validate.ts) by calling
+ * this, so a link the bake calls walkable is one a player in this world can walk.
  */
 export function movementRules(world: Pick<ResolvedWorld, "mantles" | "ladders">): MovementRules {
   return { mantles: new MantleVolumes(world.mantles), ladders: new LadderVolumes(world.ladders) };

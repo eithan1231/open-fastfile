@@ -9,7 +9,7 @@ import { defineBrain } from "../../src/game/bots/brain.js";
 import { SEEK_ARRIVE, SEEK_PERIOD, seekNearest } from "../../src/game/bots/brains/seekNearest.js";
 import { zombie, ZOMBIE } from "../../src/game/bots/brains/zombie.js";
 import { BotDriver, type BotTurn } from "../../src/game/bots/driver.js";
-import { Motor } from "../../src/game/bots/motor.js";
+import { ARRIVE_SLACK, Motor } from "../../src/game/bots/motor.js";
 import type { Objective } from "../../src/game/bots/objective.js";
 import { NavPlanner } from "../../src/game/bots/planner.js";
 import { BRAINS, brainFor } from "../../src/game/bots/registry.js";
@@ -19,7 +19,17 @@ import { allocateGraph, LINK_STATUS, NavGraph } from "../../src/nav/graph.js";
 import { ABILITIES, LINK_KINDS } from "../../src/nav/vocab.js";
 import type { Vec3 } from "../../src/sim/capsule.js";
 import { idleInput } from "../../src/sim/input.js";
-import { createMovement, RUN_SPEED, stepMovement, type MovementState } from "../../src/sim/movement.js";
+import {
+  createMovement,
+  EMPTY_HANDS,
+  movementEnv,
+  NO_CLIMBS,
+  PLAYER_MOVEMENT,
+  RUN_SPEED,
+  stepMovement,
+  type MovementEnv,
+  type MovementState,
+} from "../../src/sim/movement.js";
 import { boxWorld, FLOOR, navFile, type Box } from "../navWorld.js";
 
 const DT = 1 / 60;
@@ -276,7 +286,7 @@ class Sim {
   ordered = 0;
   objective: Objective = { kind: "none" };
   readonly trail: Vec3[] = [];
-  private readonly world;
+  private readonly env: MovementEnv;
 
   constructor(
     readonly driver: BotDriver,
@@ -285,7 +295,7 @@ class Sim {
     start: Vec3,
     readonly people: Someone[],
   ) {
-    this.world = boxWorld([FLOOR, ...boxes]);
+    this.env = movementEnv(boxWorld([FLOOR, ...boxes]), NO_CLIMBS, PLAYER_MOVEMENT);
     this.nav = planner(graph);
     this.m = createMovement(start, 0, 0);
     this.m.grounded = true;
@@ -310,7 +320,7 @@ class Sim {
       };
       const input = idleInput(this.m.yaw, this.m.pitch);
       this.driver.think(turn, input);
-      stepMovement(this.m, input, DT, this.world, true);
+      stepMovement(this.m, input, DT, this.env, EMPTY_HANDS);
       this.trail.push({ ...this.m.feet });
     }
   }
@@ -347,7 +357,8 @@ describe("a bot driven by a brain", () => {
       expect(sim.driver.motor.status === "stuck" || sim.driver.motor.status === "noPath").toBe(false);
     }
     sim.step(60);
-    expect(horizontal(sim.m.feet, quarry.feet)).toBeLessThanOrEqual(SEEK_ARRIVE + 0.1);
+    // There, by the motor's own account: within its slack of where it arrived.
+    expect(horizontal(sim.m.feet, quarry.feet)).toBeLessThanOrEqual(SEEK_ARRIVE + ARRIVE_SLACK);
   });
 
   it("stands still when it can reach nobody", () => {

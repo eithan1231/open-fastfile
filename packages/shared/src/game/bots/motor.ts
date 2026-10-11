@@ -171,7 +171,7 @@ export class Motor implements MotorView {
       }
     }
 
-    const settled = m.grounded && m.mantle === null && m.ladder === null;
+    const settled = m.grounded && m.move.kind === "walk";
     const arrive = Math.max(goal.arrive ?? FOLLOW_ARRIVE, FOLLOW_ARRIVE);
     const horizontal = Math.hypot(this.point.x - m.feet.x, this.point.z - m.feet.z);
     if (settled && Math.abs(this.point.y - m.feet.y) <= ARRIVE_DY && horizontal <= arrive + (this.here ? ARRIVE_SLACK : 0)) {
@@ -197,7 +197,7 @@ export class Motor implements MotorView {
     // in hand, only standing and between traversals, so a move is never left half
     // made. A mover whose runtime crosses its traversals is never in one here.
     const animated = nav.mover.animatesTraversals;
-    const mayPlan = cursor ? settled && (animated || !this.onTraversal(nav)) : m.mantle === null && (m.grounded || m.ladder !== null);
+    const mayPlan = cursor ? settled && (animated || !this.onTraversal(nav)) : m.move.kind === "ladder" || (m.move.kind === "walk" && m.grounded);
     if ((this.stale || !cursor) && mayPlan) {
       if (!this.plan(m, dt, nav)) {
         this.halted = true;

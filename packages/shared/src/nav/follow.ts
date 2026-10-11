@@ -13,7 +13,8 @@
 // stops, which is when a body is against the obstacle and a mantle can start.
 
 import type { PlayerInput } from "../sim/input.js";
-import type { MovementState, Vec3 } from "../sim/movement.js";
+import { JUMP_REPEAT, type MovementState, type Vec3 } from "../sim/movement.js";
+import { stopDistance } from "../sim/moves/walk.js";
 import { LINK_KINDS, TRAVERSAL_KINDS } from "./vocab.js";
 
 /** A path's end is reached within this horizontally, m, standing on the ground. */
@@ -30,18 +31,20 @@ export const FOLLOW_RUN_BEYOND = 2;
 export const FOLLOW_STUCK_PROGRESS = 0.05;
 /** ...in this many ticks on the ground or a ladder. A flight or a mantle always ends, and does not count. */
 export const FOLLOW_STUCK_TICKS = 30;
+/** In the air this many ticks is a flight; fewer is a moment off the ground, and counts as ticks on it. */
+const FOLLOW_FLIGHT_TICKS = 15;
 /** Stuck too after this many ticks without the ground, a ladder or a mantle: a flight that never lands. */
 const FOLLOW_AIR_TICKS = 180;
 /** Stuck too after this many jumps against an obstacle with no progress between them: a ledge out of reach. */
 const FOLLOW_JUMP_TRIES = 4;
-/** A long jump across is run at and taken off this far past its begin node, m: by then a run has most of its speed. */
+/** A jump across is taken off this far past its begin node, m: by then a body has most of its speed. */
 const JUMP_RUNUP = 0.3;
 /**
- * A jump across longer than this, m, is run at. A shorter one is walked to its
- * edge and jumped from there: a running jump carries 3.5 m, a walking one about
- * 2, and one that overshoots a short gap lands past its end.
+ * A jump across longer than this, m, is run at, and a shorter one walked at: a
+ * walking jump carries about 3 m at full speed and a running one half as far
+ * again, and one that overshoots a short gap lands past its end.
  */
-const RUN_ACROSS = 3.5;
+const RUN_ACROSS = 2.4;
 /** Forward motion under this share of what the velocity asks for, on the ground, is a body against something. */
 const BLOCKED_SHARE = 0.3;
 /** Up a ladder at full speed: `climbLadder`'s vertical share saturates past about 0.36 rad. */
@@ -181,10 +184,10 @@ export function followPath(m: Readonly<MovementState>, cursor: NavCursor, graph:
       return "stuck";
     }
 
-    const settled = m.mantle === null && m.ladder === null && (m.grounded || m.coyote > 0);
+    const settled = m.move.kind === "walk" && m.grounded;
     const level = Math.abs(dy) <= FOLLOW_ARRIVE_DY;
     if (last) {
-      if (horizontal <= FOLLOW_ARRIVE && level && settled && m.grounded) {
+      if (horizontal <= FOLLOW_ARRIVE && level && settled) {
         nextLeg(cursor);
         if (onGoal) {
           cursor.index = count + 1;
@@ -211,16 +214,21 @@ export function followPath(m: Readonly<MovementState>, cursor: NavCursor, graph:
     // themselves, and neither is a player getting nowhere. Back on the ground (or
     // a ladder), progress is measured afresh from where they came down.
     const distance = Math.hypot(horizontal, dy);
-    if (m.mantle) {
+    if (m.move.kind === "mantle") {
       cursor.airborne = 1;
-    } else if (!m.grounded && !m.ladder) {
+    } else if (!m.grounded && m.move.kind !== "ladder") {
       if (++cursor.airborne >= FOLLOW_AIR_TICKS) {
         return "stuck";
       }
-    } else if (cursor.airborne > 0) {
+    } else if (cursor.airborne >= FOLLOW_FLIGHT_TICKS) {
       cursor.airborne = 0;
       cursor.best = distance;
       cursor.sinceBest = 0;
+    } else if (cursor.airborne > 0) {
+      // Off the ground for a moment is not a flight: a body jammed where nothing
+      // is under it leaves and finds the ground over and over, getting nowhere.
+      cursor.sinceBest += cursor.airborne;
+      cursor.airborne = 0;
     } else if (distance < cursor.best - FOLLOW_STUCK_PROGRESS) {
       cursor.best = distance;
       cursor.sinceBest = 0;
@@ -231,10 +239,14 @@ export function followPath(m: Readonly<MovementState>, cursor: NavCursor, graph:
 
     const facing = horizontal > 0.05 ? yawAlong(dx, dz) : m.yaw;
     if (onGoal || graph.kind[link] === LINK_KINDS.WALK) {
-      if (m.ladder) {
+      if (m.move.kind === "ladder") {
         leaveLadder(m, cursor, out, facing);
       } else {
         walk(out, facing, horizontal, horizontal > FOLLOW_RUN_BEYOND || nextIsWalk);
+        // Where the path stops, the keys are let go as far out as the skid is long.
+        if (m.grounded && stopsWithin(cursor, graph, tx, tz, horizontal, stopDistance(speed))) {
+          out.forward = 0;
+        }
       }
       return "moving";
     }
@@ -242,11 +254,42 @@ export function followPath(m: Readonly<MovementState>, cursor: NavCursor, graph:
   }
 }
 
-/** Press jump against an obstacle: a press is an edge, so never two ticks running. */
-function press(cursor: NavCursor, out: PlayerInput, blocked: boolean): void {
+/**
+ * Whether the path stops within `reach` of the feet, walking all the way: this
+ * leg's target is `horizontal` off at (tx, tz), and the legs after it are added
+ * until they pass `reach`, end, or are not a walk.
+ */
+function stopsWithin(cursor: NavCursor, graph: FollowGraph, tx: number, tz: number, horizontal: number, reach: number): boolean {
+  const f = graph.feet;
+  const count = cursor.links.length;
+  let total = horizontal;
+  let x = tx;
+  let z = tz;
+  for (let i = cursor.index + 1; i < count && total <= reach; i++) {
+    const link = cursor.links[i]!;
+    if (graph.kind[link] !== LINK_KINDS.WALK) {
+      return false;
+    }
+    const to = graph.target[link]! * 3;
+    total += Math.hypot(f[to]! - x, f[to + 2]! - z);
+    x = f[to]!;
+    z = f[to + 2]!;
+  }
+  if (cursor.goal && cursor.index < count) {
+    total += Math.hypot(cursor.goal.x - x, cursor.goal.z - z);
+  }
+  return total <= reach;
+}
+
+/**
+ * Press jump against an obstacle: a press is an edge, so never two ticks
+ * running. One too soon after the last jump to be another still climbs a
+ * ledge that offers a climb, and is not counted as a jump tried.
+ */
+function press(m: Readonly<MovementState>, cursor: NavCursor, out: PlayerInput, blocked: boolean): void {
   out.jump = blocked && !cursor.pressed;
   cursor.pressed = out.jump;
-  if (out.jump) {
+  if (out.jump && m.sinceJump >= JUMP_REPEAT) {
     cursor.tries++;
   }
 }
@@ -292,11 +335,12 @@ function traverse(
 
   const kind = graph.traversalKind[link];
   const ladder = kind === TRAVERSAL_KINDS.LADDER_UP || kind === TRAVERSAL_KINDS.LADDER_DOWN;
-  if (m.mantle) {
+  const move = m.move;
+  if (move.kind === "mantle") {
     out.yaw = along;
     return true;
   }
-  if (m.ladder && !ladder) {
+  if (move.kind === "ladder" && !ladder) {
     leaveLadder(m, cursor, out, facing);
     return true;
   }
@@ -312,27 +356,26 @@ function traverse(
       // which the forward key carries onto anything a jump clears. A jump down
       // walks off its edge, and presses only where a railing is in the way.
       walk(out, facing, horizontal, false);
-      press(cursor, out, blocked);
+      press(m, cursor, out, blocked);
       return true;
 
     case TRAVERSAL_KINDS.JUMP_ACROSS: {
       const long = across > RUN_ACROSS;
       walk(out, facing, horizontal, long);
-      if (!cursor.jumped) {
+      if (m.jumpFrom !== null && !m.grounded) {
+        cursor.jumped = true;
+      } else if (!cursor.jumped && m.grounded && !cursor.pressed) {
+        // A jump is taken from the ground or not at all, so it is pressed
+        // before the edge: past the run-up, or against something sooner.
         const run = ((m.feet.x - bx) * ax + (m.feet.z - bz) * az) / Math.max(across, 1e-6);
-        // Off the edge within the coyote window, against something, or — with no
-        // edge met — past a long jump's run-up or half a short one's length.
-        const edge = !m.grounded && m.coyote > 0 && m.velocity.y <= 0;
-        if (edge || blocked || (m.grounded && run >= (long ? JUMP_RUNUP : across / 2))) {
-          out.jump = true;
-          cursor.jumped = true;
-        }
+        out.jump = blocked || run >= JUMP_RUNUP;
       }
+      cursor.pressed = out.jump;
       return true;
     }
 
     case TRAVERSAL_KINDS.LADDER_UP:
-      if (m.ladder) {
+      if (move.kind === "ladder") {
         cursor.phase = 1;
         out.yaw = along;
         out.pitch = LADDER_UP_PITCH;
@@ -345,14 +388,14 @@ function traverse(
       return true;
 
     case TRAVERSAL_KINDS.LADDER_DOWN:
-      if (m.ladder) {
+      if (move.kind === "ladder") {
         cursor.phase = 1;
         // At the foot, standing: let go of forward, which lets go of the ladder.
         if (m.grounded) {
           out.yaw = m.yaw;
           return true;
         }
-        out.yaw = m.ladder.facing + Math.PI;
+        out.yaw = move.facing + Math.PI;
         out.pitch = LADDER_DOWN_PITCH;
         out.forward = 1;
         return true;

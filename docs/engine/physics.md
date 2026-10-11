@@ -86,7 +86,7 @@ takes a second.
 > and permanent for anything here. The client steps corpses in `onSnapshot`, once per
 > server tick.
 
-Gravity is `GRAVITY` from `sim/movement.ts`, the games' own 18 m/s², not 9.81: a body
+Gravity is `GRAVITY` from `sim/movement.ts`, the games' own 800 units/s², not 9.81: a body
 that falls at a different rate from the player who shot it reads as a bug.
 
 ## The map

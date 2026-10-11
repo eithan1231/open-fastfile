@@ -4,7 +4,7 @@
 // bug here is a shot landing where nobody was.
 
 import { describe, expect, it } from "vitest";
-import { createMovement, type MovementState } from "../src/sim/movement.js";
+import { createMovement, WALKING, type MantleMove, type Move, type MovementState } from "../src/sim/movement.js";
 import { copyMovement, lerpMovement, shortestPhase, shortestTurn, teleported, TELEPORT_DISTANCE } from "../src/sim/interpolate.js";
 
 function at(x: number, z: number): MovementState {
@@ -73,12 +73,11 @@ describe("lerpMovement", () => {
   it("takes discrete state from `from`, because there is no half a ladder", () => {
     const from = at(0, 0);
     const to = at(1, 0);
-    from.ladder = { facing: 1 };
+    from.move = { kind: "ladder", facing: 1 };
     from.grounded = false;
-    to.ladder = null;
     to.grounded = true;
     const out = lerpMovement(from, to, 0.5, at(0, 0));
-    expect(out.ladder).toEqual({ facing: 1 });
+    expect(out.move).toEqual({ kind: "ladder", facing: 1 });
     expect(out.grounded).toBe(false);
   });
 
@@ -126,12 +125,9 @@ function distinctive(): MovementState {
     yaw: 0.7,
     pitch: -0.3,
     grounded: true,
-    coyote: 0.11,
-    jumpBuffer: 0.22,
-    jumped: true,
+    jumpFrom: 2.25,
     landing: 0.33,
-    mantle: { target: { x: 9, y: 8, z: 7 }, left: 0.44, rise: 1.25, over: true },
-    ladder: { facing: 2.1 },
+    move: { kind: "mantle", target: { x: 9, y: 8, z: 7 }, left: 0.44, rise: 1.25, over: true },
     ladderLock: true,
     sinceJump: 0.55,
     jumpHeld: true,
@@ -157,11 +153,24 @@ describe("every field survives", () => {
     const dst = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
     copyMovement(src, dst);
     src.feet.x = 999;
-    src.mantle!.target.y = 999;
-    src.ladder!.facing = 999;
+    (src.move as MantleMove).target.y = 999;
     expect(dst.feet.x).toBe(1.5);
-    expect(dst.mantle!.target.y).toBe(8);
-    expect(dst.ladder!.facing).toBe(2.1);
+    expect((dst.move as MantleMove).target.y).toBe(8);
+  });
+
+  it("copyMovement copies every kind of move, over every kind", () => {
+    const moves: Move[] = [WALKING, { kind: "mantle", target: { x: 9, y: 8, z: 7 }, left: 0.44, rise: 1.25, over: true }, { kind: "ladder", facing: 2.1 }];
+    for (const from of moves) {
+      for (const over of moves) {
+        const src = { ...distinctive(), move: structuredClone(from) };
+        const dst = { ...distinctive(), move: structuredClone(over) };
+        copyMovement(src, dst);
+        expect(dst.move, `${from.kind} over ${over.kind}`).toEqual(from);
+        if (from.kind !== "walk") {
+          expect(dst.move).not.toBe(src.move);
+        }
+      }
+    }
   });
 
   it("lerpMovement at t = 0 is its start, all of it", () => {

@@ -18,7 +18,7 @@ import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
 import type { Script } from "@3d/shared/game/hooks.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { EYE_HEIGHT, WALK_SPEED } from "@3d/shared/sim/movement.js";
 import { CATALOG_VERSION, WeaponRegistry } from "@3d/shared/sim/weaponRegistry.js";
 import { presenceFor } from "@3d/shared/worlds/presence.js";
 import { NO_BODIES } from "../src/bodies.js";
@@ -152,7 +152,8 @@ describe("occupancy", () => {
     m.join("a");
     settle(m);
     ctx().world.setPresent("door", false);
-    for (let i = 0; i < 150; i++) {
+    // Eight metres at a walk: to the middle of the far zone.
+    for (let i = 0; i < (8 / WALK_SPEED) * TICK_RATE; i++) {
       send(m, "a", { forward: 1 });
     }
     // Every trigger is occupied, usable or not: the door's buy volume on the way.

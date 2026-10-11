@@ -10,7 +10,16 @@ import { allocateGraph } from "../src/nav/graph.js";
 import { LINK_KINDS, TRAVERSAL_KINDS, type TraversalKind } from "../src/nav/vocab.js";
 import type { CapsuleWorld } from "../src/sim/capsule.js";
 import { idleInput } from "../src/sim/input.js";
-import { createMovement, horizontalSpeed, RUN_SPEED, stepMovement, type MovementState } from "../src/sim/movement.js";
+import {
+  createMovement,
+  EMPTY_HANDS,
+  horizontalSpeed,
+  movementEnv,
+  PLAYER_MOVEMENT,
+  RUN_SPEED,
+  stepMovement,
+  type MovementState,
+} from "../src/sim/movement.js";
 import { movementRules } from "../src/sim/worldRules.js";
 import { boxWorld, FLOOR, type Box } from "./navWorld.js";
 
@@ -43,7 +52,7 @@ function drive(
   links: number[],
   opts: { goal?: { x: number; y: number; z: number }; mantles?: ResolvedMantle[]; ticks?: number } = {},
 ) {
-  const rules = movementRules({ mantles: opts.mantles ?? [], ladders: [] });
+  const env = movementEnv(world, movementRules({ mantles: opts.mantles ?? [], ladders: [] }), PLAYER_MOVEMENT);
   const s = createMovement({ x: graph.feet[0]!, y: graph.feet[1]!, z: graph.feet[2]! }, 0, 0);
   const cursor = createCursor(links, DT, opts.goal ?? null);
   const input = idleInput(0, 0);
@@ -55,7 +64,7 @@ function drive(
     if (status !== "moving") {
       break;
     }
-    stepMovement(s, input, DT, world, true, rules.mantles, rules.ladders);
+    stepMovement(s, input, DT, env, EMPTY_HANDS);
     trace.push(structuredClone(s));
   }
   return { s, status, ticks, trace, cursor };
@@ -174,7 +183,7 @@ describe("following a path", () => {
       ["MANTLE_OVER"],
     );
     const { status, trace } = drive(world, graph, [0], { mantles: [volume] });
-    expect(trace.some((s) => s.mantle !== null)).toBe(true);
+    expect(trace.some((s) => s.move.kind === "mantle")).toBe(true);
     expect(status).toBe("arrived");
   });
 });

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { MantleView } from "../src/engine/mantleView.js";
 import { CollisionWorld } from "@3d/shared/collision/world.js";
-import { MantleVolumes } from "@3d/shared/sim/mantle.js";
+import { MantleVolumes } from "@3d/shared/sim/moves/mantle.js";
 import { createMovement, HEIGHT, RADIUS } from "@3d/shared/sim/movement.js";
 import type { ResolvedLadder, ResolvedMantle } from "@3d/shared/dsl/resolved.js";
 
@@ -51,6 +51,8 @@ function railWorld(): CollisionWorld {
 }
 
 const BODY = { radius: RADIUS, height: HEIGHT };
+/** Where a body faces the rail from: just clear of its near face. */
+const STAND = -(0.1 + RADIUS + 0.02);
 
 /** Every vertex the main wireframe drew, as Vector3s. */
 function vertices(view: MantleView): THREE.Vector3[] {
@@ -110,13 +112,13 @@ describe("MantleView", () => {
     const world = railWorld();
 
     // Standing on the -Z side, looking across the slab at +Z (yaw 0 faces -Z).
-    const state = createMovement({ x: 0, y: 0, z: -0.4 }, Math.PI, 0);
+    const state = createMovement({ x: 0, y: 0, z: STAND }, Math.PI, 0);
     expect(view.update(state, world)).not.toBeNull();
     expect(view.liveClimb).toEqual(query.find(state.feet, state.yaw, BODY, world));
     expect(view.liveObject.visible).toBe(true);
 
     // Turned away: the simulation refuses it, so the view must stop drawing it.
-    const away = createMovement({ x: 0, y: 0, z: -0.4 }, 0, 0);
+    const away = createMovement({ x: 0, y: 0, z: STAND }, 0, 0);
     expect(view.update(away, world)).toBeNull();
     expect(query.find(away.feet, away.yaw, BODY, world)).toBeNull();
     expect(view.liveObject.visible).toBe(false);
@@ -126,14 +128,14 @@ describe("MantleView", () => {
     const view = new MantleView();
     view.build([volume()]);
     view.setVisible(true);
-    const state = createMovement({ x: 0, y: 0, z: -0.4 }, Math.PI, 0);
+    const state = createMovement({ x: 0, y: 0, z: STAND }, Math.PI, 0);
     const found = view.update(state, railWorld())!;
     const position = view.liveObject.geometry.getAttribute("position") as THREE.BufferAttribute;
     const at = (i: number) => new THREE.Vector3().fromBufferAttribute(position, i);
     // After the box's 24 vertices: feet → corner, corner → landing.
-    expect(at(24).toArray()).toEqual([0, 0, expect.closeTo(-0.4, 5)]);
+    expect(at(24).toArray()).toEqual([0, 0, expect.closeTo(STAND, 5)]);
     expect(at(25).y).toBeCloseTo(found.feet.y, 5);
-    expect(at(25).z).toBeCloseTo(-0.4, 5);
+    expect(at(25).z).toBeCloseTo(STAND, 5);
     expect(at(27).z).toBeCloseTo(found.feet.z, 5);
   });
 
@@ -141,10 +143,10 @@ describe("MantleView", () => {
     const view = new MantleView();
     view.build([volume()]);
     view.setVisible(true);
-    view.update(createMovement({ x: 0, y: 0, z: -0.4 }, Math.PI, 0), railWorld());
+    view.update(createMovement({ x: 0, y: 0, z: STAND }, Math.PI, 0), railWorld());
     expect(view.liveClimb).not.toBeNull();
     view.setVisible(false);
-    view.update(createMovement({ x: 0, y: 0, z: -0.4 }, Math.PI, 0), railWorld());
+    view.update(createMovement({ x: 0, y: 0, z: STAND }, Math.PI, 0), railWorld());
     expect(view.liveClimb).toBeNull();
   });
 

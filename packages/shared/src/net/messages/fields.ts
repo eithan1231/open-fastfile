@@ -9,7 +9,7 @@
 // safe in a predict-and-replay loop.
 
 import { angle, f32, quant, quat as quatCodec, signed, str, struct, type Codec, type Quat } from "../codec/schema.js";
-import type { Vec3 } from "../../sim/movement.js";
+import { LAND_WINDOW, type Vec3 } from "../../sim/movement.js";
 import { COMBAT_TIMER_MAX } from "../../sim/player.js";
 import { MAX_STATE_TIME } from "../../sim/weapon.js";
 
@@ -77,13 +77,15 @@ export const TICK_RATE = 60;
 export const TICK_DT = 1 / TICK_RATE;
 
 /**
- * The short movement timers: coyote time, the jump buffer, the landing slowdown,
- * the time since a jump (which stops counting at half a second), and the time
- * left of a mantle. Everything measured by one must stay under a
- * second — `tests/movement.test.ts` asserts that of the mantle, which is the
- * only one long enough to be worth checking.
+ * The short movement timers: the time since a jump (which stops counting at
+ * half a second) and the time left of a mantle. Everything measured by one
+ * must stay under a second — `tests/mantleMovement.test.ts` asserts that of the
+ * mantle, which is the only one long enough to be worth checking.
  */
 export const shortTimer = quant(0, 1, 8);
+
+/** What is left of a landing: 8 bits over its whole window is 7 ms, under half a tick. */
+export const landTimer = quant(0, LAND_WINDOW, 8);
 
 /** A mantle's climb height, m. The tallest the games animate is 1.45 m; 8 bits is under a centimetre. */
 export const climb = quant(0, 2, 8);

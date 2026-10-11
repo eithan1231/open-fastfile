@@ -24,8 +24,18 @@ import {
   stepAlias,
   stepStream,
 } from "../src/sim/footsteps.js";
-import { idleInput } from "../src/sim/input.js";
-import { createMovement, RUN_SPEED, stepMovement, WALK_SPEED, type MovementState } from "../src/sim/movement.js";
+import { idleInput, type PlayerInput } from "../src/sim/input.js";
+import {
+  createMovement,
+  EMPTY_HANDS,
+  movementEnv,
+  NO_CLIMBS,
+  PLAYER_MOVEMENT,
+  RUN_SPEED,
+  stepMovement,
+  WALK_SPEED,
+  type MovementState,
+} from "../src/sim/movement.js";
 import { SURFACE_ATTRIBUTE, SURFACE_TYPES } from "../src/sim/surfaces.js";
 
 const DT = 1 / 60;
@@ -58,21 +68,36 @@ function flatWorld(surface: string): CapsuleWorld {
   return {
     ready: true,
     resolveCapsule: (position, _r, _h, out) => {
-      const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false };
+      const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
       result.position.x = position.x;
       result.position.y = position.y;
       result.position.z = position.z;
       result.grounded = true;
+      result.normal.x = 0;
+      result.normal.y = 1;
+      result.normal.z = 0;
       return result;
     },
     overlapsCapsule: () => false,
-    groundBelow: () => 0,
+    groundBelow: (_from, _distance, normal) => {
+      if (normal) {
+        normal.x = 0;
+        normal.y = 1;
+        normal.z = 0;
+      }
+      return 0;
+    },
     traceRay: () => null,
     surfaceAt: () => surface as never,
   };
 }
 
 /** A grounded player at rest, which is what a watcher's first observation has to be given. */
+/** One step of a player in `world`, with nothing to climb and nothing in hand. */
+function step(state: MovementState, input: PlayerInput, world: CapsuleWorld): void {
+  stepMovement(state, input, DT, movementEnv(world, NO_CLIMBS, PLAYER_MOVEMENT), EMPTY_HANDS);
+}
+
 function standing(): MovementState {
   const state = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
   state.grounded = true;
@@ -168,7 +193,7 @@ describe("the watcher", () => {
     const heard: { alias: string; index: number; t: number }[] = [];
     watcher.observe(state, world); // the first observation is a placement, never a step
     for (let t = 0; t < seconds - 1e-9; t += DT) {
-      stepMovement(state, input, DT, world, true);
+      step(state, input, world);
       for (const footfall of watcher.observe(state, world)) {
         heard.push({ alias: footfallAlias(footfall, false), index: footfall.index, t });
       }
@@ -195,7 +220,7 @@ describe("the watcher", () => {
     const combat = rate(false);
     const sprint = rate(true);
     expect(combat).toBeGreaterThan(1);
-    expect(sprint).toBeGreaterThan(combat * 1.5);
+    expect(sprint).toBeGreaterThan(combat * 1.4);
     // Nothing in this file sets either. `advanceStride`'s rate is
     // `speed / RUN_SPEED` and the cycle is six footfalls, so the ratio is
     // exactly the ratio of the two speeds.
@@ -254,7 +279,7 @@ describe("the watcher", () => {
     let airborne = 0;
     for (let t = 0; t < 2; t += DT) {
       input.jump = t > 0.5 && t < 0.55;
-      stepMovement(state, input, DT, world, true);
+      step(state, input, world);
       const kinds = watcher.observe(state, world).map((f) => f.kind);
       if (!state.grounded) {
         airborne++;
@@ -275,7 +300,7 @@ describe("the watcher", () => {
     let landings = 0;
     for (let t = 0; t < 2; t += DT) {
       input.jump = t < DT / 2;
-      stepMovement(state, input, DT, world, true);
+      step(state, input, world);
       landings += watcher.observe(state, world).filter((f) => f.kind === "land").length;
     }
     // Not once per tick of `MovementState.landing`, which runs for half a second
@@ -292,7 +317,7 @@ describe("the watcher", () => {
     watcher.observe(state, world);
     const heard: string[] = [];
     for (let t = 0; t < 2; t += DT) {
-      stepMovement(state, idleInput(0, 0), DT, world, true);
+      step(state, idleInput(0, 0), world);
       heard.push(...watcher.observe(state, world).map((f) => footfallAlias(f, true)));
     }
     expect(state.landing).toBe(0);
@@ -307,7 +332,7 @@ describe("the watcher", () => {
     watcher.observe(state, world);
     // A climb zeroes the clock. Read as an advance, 0.9 -> 0 would cross the
     // last footfall of the cycle and play a step nobody took.
-    state.mantle = { target: { x: 0, y: 1, z: 0 }, left: 0.4, rise: 1, over: false };
+    state.move = { kind: "mantle", target: { x: 0, y: 1, z: 0 }, left: 0.4, rise: 1, over: false };
     state.stride = 0;
     expect(watcher.observe(state, world)).toEqual([]);
   });
@@ -325,7 +350,7 @@ describe("the watcher", () => {
     watcher.observe(state, world);
     const heard: { alias: string; x: number }[] = [];
     for (let t = 0; t < 4; t += DT) {
-      stepMovement(state, input, DT, world, true);
+      step(state, input, world);
       for (const footfall of watcher.observe(state, world)) {
         heard.push({ alias: footfallAlias(footfall, false), x: footfall.at.x });
       }

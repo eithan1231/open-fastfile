@@ -27,11 +27,40 @@ triangles become a BVH in ~130 ms.
 A capsule, moved by `@3d/shared`'s `sim/movement.ts` ([player](player.md)),
 which reaches collision only through the `CapsuleWorld` interface in
 `sim/capsule.ts` — that is what keeps the simulation itself free of three.js.
-The capsule's rounded bottom slides up any ledge shorter than its radius; a
-move blocked by a taller one, up to 18 units (0.46 m), steps up
-([player](player.md#what-a-player-can-do)). Resolution is three-mesh-bvh's character-controller
-technique: shapecast the capsule, and push its segment out of every triangle
-closer than the radius. Repeated each frame, it settles onto what it stands on.
+Resolution is three-mesh-bvh's character-controller technique: shapecast the
+capsule, and push its segment out of every triangle closer than the radius.
+Repeated each frame, it settles onto what it stands on.
+
+### Ground
+
+The movement rules are a box's: it stands on a ledge with any of itself over
+it, and a trace under it names one plane. A capsule pushed out of triangles has
+neither, so `resolveCapsule` says what holds it up in terms that give the same
+answers ([player](player.md#what-a-player-can-do) has the rules themselves).
+
+- **`CapsuleResolution.normal` is the contact's direction**, from what the
+  capsule touches to its axis, not a face's normal. `radius × (1 − normal.y)` is
+  therefore how far above the feet the contact is: how tall the ledge is whose
+  corner the bottom rests on.
+- **`grounded` is the face rule.** A contact facing up by 0.7 or more is ground.
+  So is the corner of a face that level, as far round the bottom as 0.3
+  (`SLOPE_NORMAL_Y`): a box would be standing on that face. Past 0.3 the corner
+  is beside the capsule, and holds nothing up.
+- **What only touches is asked too** (`TOUCH`): pushed off the wall face of a
+  corner, the capsule rests against the top face without sinking into it, and
+  which of the two a shapecast visits first is nobody's rule.
+- **Wedged is ground.** Held up by nothing under it and still pushed up more
+  than aside, the capsule is in a groove between two ledges, where a box stands
+  on both.
+- **Only what is under it lifts it straight up.** A contact facing up by 0.7 or
+  more is cleared vertically, so a standing body does not creep downhill; a
+  corner further round, and a wall, push along their own direction.
+- **`groundBelow` can say what it found**: the face's normal under a point, which
+  is what a walk lays its velocity along.
+
+A move that needs a ledge's height takes it from the contact, and one that meets
+a corner from beside in the air stands off it as it would a wall
+(`sim/stepSlide.ts`).
 
 ## Three colliders
 
@@ -348,7 +377,7 @@ the only thing that can see this go wrong.
 volume encloses the ledge it marks, so one that collided would be an invisible
 wall round every ledge in the map. They are not in `collision.glb` either — the
 exporter writes them as world-file nodes precisely so that nothing can sweep
-them into a collision mesh by accident. `sim/mantle.ts` holds them, and asks the
+them into a collision mesh by accident. `sim/moves/mantle.ts` holds them, and asks the
 collision the rest through `CapsuleWorld`: where the ledge is
 (`groundBelow`, a ray straight down) and whether the capsule fits on the way
 (`overlapsCapsule`, which treats touching as clear).

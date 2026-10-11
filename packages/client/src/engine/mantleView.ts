@@ -28,11 +28,10 @@
 
 import * as THREE from "three";
 import type { ResolvedLadder, ResolvedMantle } from "@3d/shared/dsl/resolved.js";
-import { LadderVolumes, type LadderHit } from "@3d/shared/sim/ladder.js";
-import { MantleVolumes, type MantleTarget } from "@3d/shared/sim/mantle.js";
+import { ladderAhead, LadderVolumes, type LadderHit } from "@3d/shared/sim/moves/ladder.js";
+import { MantleVolumes, type MantleTarget } from "@3d/shared/sim/moves/mantle.js";
 import type { CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
-import { HEIGHT, RADIUS, type MovementState } from "@3d/shared/sim/movement.js";
-import { ladderAhead } from "@3d/shared/sim/ladder.js";
+import { PLAYER_MOVEMENT, type MovementState } from "@3d/shared/sim/movement.js";
 
 /** The 12 edges of a box as index pairs into the 8 corners `corners` produces. */
 const BOX_EDGES: readonly [number, number][] = [
@@ -224,7 +223,7 @@ export class MantleView {
       this.liveLadder = null;
       return null;
     }
-    this.liveLadder = ladderAhead(movement, this.ladders);
+    this.liveLadder = ladderAhead(movement, this.ladders, PLAYER_MOVEMENT);
     this.ladderObject.visible = this.liveLadder !== null;
     if (this.liveLadder) {
       const box = corners(this.liveLadder.ladder, this.scratch);
@@ -235,7 +234,7 @@ export class MantleView {
       });
       position.needsUpdate = true;
     }
-    const found = this.query.find(movement.feet, movement.yaw, { radius: RADIUS, height: HEIGHT }, world);
+    const found = this.query.find(movement.feet, movement.yaw, PLAYER_MOVEMENT, world);
     // Redrawn every frame it is found: the path starts at the player's feet,
     // and the face — so the landing — changes as they walk round the volume.
     this.live = found;
@@ -259,7 +258,7 @@ export class MantleView {
     // A cross at the landing, at the feet height the climb ends on: where the
     // player will actually be standing, which is the half of a mantle that no
     // amount of looking at the box tells you.
-    const r = RADIUS;
+    const r = PLAYER_MOVEMENT.radius;
     points.push(tx - r, ty, tz, tx + r, ty, tz, tx, ty, tz - r, tx, ty, tz + r, tx, ty, tz, tx, ty + 0.25, tz);
 
     const position = this.liveObject.geometry.getAttribute("position") as THREE.BufferAttribute;

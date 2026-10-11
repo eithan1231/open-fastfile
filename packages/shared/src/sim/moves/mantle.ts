@@ -12,10 +12,9 @@
 //
 // What a volume means is in dsl/resolved.ts's `ResolvedMantle`.
 
-import type { ResolvedMantle } from "../dsl/resolved.js";
-import type { CapsuleWorld, Vec3 } from "./capsule.js";
-import type { MovementState } from "./movementState.js";
-import { COYOTE_TIME } from "./stepSlide.js";
+import type { ResolvedMantle } from "../../dsl/resolved.js";
+import type { CapsuleWorld, Vec3 } from "../capsule.js";
+import { WALKING, type MantleMove, type MovementState } from "../movementState.js";
 
 /**
  * The tallest climb there is, metres.
@@ -30,9 +29,9 @@ import { COYOTE_TIME } from "./stepSlide.js";
 export const MAX_CLIMB = 57 * 0.0254;
 
 /**
- * The shortest climb worth playing, metres. Below this the capsule's own rounded
- * bottom already slides up the ledge (RADIUS is 0.3 m), so a mantle would
- * replace walking up a kerb with a scripted animation.
+ * The shortest climb worth playing, metres. Below this a walk steps onto the
+ * ledge (STEP_HEIGHT) or a jump clears it, so a mantle would replace either
+ * with a scripted animation.
  */
 export const MIN_CLIMB = 0.35;
 
@@ -395,15 +394,16 @@ export function mantleDuration(rise: number): number {
 
 /** Begin a climb: from here the player is on rails until `advanceMantle` finishes it. */
 export function startMantle(s: MovementState, target: MantleTarget): void {
-  s.mantle = {
+  s.move = {
+    kind: "mantle",
     target: { x: target.feet.x, y: target.feet.y, z: target.feet.z },
     left: mantleDuration(target.rise),
     rise: target.rise,
     over: target.over,
   };
-  s.jumpBuffer = 0; // spent on the climb, or it jumps the moment the climb ends
-  s.coyote = 0;
-  s.jumped = false;
+  // Whatever jump brought them here is over; the ledge is not its landing.
+  s.jumpFrom = null;
+  s.landing = 0;
   s.velocity.x = 0;
   s.velocity.y = 0;
   s.velocity.z = 0;
@@ -423,8 +423,7 @@ export function startMantle(s: MovementState, target: MantleTarget): void {
  * That is what lets a server replaying the same inputs from the same state land
  * in the same place, rather than approximately there.
  */
-export function advanceMantle(s: MovementState, dt: number): void {
-  const mantle = s.mantle!;
+export function advanceMantle(s: MovementState, mantle: MantleMove, dt: number): void {
   if (dt >= mantle.left) {
     s.feet.x = mantle.target.x;
     s.feet.y = mantle.target.y;
@@ -432,13 +431,9 @@ export function advanceMantle(s: MovementState, dt: number): void {
     s.velocity.x = 0;
     s.velocity.y = 0;
     s.velocity.z = 0;
-    s.mantle = null;
-    // Standing on what they climbed, with the ground's forgiveness armed: a
-    // player who holds jump through a mantle jumps as they arrive, as they
-    // would off any other landing. No `landing` slowdown — a climb is not a fall.
+    s.move = WALKING;
+    // Standing on what they climbed; the next walk step says whether it is ground.
     s.grounded = true;
-    s.coyote = COYOTE_TIME;
-    s.landing = 0;
     return;
   }
 

@@ -434,7 +434,7 @@ and rejected:** a player accelerating from a standstill crosses `IDLE_SPEED` in 
 single tick, so a speed-derived crossfade lasts 17 ms and is no smoother than the
 switch it replaced. That one is `MovementState.gait`, a smoothed boolean stepped in
 `stepMovement` (`advanceBlends`), with `airborne` beside it rather than derived from
-`coyote`, `sinceJump` and `landing` between them — those would each cover one way of
+`jumpFrom`, `sinceJump` and `landing` between them — those would each cover one way of
 leaving the ground and disagree about walking off a ledge.
 
 Two bytes, `GAIT_BLEND` is the animator's original 0.18 s, and the ramps are stepped

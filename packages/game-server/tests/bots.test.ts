@@ -278,9 +278,9 @@ describe.skipIf(!exported)("bots on dome-mw3", () => {
     // navBake.test.ts's numbers, from a bake run in one go: slicing changes nothing.
     expect({ usable: summary.usable, valid: summary.valid, invalid: summary.invalid, derived: summary.derived }).toEqual({
       usable: 508,
-      valid: 4148,
-      invalid: 2798,
-      derived: { pairs: 3471, candidates: 6940, probed: 4147, valid: 4144 },
+      valid: 3945,
+      invalid: 3003,
+      derived: { pairs: 3472, candidates: 6942, probed: 3945, valid: 3941 },
     });
     // A slice is NAV_SLICE_MS and one link's simulation past it; a garbage
     // collection can add to that, a whole bake held in one go would be seconds.

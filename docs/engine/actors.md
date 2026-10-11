@@ -59,11 +59,11 @@ plus:
 - `sounds?`: what it sounds like, as roles mapped to aliases in one game's
   catalogue bank ([its sound](#its-sound)). Absent, it is silent.
 
-**The zombie** is `t5/zombie_ger`, Kino der Toten's honour guard. It keeps the
-player's capsule (0.3 m by 1.7 m) rather than the entry's `size` (the aitype's
-32 by 72 in box, 0.41 m by 1.83 m): the graph's nodes were stood and its parts'
-corridors sampled with a player's body, and the game's links pass close enough
-to walls that a wider one would rub.
+**The zombie** is `t5/zombie_ger`, Kino der Toten's honour guard. Its capsule is
+0.3 m by 1.7 m, narrower than a player's and than the entry's `size` (the
+aitype's 32 by 72 in box, 0.41 m by 1.83 m): the game's links pass close enough
+to walls that a body as wide as either rubs along them, and a walker has no
+speed to rub through with.
 Its health is the aitype's 150, and the blow's numbers are placeholders a gametype
 has not priced yet. **The TranZit zombie** (`zombie_transit`) is the same row with
 another game's creature and sounds (`t6/zm_transit_basic`).
@@ -159,13 +159,12 @@ gives each actor `MovementParams` of its own — the kind's capsule, both speeds
 to its gait clip's `rootMotion.speed` — so the motor's walk and run are one speed.
 A clip that stands, or a kind with no creature, falls back to the kind's speeds.
 
-**It rides over kerbs a player's walk would clear** (`MovementParams.rideKerbs`).
-A player's step up is made at the length of one tick's move, 5 cm at a walk; a
-walker's is a centimetre, which sets the capsule down on a thin threshold's corner
-rather than past it, and it slid back off every tick — theater's foyer held a
-walker for ten seconds. An actor's step reaches a body's radius ahead at least,
-and stands on the corner when it lands on one. A player's step is untouched, and
-pinned bit for bit by tests/movementParams.test.ts.
+**It stands on banks a player slides down** (`MovementParams.footing`). A player
+stands on what faces up by 0.7 or more and gets over a short, steeper bank on
+the speed it arrives with. A walker arrives at a centimetre a tick, with none:
+its kind's `footing` is 0.3, so anything under it that steep is ground to it, a
+step onto one is kept, and it treads up rubble a player runs over. Its step is
+otherwise the player's own ([player](player.md#what-a-player-can-do)).
 
 **Its cycle turns with the ground covered**, not with time: each tick adds the
 distance moved over the distance one cycle of the clip covers (`speed × duration`),

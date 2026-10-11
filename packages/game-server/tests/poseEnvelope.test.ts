@@ -29,7 +29,7 @@ import { MODEL_FACING } from "@3d/shared/rig/character.js";
 import { couldHit, POSE_MARGIN, readHitboxes, type Hitbox } from "@3d/shared/rig/hitboxes.js";
 import type { Vec3 } from "@3d/shared/sim/capsule.js";
 import { createMovement, HEIGHT, RADIUS, type MovementState } from "@3d/shared/sim/movement.js";
-import { mantleDuration } from "@3d/shared/sim/mantle.js";
+import { mantleDuration } from "@3d/shared/sim/moves/mantle.js";
 import { bodyYaw } from "@3d/shared/sim/pose.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
 import type { Api } from "../src/api.js";
@@ -84,7 +84,7 @@ function poses(): { name: string; movement: MovementState }[] {
     for (const through of [0, 0.2, 0.4, 0.6, 0.8, 1]) {
       for (const over of [false, true]) {
         const movement = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
-        movement.mantle = { target: { x: 0, y: rise, z: -1 }, left: mantleDuration(rise) * (1 - through), rise, over };
+        movement.move = { kind: "mantle", target: { x: 0, y: rise, z: -1 }, left: mantleDuration(rise) * (1 - through), rise, over };
         out.push({ name: `${over ? "vault" : "mantle"} ${rise} ${through}`, movement });
       }
     }
@@ -94,7 +94,7 @@ function poses(): { name: string; movement: MovementState }[] {
     for (const height of [0, 0.2, 0.4, 0.6, 0.8]) {
       const movement = createMovement({ x: 0, y: height, z: 0 }, 0, 0);
       movement.velocity = { x: 0, y: up ? 1 : -1, z: 0 };
-      movement.ladder = { facing: 0 };
+      movement.move = { kind: "ladder", facing: 0 };
       out.push({ name: `ladder ${up ? "up" : "down"} ${height}`, movement });
     }
   }

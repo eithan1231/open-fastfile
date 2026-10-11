@@ -5,7 +5,7 @@
 // step: a bullet is traced against a posed skeleton, so both ends have to reach
 // the same pose from the same inputs. What reads them is sim/pose.ts.
 
-import { horizontalSpeed, RUN_SPEED, type MovementState } from "./movementState.js";
+import { horizontalSpeed, type MovementState } from "./movementState.js";
 
 /**
  * Below this a player is standing still as far as the legs are concerned, so the
@@ -14,7 +14,7 @@ import { horizontalSpeed, RUN_SPEED, type MovementState } from "./movementState.
  */
 export const IDLE_SPEED = 0.35;
 /**
- * Seconds one full stride takes at `RUN_SPEED`, which is what `stride` counts in.
+ * Seconds one full stride takes at a body's run speed, which is what `stride` counts in.
  *
  * A constant rather than the run clip's own duration, because `stepMovement` is
  * pure and asset-free and must stay that way — and because the alternative is
@@ -70,7 +70,7 @@ const STRIDE_RATE_RANGE = [0.35, 1.6] as const;
 export function advanceBlends(s: MovementState, dt: number): void {
   const step = GAIT_BLEND > 0 ? dt / GAIT_BLEND : 1;
   const speed = horizontalSpeed(s);
-  const moving = s.mantle === null && s.ladder === null && speed > IDLE_SPEED;
+  const moving = s.move.kind === "walk" && speed > IDLE_SPEED;
   s.gait = approach(s.gait, moving ? 1 : 0, step);
   s.airborne = approach(s.airborne, s.grounded ? 0 : 1, step);
 
@@ -119,8 +119,8 @@ function approach(value: number, target: number, step: number): number {
  * Nothing reads it while a body is genuinely standing: `gait` is zero by then and
  * the run layer is dropped before its phase is looked at.
  */
-export function advanceStride(s: MovementState, dt: number, runSpeed = RUN_SPEED): void {
-  if (s.mantle || s.ladder) {
+export function advanceStride(s: MovementState, dt: number, runSpeed: number): void {
+  if (s.move.kind !== "walk") {
     s.stride = 0;
     return;
   }

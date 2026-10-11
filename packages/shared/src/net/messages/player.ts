@@ -7,7 +7,7 @@
 // field added to sim/ and forgotten here into a typecheck failure rather than a
 // state that silently stops arriving.
 
-import { array, bool, enumOf, nullable, quant, scaled, struct, uint, type Codec } from "../codec/schema.js";
+import { array, bool, enumOf, nullable, quant, scaled, struct, uint, union, type Codec } from "../codec/schema.js";
 import { CLIP_ROLES, type ClipRole } from "../../sim/weaponDef.js";
 import { MAX_BURST, MAX_CLIP_RATE, MAX_CLIP_SIZE, MAX_FIRE_TIME, WEAPON_STATES, type WeaponData } from "../../sim/weapon.js";
 import { KICK_LIMIT, KICK_SPEED_LIMIT, VIEW_KICK_LIMIT, VIEW_KICK_SPEED_LIMIT } from "../../sim/recoil.js";
@@ -15,7 +15,7 @@ import type { MovementState } from "../../sim/movement.js";
 import { MAX_HEALTH, type PlayerState } from "../../sim/player.js";
 import { MAX_ATTACHMENT_SLOTS, MAX_FITTED_ATTACHMENTS, MAX_WEAPONS } from "../../sim/weaponRegistry.js";
 import { MAX_POINTS } from "../../game/matchValues.js";
-import { axis, climb, combatTimer, pitch, shortTimer, unit, vec3, weaponTimer, yaw } from "./fields.js";
+import { axis, climb, combatTimer, landTimer, metres, pitch, shortTimer, unit, vec3, weaponTimer, yaw } from "./fields.js";
 
 export const movementSchema = struct({
   feet: vec3,
@@ -23,18 +23,19 @@ export const movementSchema = struct({
   yaw,
   pitch,
   grounded: bool,
-  coyote: shortTimer,
-  jumpBuffer: shortTimer,
-  jumped: bool,
-  landing: shortTimer,
+  /** A bit for everybody not in a jump, and the takeoff's height for whoever is. */
+  jumpFrom: nullable(metres),
+  landing: landTimer,
   /**
-   * The climb under way. Nullable, so a player who is not mantling — which is
-   * nearly always, for nearly every player — costs one bit rather than a
-   * position and two timers of zeroes.
+   * Which move owns the player's steps: two bits for the walk nearly everybody
+   * is in, and a climb's target and timers or a ladder's yaw only while
+   * somebody is on one.
    */
-  mantle: nullable(struct({ target: vec3, left: shortTimer, rise: climb, over: bool })),
-  /** The ladder being climbed: one bit, and a yaw only while somebody is on one. */
-  ladder: nullable(struct({ facing: yaw })),
+  move: union("kind", {
+    walk: {},
+    mantle: { target: vec3, left: shortTimer, rise: climb, over: bool },
+    ladder: { facing: yaw },
+  }),
   ladderLock: bool,
   sinceJump: shortTimer,
   jumpHeld: bool,

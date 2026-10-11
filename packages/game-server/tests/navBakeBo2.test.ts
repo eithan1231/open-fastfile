@@ -21,11 +21,11 @@ describe.skipIf(!exported("la-bo2"))("la-bo2's navigation bake", () => {
     expect(game.valid / game.all).toBeGreaterThan(GAME_LINK_FLOOR);
     expect(game.validBetweenUsable / game.betweenUsable).toBeGreaterThan(GAME_LINK_FLOOR);
     expect(pinned(summary)).toEqual({
-      usable: 993,
-      unusable: { NO_GROUND: 40, INSIDE: 1 },
+      usable: 992,
+      unusable: { NO_GROUND: 41, INSIDE: 1 },
       derived: { pairs: 0, candidates: 0, probed: 0, valid: 0 },
-      valid: 2407,
-      reasons: { NODE: 109, STUCK: 20, TIMEOUT: 9 },
+      valid: 2402,
+      reasons: { NODE: 118, STUCK: 22, TIMEOUT: 3 },
       traversals: {
         // mantle_over_40: an AI's vault over a 40-inch wall, where our player has no mantle.
         MANTLE_OVER: { valid: 0, invalid: 8 },
@@ -34,7 +34,7 @@ describe.skipIf(!exported("la-bo2"))("la-bo2's navigation bake", () => {
         LADDER_UP: { valid: 0, invalid: 1 },
       },
     });
-    expect(spawns).toEqual({ spawns: 285, inLargest: 282, noNode: 1, largest: 946 });
+    expect(spawns).toEqual({ spawns: 285, inLargest: 284, noNode: 1, largest: 946 });
   }, 120_000);
 });
 
@@ -49,18 +49,18 @@ describe.skipIf(!exported("carrier-bo2"))("carrier-bo2's navigation bake", () =>
     expect(game.all).toBe(1904);
     expect(game.valid / game.all).toBeGreaterThan(GAME_LINK_FLOOR);
     expect(pinned(summary)).toEqual({
-      usable: 698,
-      unusable: { NO_GROUND: 32, INSIDE: 4 },
+      usable: 695,
+      unusable: { NO_GROUND: 32, INSIDE: 7 },
       derived: { pairs: 0, candidates: 0, probed: 0, valid: 0 },
-      valid: 1780,
-      reasons: { NODE: 115, TIMEOUT: 11, STUCK: 20 },
+      valid: 1777,
+      reasons: { NODE: 130, STUCK: 15, TIMEOUT: 4 },
       traversals: {
         MANTLE_OVER: { valid: 0, invalid: 11 },
         JUMP_DOWN: { valid: 8, invalid: 2 },
         LADDER_UP: { valid: 1, invalid: 0 },
       },
     });
-    expect(spawns).toEqual({ spawns: 290, inLargest: 281, noNode: 8, largest: 652 });
+    expect(spawns).toEqual({ spawns: 290, inLargest: 281, noNode: 8, largest: 651 });
   }, 120_000);
 });
 

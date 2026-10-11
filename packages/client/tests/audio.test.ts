@@ -986,15 +986,25 @@ describe("footsteps", () => {
     return {
       ready: true,
       resolveCapsule: (position, _r, _h, out) => {
-        const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false };
+        const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
         result.position.x = position.x;
         result.position.y = position.y;
         result.position.z = position.z;
         result.grounded = true;
+        result.normal.x = 0;
+        result.normal.y = 1;
+        result.normal.z = 0;
         return result;
       },
       overlapsCapsule: () => false,
-      groundBelow: () => 0,
+      groundBelow: (_from, _distance, normal) => {
+        if (normal) {
+          normal.x = 0;
+          normal.y = 1;
+          normal.z = 0;
+        }
+        return 0;
+      },
       traceRay: () => null,
       surfaceAt: () => surface,
     };
@@ -1179,15 +1189,25 @@ describe("weapons", () => {
     return {
       ready: true,
       resolveCapsule: (position, _r, _h, out) => {
-        const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false };
+        const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
         result.position.x = position.x;
         result.position.y = position.y;
         result.position.z = position.z;
         result.grounded = true;
+        result.normal.x = 0;
+        result.normal.y = 1;
+        result.normal.z = 0;
         return result;
       },
       overlapsCapsule: () => false,
-      groundBelow: () => 0,
+      groundBelow: (_from, _distance, normal) => {
+        if (normal) {
+          normal.x = 0;
+          normal.y = 1;
+          normal.z = 0;
+        }
+        return 0;
+      },
       traceRay: (_from, _direction, _far, _channel, out) => {
         if (surface === null) {
           return null;

@@ -51,18 +51,31 @@ const ground = {
     position: { x: number; y: number; z: number },
     _r: number,
     _h: number,
-    out?: { position: { x: number; y: number; z: number }; grounded: boolean },
+    out?: { position: { x: number; y: number; z: number }; grounded: boolean; normal: { x: number; y: number; z: number } },
   ) {
     const floor = position.x < EDGE;
-    const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false };
+    const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
     result.position.x = position.x;
     result.position.y = floor ? Math.max(position.y, 0) : position.y;
     result.position.z = position.z;
     result.grounded = floor && position.y <= 0;
+    result.normal.x = 0;
+    result.normal.y = result.grounded ? 1 : 0;
+    result.normal.z = 0;
     return result;
   },
   overlapsCapsule: (position: { x: number; y: number }) => position.x < EDGE && position.y < 0,
-  groundBelow: (from: { x: number; y: number }, distance: number) => (from.x < EDGE && from.y >= 0 && from.y - distance <= 0 ? 0 : null),
+  groundBelow: (from: { x: number; y: number }, distance: number, normal?: { x: number; y: number; z: number }) => {
+    if (from.x >= EDGE || from.y < 0 || from.y - distance > 0) {
+      return null;
+    }
+    if (normal) {
+      normal.x = 0;
+      normal.y = 1;
+      normal.z = 0;
+    }
+    return 0;
+  },
   surfaceAt: () => null,
   traceRay: () => null,
 };

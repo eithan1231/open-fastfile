@@ -11,10 +11,20 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
 import { idleInput, type PlayerInput } from "../src/sim/input.js";
-import { createMovement, HEIGHT, RADIUS, stepMovement, type MovementState } from "../src/sim/movement.js";
-import { LadderVolumes } from "../src/sim/ladder.js";
+import {
+  createMovement,
+  EMPTY_HANDS,
+  HEIGHT,
+  movementEnv,
+  PLAYER_MOVEMENT,
+  RADIUS,
+  stepMovement,
+  type LadderMove,
+  type MovementState,
+} from "../src/sim/movement.js";
+import { LadderVolumes, NO_LADDERS } from "../src/sim/moves/ladder.js";
 import { UNIT } from "../src/sim/units.js";
-import { MantleVolumes, NO_MANTLES } from "../src/sim/mantle.js";
+import { MantleVolumes, NO_MANTLES } from "../src/sim/moves/mantle.js";
 import { Player } from "../src/sim/player.js";
 import { WeaponController } from "../src/sim/weapon.js";
 import { WeaponRegistry, weaponKey, type WeaponEntry } from "../src/sim/weaponRegistry.js";
@@ -59,21 +69,22 @@ function setup(ladders: ResolvedLadder[] = [LADDER]) {
   // Further from the ladder than the 30 units a falling player reaches for one.
   const state = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
   const input = idleInput(0, 0);
+  const env = movementEnv(collision, { mantles: NO_MANTLES, ladders: volumes }, PLAYER_MOVEMENT);
   const run = (seconds: number, each?: () => void) => {
     for (let t = 0; t < seconds - 1e-9; t += DT) {
-      stepMovement(state, input, DT, collision, true, NO_MANTLES, volumes);
+      stepMovement(state, input, DT, env, EMPTY_HANDS);
       each?.();
     }
   };
   run(0.3); // settle onto the floor
-  return { state, input, run, collision, volumes };
+  return { state, input, run, collision, volumes, env };
 }
 
 /** Walk into the ladder until it is held. */
 function grab(ctx: ReturnType<typeof setup>) {
   ctx.input.forward = 1;
   ctx.run(1);
-  expect(ctx.state.ladder).not.toBeNull();
+  expect(ctx.state.move.kind).toBe("ladder");
 }
 
 /** Press jump for one step and let it go. */
@@ -88,12 +99,12 @@ describe("ladders", () => {
     const idle = setup();
     idle.state.feet.z = -2 + 0.1 + RADIUS;
     idle.run(0.5);
-    expect(idle.state.ladder).toBeNull();
+    expect(idle.state.move.kind).toBe("walk");
 
     const walking = setup();
     grab(walking);
     // Its side faces the player: the facing points back along +Z.
-    expect(Math.cos(walking.state.ladder!.facing)).toBeCloseTo(-1, 6);
+    expect(Math.cos((walking.state.move as LadderMove).facing)).toBeCloseTo(-1, 6);
   });
 
   it("is not grabbed walking into it backwards, or where the world has no ladder", () => {
@@ -101,12 +112,12 @@ describe("ladders", () => {
     back.input.yaw = Math.PI;
     back.input.forward = -1;
     back.run(1);
-    expect(back.state.ladder).toBeNull();
+    expect(back.state.move.kind).toBe("walk");
 
     const none = setup([]);
     none.input.forward = 1;
     none.run(1);
-    expect(none.state.ladder).toBeNull();
+    expect(none.state.move.kind).toBe("walk");
   });
 
   it("climbs where the view points: up looking up, down looking down, at half the game's speed", () => {
@@ -121,7 +132,7 @@ describe("ladders", () => {
     ctx.run(0.4);
     // The push into the ladder shares the approach, so this one is only close.
     expect(ctx.state.velocity.y).toBeCloseTo(-SPEED * 0.5, 1);
-    expect(ctx.state.ladder).not.toBeNull();
+    expect(ctx.state.move.kind).toBe("ladder");
   });
 
   it("climbs slower looking level, and faster the higher the view", () => {
@@ -186,7 +197,7 @@ describe("ladders", () => {
     ctx.run(DT);
     const height = ctx.state.feet.y;
     ctx.run(1);
-    expect(ctx.state.ladder).not.toBeNull();
+    expect(ctx.state.move.kind).toBe("ladder");
     expect(ctx.state.feet.y).toBeCloseTo(height, 6);
   });
 
@@ -202,7 +213,7 @@ describe("ladders", () => {
       }
     });
     expect(sunk).toBe(0);
-    expect(ctx.state.ladder).toBeNull();
+    expect(ctx.state.move.kind).toBe("walk");
     expect(ctx.state.grounded).toBe(true);
     expect(ctx.state.feet.y).toBeCloseTo(TOP, 2);
     expect(ctx.state.feet.z).toBeLessThan(-2.1);
@@ -216,11 +227,11 @@ describe("ladders", () => {
     expect(ctx.state.grounded).toBe(true);
     ctx.input.forward = 0;
     ctx.run(DT);
-    expect(ctx.state.ladder).toBeNull();
+    expect(ctx.state.move.kind).toBe("walk");
     // The ground clears the lock at once: walking back in grabs it again.
     ctx.input.forward = 1;
     ctx.run(0.2);
-    expect(ctx.state.ladder).not.toBeNull();
+    expect(ctx.state.move.kind).toBe("ladder");
   });
 
   it("jumps away from the ladder on a new press, looking at it or away from it", () => {
@@ -233,7 +244,7 @@ describe("ladders", () => {
       ctx.input.forward = 0;
       ctx.run(DT);
       press(ctx.input, ctx.run);
-      expect(ctx.state.ladder).toBeNull();
+      expect(ctx.state.move.kind).toBe("walk");
       expect(ctx.state.ladderLock).toBe(false);
       // Away from the ladder, which is at -Z, at the game's push-off speed.
       expect(Math.hypot(ctx.state.velocity.x, ctx.state.velocity.z)).toBeCloseTo(128 * UNIT, 1);
@@ -249,30 +260,31 @@ describe("ladders", () => {
     ctx.input.forward = 1;
     ctx.input.pitch = Math.asin(-0.25);
     ctx.run(1.5);
-    expect(ctx.state.ladder).not.toBeNull();
+    expect(ctx.state.move.kind).toBe("ladder");
     ctx.run(1);
-    expect(ctx.state.ladder).not.toBeNull();
+    expect(ctx.state.move.kind).toBe("ladder");
     ctx.input.jump = false;
     ctx.run(0.5);
     press(ctx.input, ctx.run);
-    expect(ctx.state.ladder).toBeNull();
+    expect(ctx.state.move.kind).toBe("walk");
   });
 
   it("is grabbed no sooner than 0.3 s after a jump, and jumped off no sooner than 0.5 s", () => {
     const ctx = setup();
-    ctx.state.feet.z = -1.5;
+    // Further from the ladder than the 8 units a standing player reaches, and within the 30 a jumping one does.
+    ctx.state.feet.z = -1.35;
     ctx.input.forward = 1;
-    press(ctx.input, ctx.run); // a jump at the ladder, from close enough to reach it at once
+    press(ctx.input, ctx.run);
     ctx.run(0.2);
-    expect(ctx.state.ladder).toBeNull();
+    expect(ctx.state.move.kind).toBe("walk");
     ctx.run(0.15);
-    expect(ctx.state.ladder).not.toBeNull();
+    expect(ctx.state.move.kind).toBe("ladder");
     expect(ctx.state.sinceJump).toBeLessThan(0.5);
     press(ctx.input, ctx.run);
-    expect(ctx.state.ladder).not.toBeNull();
+    expect(ctx.state.move.kind).toBe("ladder");
     ctx.run(0.2);
     press(ctx.input, ctx.run);
-    expect(ctx.state.ladder).toBeNull();
+    expect(ctx.state.move.kind).toBe("walk");
   });
 
   it("is not grabbed again after falling off until the player has landed", () => {
@@ -284,15 +296,15 @@ describe("ladders", () => {
     // with the view level climbs down — so walk out sideways instead.
     ctx.input.forward = 0;
     ctx.input.right = 1;
-    ctx.run(0.7);
-    expect(ctx.state.ladder).toBeNull();
+    ctx.run(0.75);
+    expect(ctx.state.move.kind).toBe("walk");
     expect(ctx.state.grounded).toBe(false);
     expect(ctx.state.ladderLock).toBe(true);
     // Straight back in front of it while still falling: the lock holds.
     ctx.state.feet.x = 0;
     ctx.input.right = 0;
     ctx.run(DT);
-    expect(ctx.state.ladder).toBeNull();
+    expect(ctx.state.move.kind).toBe("walk");
     ctx.run(1);
     expect(ctx.state.grounded).toBe(true);
     expect(ctx.state.ladderLock).toBe(false);
@@ -305,7 +317,7 @@ describe("ladders", () => {
     ctx.run(0.5);
     ctx.input.yaw = 2.5; // 143 degrees round from facing the ladder
     ctx.run(DT);
-    expect(ctx.state.ladder).not.toBeNull();
+    expect(ctx.state.move.kind).toBe("ladder");
     expect(ctx.state.yaw).toBeCloseTo((100 * Math.PI) / 180, 6);
   });
 
@@ -320,15 +332,15 @@ describe("ladders", () => {
     };
     for (let i = 0; i < 200; i++) {
       script(i);
-      stepMovement(ctx.state, ctx.input, DT, ctx.collision, true, NO_MANTLES, ctx.volumes);
-      stepMovement(copy, ctx.input, DT, ctx.collision, true, NO_MANTLES, ctx.volumes);
+      stepMovement(ctx.state, ctx.input, DT, ctx.env, EMPTY_HANDS);
+      stepMovement(copy, ctx.input, DT, ctx.env, EMPTY_HANDS);
       copy = JSON.parse(JSON.stringify(copy));
       // Against a JSON copy too: JSON has no -0, and friction stops a player on one.
       expect(copy).toEqual(JSON.parse(JSON.stringify(ctx.state)));
     }
   });
 
-  it("round-trips through the wire codec, and costs one bit when nobody is on one", () => {
+  it("round-trips through the wire codec, and costs only the move's tag when nobody is on one", () => {
     const ctx = setup();
     const size = (s: MovementState) => {
       const writer = new BitWriter();
@@ -340,7 +352,7 @@ describe("ladders", () => {
     const bytes = size(ctx.state);
     expect(bytes.byteLength).toBeGreaterThan(idle);
     const decoded = movementSchema.read(new BitReader(bytes));
-    expect(decoded.ladder!.facing).toBeCloseTo(ctx.state.ladder!.facing, 4);
+    expect((decoded.move as LadderMove).facing).toBeCloseTo((ctx.state.move as LadderMove).facing, 4);
     expect(decoded.jumpHeld).toBe(ctx.state.jumpHeld);
     expect(decoded.sinceJump).toBeCloseTo(ctx.state.sinceJump, 2);
   });
@@ -351,7 +363,7 @@ describe("the weapon on a climb", () => {
   function armed() {
     const ctx = setup();
     const player = new Player(ctx.collision);
-    player.setLadders(ctx.volumes);
+    player.setClimbs({ mantles: NO_MANTLES, ladders: ctx.volumes });
     const weapon = new WeaponController(weaponDef({ clipSize: 30 }));
     player.equip(weapon);
     weapon.ready();
@@ -369,7 +381,7 @@ describe("the weapon on a climb", () => {
     const { player, weapon, input, run } = armed();
     input.forward = 1;
     run(1);
-    expect(player.movement.ladder).not.toBeNull();
+    expect(player.movement.move.kind).toBe("ladder");
     expect(["dropping", "lowered"]).toContain(weapon.data.state);
     input.fire = true;
     input.reload = true;
@@ -382,7 +394,7 @@ describe("the weapon on a climb", () => {
     input.fire = false;
     input.reload = false;
     run(4); // over the top
-    expect(player.movement.ladder).toBeNull();
+    expect(player.movement.move.kind).toBe("walk");
     expect(player.snapshot().stowed).toBe(false);
     expect(weapon.data.state).toBe("idle");
   });
@@ -394,11 +406,12 @@ describe("the weapon on a climb", () => {
     const world = new CollisionWorld();
     world.rebuild(root);
     const player = new Player(world);
-    player.setMantles(new MantleVolumes([{ id: 0, tags: [], position: { x: 0, y: 0.5, z: -3 }, yaw: 0, size: { x: 4, y: 1, z: 0.5 } }]));
+    const mantles = new MantleVolumes([{ id: 0, tags: [], position: { x: 0, y: 0.5, z: -3 }, yaw: 0, size: { x: 4, y: 1, z: 0.5 } }]);
+    player.setClimbs({ mantles, ladders: NO_LADDERS });
     const weapon = new WeaponController(weaponDef({ clipSize: 30 }));
     player.equip(weapon);
     weapon.ready();
-    player.place({ x: 0, y: 0, z: -3 + 0.25 + RADIUS }, 0, 0);
+    player.place({ x: 0, y: 0, z: -3 + 0.2 + RADIUS }, 0, 0);
     const input = idleInput(0, 0);
     for (let i = 0; i < 20; i++) {
       player.step(input, DT);
@@ -435,7 +448,7 @@ describe("the weapon on a climb", () => {
       player.step(input, DT);
     }
     // Only now: settling from `place` starts in the air, where the ladder is in reach.
-    player.setLadders(ctx.volumes);
+    player.setClimbs({ mantles: NO_MANTLES, ladders: ctx.volumes });
     input.swap = true;
     input.forward = 1;
     player.step(input, DT);
@@ -443,14 +456,14 @@ describe("the weapon on a climb", () => {
     for (let t = 0; t < 1; t += DT) {
       player.step(input, DT);
     }
-    expect(player.movement.ladder).not.toBeNull();
+    expect(player.movement.move.kind).toBe("ladder");
     expect(player.weaponId).toBe(key("m4"));
     expect(player.snapshot().swapping).toBe(true);
     input.forward = 0;
     for (let t = 0; t < 3; t += DT) {
       player.step(input, DT);
     }
-    expect(player.movement.ladder).toBeNull();
+    expect(player.movement.move.kind).toBe("walk");
     expect(player.weaponId).toBe(key("m9"));
     expect(player.weapon!.data.state).toBe("idle");
     expect(player.snapshot().swapping).toBe(false);

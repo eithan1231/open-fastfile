@@ -122,11 +122,10 @@ export function gaitFor(speed: number): Gait {
  * landing, m/s.
  *
  * `MovementState.landing` is **not** the test, though it is the obvious one: it
- * is only set by `integrate` when `jumped` is true, so it misses every fall that
- * began by walking off something. The transition is `grounded`, and this is what
- * keeps a flicker of it — which happens over imported triangle soup, and is what
- * `coyote` exists for — from being a thud. A jump lands at 5.5 m/s and a kerb
- * `stepDown` catches never leaves the ground at all.
+ * is a jump's alone, so it misses every fall that began by walking off
+ * something. The transition is `grounded`, and this is what keeps a flicker of
+ * it over imported triangle soup from being a thud. A jump lands at JUMP_SPEED,
+ * and a drop a walk sticks down onto never leaves the ground at all.
  */
 const LANDING_FALL_SPEED = 2;
 
@@ -225,7 +224,7 @@ export class FootstepWatcher {
     const grounded = movement.grounded;
     // On rails: the legs are playing a mantle or a ladder and `advanceStride` has
     // zeroed the clock, so any apparent advance across the reset is bookkeeping.
-    const climbing = movement.mantle !== null || movement.ladder !== null;
+    const climbing = movement.move.kind !== "walk";
     // A respawn or a teleport moves the feet across the map between two states.
     // The clock carries on regardless, so without this the first observation after
     // one plays a step from wherever the body used to be.

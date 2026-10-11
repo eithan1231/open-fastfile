@@ -22,15 +22,28 @@ import { FirstPersonControls, type DeviceInput } from "../src/engine/controls/fi
 const ground: CapsuleWorld = {
   ready: true,
   resolveCapsule(position: Vec3, _r: number, _h: number, out?: CapsuleResolution): CapsuleResolution {
-    const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false };
+    const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
     result.position.x = position.x;
     result.position.y = Math.max(position.y, 0);
     result.position.z = position.z;
     result.grounded = position.y <= 0;
+    result.normal.x = 0;
+    result.normal.y = result.grounded ? 1 : 0;
+    result.normal.z = 0;
     return result;
   },
   overlapsCapsule: (position: Vec3) => position.y < 0,
-  groundBelow: (from: Vec3, distance: number) => (from.y >= 0 && from.y - distance <= 0 ? 0 : null),
+  groundBelow: (from: Vec3, distance: number, normal?: Vec3) => {
+    if (from.y < 0 || from.y - distance > 0) {
+      return null;
+    }
+    if (normal) {
+      normal.x = 0;
+      normal.y = 1;
+      normal.z = 0;
+    }
+    return 0;
+  },
   // Nothing here has a surface; a flat test floor is `default` either way.
   surfaceAt: () => null,
   // Nothing here shoots; the floor is for standing on.

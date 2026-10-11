@@ -14,9 +14,8 @@ import { loadResolvedWorld } from "@3d/shared/worlds/load.js";
 import type { WorldSource } from "@3d/shared/worlds/source.js";
 import type { ResolvedLadder } from "@3d/shared/dsl/resolved.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { LadderVolumes } from "@3d/shared/sim/ladder.js";
-import { MantleVolumes } from "@3d/shared/sim/mantle.js";
-import { createMovement, HEIGHT, RADIUS, stepMovement } from "@3d/shared/sim/movement.js";
+import { createMovement, EMPTY_HANDS, HEIGHT, movementEnv, PLAYER_MOVEMENT, RADIUS, stepMovement } from "@3d/shared/sim/movement.js";
+import { movementRules } from "@3d/shared/sim/worldRules.js";
 import { buildServerCollision } from "../src/collision.js";
 
 /** This world ships its own assets; nothing here comes from the catalogue. */
@@ -63,8 +62,7 @@ describe.skipIf(!exported)("dome-mw3's ladders", () => {
   it("climb from the foot, over the top and onto the landing, never sinking into anything", async () => {
     const world = (await loadResolvedWorld(source)).world!;
     const collision = (await buildServerCollision(world, source, noCatalog))!.world;
-    const ladders = new LadderVolumes(world.ladders);
-    const mantles = new MantleVolumes(world.mantles);
+    const env = movementEnv(collision, movementRules(world), PLAYER_MOVEMENT);
     expect(world.ladders.length).toBeGreaterThan(0);
 
     let climbs = 0;
@@ -83,15 +81,19 @@ describe.skipIf(!exported)("dome-mw3's ladders", () => {
         climbs++;
         const yaw = Math.atan2(side.x, side.z);
         const state = createMovement({ x, y: floor, z }, yaw, 0);
+        // Standing first: a state starts in the air, where a ladder is grabbed from further off.
+        for (let i = 0; i < 3; i++) {
+          stepMovement(state, idleInput(yaw, 0.6), DT, env, EMPTY_HANDS);
+        }
         const input = idleInput(yaw, 0.6);
         input.forward = 1;
         let grabbed = false;
         let sunk = 0;
         let offAt = -1;
         for (let i = 0; i < 12 / DT && (offAt < 0 || i < offAt + 0.5 / DT); i++) {
-          stepMovement(state, input, DT, collision, true, mantles, ladders);
-          grabbed ||= state.ladder !== null;
-          if (grabbed && offAt < 0 && !state.ladder && state.grounded) {
+          stepMovement(state, input, DT, env, EMPTY_HANDS);
+          grabbed ||= state.move.kind === "ladder";
+          if (grabbed && offAt < 0 && state.move.kind !== "ladder" && state.grounded) {
             offAt = i;
           }
           if (collision.overlapsCapsule(state.feet, RADIUS, HEIGHT)) {
@@ -102,7 +104,7 @@ describe.skipIf(!exported)("dome-mw3's ladders", () => {
         expect(grabbed, where).toBe(true);
         expect(sunk, where).toBe(0);
         expect(offAt, where).toBeGreaterThan(0);
-        expect(state.ladder, where).toBeNull();
+        expect(state.move.kind, where).toBe("walk");
         expect(state.grounded, where).toBe(true);
         expect(state.feet.y, where).toBeGreaterThan(top - LANDING_DROP - 0.01);
       }
@@ -118,8 +120,7 @@ describe.skipIf(!exported)("dome-mw3's ladders", () => {
     // catches the side that is climbed.
     const world = (await loadResolvedWorld(source)).world!;
     const collision = (await buildServerCollision(world, source, noCatalog))!.world;
-    const ladders = new LadderVolumes(world.ladders);
-    const mantles = new MantleVolumes(world.mantles);
+    const env = movementEnv(collision, movementRules(world), PLAYER_MOVEMENT);
 
     let landings = 0;
     for (const ladder of world.ladders) {
@@ -142,10 +143,10 @@ describe.skipIf(!exported)("dome-mw3's ladders", () => {
           let heldBack = 0;
           let caught = false;
           for (let i = 0; i < 2 / DT && !caught; i++) {
-            stepMovement(state, input, DT, collision, true, mantles, ladders);
-            if (state.ladder) {
+            stepMovement(state, input, DT, env, EMPTY_HANDS);
+            if (state.move.kind === "ladder") {
               // Its normal pointing back at the landing is the back of the ladder.
-              if (into(state.ladder) > 0) {
+              if (into(state.move) > 0) {
                 heldBack++;
               } else {
                 caught = true;

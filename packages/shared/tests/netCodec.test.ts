@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { BitReader, BitWriter } from "../src/net/codec/bits.js";
-import { angle, array, bool, enumOf, f32, int, nullable, quant, str, struct, uint, type Codec } from "../src/net/codec/schema.js";
+import { angle, array, bool, enumOf, f32, int, nullable, quant, str, struct, uint, union, type Codec } from "../src/net/codec/schema.js";
 
 describe("BitWriter/BitReader", () => {
   it("packs sub-byte fields, so five booleans cost one byte", () => {
@@ -140,6 +140,23 @@ describe("field codecs", () => {
     expect(through(c, null)).toBeNull();
     expect(through(c, { n: 3, inner: null })).toEqual({ n: 3, inner: null });
     expect(through(c, { n: 3, inner: false })).toEqual({ n: 3, inner: false });
+  });
+
+  it("carries one of several structs, at the cost of saying which", () => {
+    const c = union("kind", { walk: {}, climb: { left: uint(4) }, hang: { facing: quant(0, 1, 8) } });
+    expect(through(c, { kind: "walk" })).toEqual({ kind: "walk" });
+    expect(through(c, { kind: "climb", left: 9 })).toEqual({ kind: "climb", left: 9 });
+    // Three variants are two bits, and the empty one is nothing more.
+    const w = new BitWriter();
+    c.write(w, { kind: "walk" });
+    c.write(w, { kind: "walk" });
+    c.write(w, { kind: "walk" });
+    c.write(w, { kind: "walk" });
+    expect(w.finish()).toHaveLength(1);
+    // A lossy field inside a variant rounds as it would on the wire.
+    const hang = { kind: "hang", facing: 0.3333 } as const;
+    expect(c.round!(hang)).toEqual(through(c, hang));
+    expect(() => c.write(new BitWriter(), { kind: "swim" } as never)).toThrow(/known variants/);
   });
 
   it("carries an empty array and a full one", () => {

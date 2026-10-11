@@ -248,7 +248,7 @@ export interface ResolvedSound {
  *
  * The box encloses the obstacle with room to spare on every side, and its **top
  * is the surface they end on**, so `size` carries the region and roughly the
- * climb height at once; the collision decides the rest (sim/mantle.ts). Nothing
+ * climb height at once; the collision decides the rest (sim/moves/mantle.ts). Nothing
  * draws it and nothing collides with it — it is a permission region, and putting
  * it in a BVH would make every ledge an invisible wall.
  *
@@ -286,7 +286,7 @@ export interface ResolvedMantle {
  * The box **is** the ladder — in an imported map, the thin player-clip brush the
  * game flags as one, which the world's collision already holds as a wall. This
  * adds only the permission: a player whose probe ahead touches the box, on a
- * side that counts, grabs it (sim/ladder.ts). Nothing draws it.
+ * side that counts, grabs it (sim/moves/ladder.ts). Nothing draws it.
  *
  * The frame is `ResolvedMantle`'s: a world point is inside when
  * `rotateY(point - position, -yaw)` lies within half of `size` on each axis.

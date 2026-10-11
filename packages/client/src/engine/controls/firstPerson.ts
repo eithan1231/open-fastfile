@@ -24,7 +24,7 @@
 import * as THREE from "three";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
 import { clampPitch, EYE_HEIGHT, type CapsuleWorld, type Vec3 } from "@3d/shared/sim/movement.js";
-import { ladderYaw } from "@3d/shared/sim/ladder.js";
+import { ladderYaw } from "@3d/shared/sim/moves/ladder.js";
 import { roundDt, roundInput } from "@3d/shared/net/messages/input.js";
 import { TICK_RATE } from "@3d/shared/net/messages/fields.js";
 import { Player, type PlayerState } from "@3d/shared/sim/player.js";

@@ -442,6 +442,48 @@ export function struct<S extends Fields>(fields: S): Codec<Struct<S>> {
   };
 }
 
+type Variants = Record<string, Fields>;
+type Union<K extends string, V extends Variants> = { [N in keyof V]: { [T in K]: N } & Struct<V[N]> }[keyof V];
+
+/**
+ * One of several structs, told apart by the string in its `tag` field: the
+ * variant's index in as few bits as hold them all, then that variant's fields.
+ * The variants' declaration order is the format, as a struct's field order is.
+ */
+export function union<const K extends string, V extends Variants>(tag: K, variants: V): Codec<Union<K, V>> {
+  const names = Object.keys(variants);
+  const bits = Math.max(1, Math.ceil(Math.log2(names.length)));
+  const index = new Map(names.map((name, i) => [name, i]));
+  const bodies = names.map((name) => struct(variants[name]!) as Codec<Record<string, unknown>>);
+  type Value = Union<K, V> & Record<string, unknown>;
+  const which = (value: Value): number => {
+    const i = index.get(value[tag] as string);
+    if (i === undefined) {
+      throw new RangeError(`not one of the ${names.length} known variants: ${String(value[tag])}`);
+    }
+    return i;
+  };
+  return {
+    write(w, value) {
+      const i = which(value as Value);
+      w.bits(i, bits);
+      bodies[i]!.write(w, value as Value);
+    },
+    read(r) {
+      const i = r.bits(bits);
+      const body = bodies[i];
+      if (body === undefined) {
+        throw new RangeError(`union index ${i} out of range`);
+      }
+      return { ...body.read(r), [tag]: names[i] } as Union<K, V>;
+    },
+    round(value) {
+      const i = which(value as Value);
+      return { ...bodies[i]!.round!(value as Value), [tag]: names[i] } as Union<K, V>;
+    },
+  };
+}
+
 /** Put a value through its codec's lossy rounding, if it has any. The identity for an exact codec. */
 export function roundTrip<T>(codec: Codec<T>, value: T): T {
   return codec.round ? codec.round(value) : value;

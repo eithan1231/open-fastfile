@@ -21,7 +21,7 @@
 // failure; this has `tests/interpolate.test.ts`, which round-trips a state with every
 // field distinct and compares the whole object.
 
-import type { MovementState } from "./movement.js";
+import { WALKING, type Move, type MovementState } from "./movementState.js";
 
 /** Turning from `a` to `b` the short way round, so crossing ±π does not spin the body. */
 export function shortestTurn(a: number, b: number): number {
@@ -73,9 +73,8 @@ export function teleported(from: MovementState, to: MovementState): boolean {
  *
  * For a caller keeping a ring of past states: preallocate the states once and
  * overwrite them, rather than `structuredClone`ing one per player per tick. The
- * two nullable climbs are the only things that can allocate, and only while
- * somebody is actually on a ladder or a ledge — which is nearly never, for nearly
- * every player.
+ * move is the only thing that can allocate, and only on the tick somebody gets
+ * onto a ladder or a ledge.
  */
 export function copyMovement(src: MovementState, dst: MovementState): MovementState {
   dst.feet.x = src.feet.x;
@@ -87,9 +86,7 @@ export function copyMovement(src: MovementState, dst: MovementState): MovementSt
   dst.yaw = src.yaw;
   dst.pitch = src.pitch;
   dst.grounded = src.grounded;
-  dst.coyote = src.coyote;
-  dst.jumpBuffer = src.jumpBuffer;
-  dst.jumped = src.jumped;
+  dst.jumpFrom = src.jumpFrom;
   dst.landing = src.landing;
   dst.ladderLock = src.ladderLock;
   dst.sinceJump = src.sinceJump;
@@ -100,27 +97,33 @@ export function copyMovement(src: MovementState, dst: MovementState): MovementSt
   dst.travelRight = src.travelRight;
   dst.stride = src.stride;
 
-  if (src.mantle === null) {
-    dst.mantle = null;
-  } else if (dst.mantle === null) {
-    dst.mantle = { target: { ...src.mantle.target }, left: src.mantle.left, rise: src.mantle.rise, over: src.mantle.over };
-  } else {
-    dst.mantle.target.x = src.mantle.target.x;
-    dst.mantle.target.y = src.mantle.target.y;
-    dst.mantle.target.z = src.mantle.target.z;
-    dst.mantle.left = src.mantle.left;
-    dst.mantle.rise = src.mantle.rise;
-    dst.mantle.over = src.mantle.over;
-  }
-
-  if (src.ladder === null) {
-    dst.ladder = null;
-  } else if (dst.ladder === null) {
-    dst.ladder = { facing: src.ladder.facing };
-  } else {
-    dst.ladder.facing = src.ladder.facing;
-  }
+  dst.move = copyMove(src.move, dst.move);
   return dst;
+}
+
+/** `src` as `dst` may keep it: its own object for a move with fields a step writes, reused when `dst` is already in that move. */
+function copyMove(src: Move, dst: Move): Move {
+  switch (src.kind) {
+    case "walk":
+      return WALKING;
+    case "mantle":
+      if (dst.kind !== "mantle") {
+        return { kind: "mantle", target: { ...src.target }, left: src.left, rise: src.rise, over: src.over };
+      }
+      dst.target.x = src.target.x;
+      dst.target.y = src.target.y;
+      dst.target.z = src.target.z;
+      dst.left = src.left;
+      dst.rise = src.rise;
+      dst.over = src.over;
+      return dst;
+    case "ladder":
+      if (dst.kind !== "ladder") {
+        return { kind: "ladder", facing: src.facing };
+      }
+      dst.facing = src.facing;
+      return dst;
+  }
 }
 
 /**
@@ -164,15 +167,12 @@ export function lerpMovement(from: MovementState, to: MovementState, t: number, 
 
   // Discrete, so `from`'s answer stands for the whole span.
   out.grounded = from.grounded;
-  out.jumped = from.jumped;
+  out.jumpFrom = from.jumpFrom;
   out.ladderLock = from.ladderLock;
   out.jumpHeld = from.jumpHeld;
-  out.mantle = from.mantle;
-  out.ladder = from.ladder;
+  out.move = from.move;
   // Timers count down within a tick, so they interpolate; they are also what a
   // landing's fade is timed by, and a body that snapped between two would flicker.
-  out.coyote = from.coyote + (to.coyote - from.coyote) * k;
-  out.jumpBuffer = from.jumpBuffer + (to.jumpBuffer - from.jumpBuffer) * k;
   out.landing = from.landing + (to.landing - from.landing) * k;
   out.sinceJump = from.sinceJump + (to.sinceJump - from.sinceJump) * k;
   return out;

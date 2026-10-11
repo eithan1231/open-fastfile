@@ -6,8 +6,26 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
 import { idleInput } from "../src/sim/input.js";
-import { createMovement, horizontalSpeed, RUN_SPEED, stepMovement, WALK_SPEED } from "../src/sim/movement.js";
+import {
+  createMovement,
+  EMPTY_HANDS,
+  horizontalSpeed,
+  JUMP_HEIGHT,
+  JUMP_REPEAT,
+  LAND_WINDOW,
+  LAND_WINDOW_HIGH,
+  movementEnv,
+  NO_CLIMBS,
+  PLAYER_MOVEMENT,
+  RUN_SPEED,
+  stepMovement,
+  WALK_SPEED,
+  WALKING,
+  wantsSprint,
+  type MovementState,
+} from "../src/sim/movement.js";
 import { advanceBlends, GAIT_BLEND, IDLE_SPEED, STRIDE_PERIOD } from "../src/sim/gait.js";
+import { UNIT } from "../src/sim/units.js";
 
 const DT = 1 / 60;
 
@@ -26,10 +44,11 @@ function setup(...extra: THREE.Mesh[]) {
   collision.rebuild(root);
   const state = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
   const input = idleInput(0, 0);
+  const env = movementEnv(collision, NO_CLIMBS, PLAYER_MOVEMENT);
   const options = { sprintAllowed: true };
   const run = (seconds: number, each?: () => void) => {
     for (let t = 0; t < seconds - 1e-9; t += DT) {
-      stepMovement(state, input, DT, collision, options.sprintAllowed);
+      stepMovement(state, input, DT, env, { sprint: options.sprintAllowed });
       each?.();
     }
   };
@@ -40,7 +59,7 @@ function setup(...extra: THREE.Mesh[]) {
     input.jump = false;
   };
   run(0.5); // settle onto the floor
-  return { state, input, options, run, jump };
+  return { state, input, env, options, run, jump };
 }
 
 describe("stepMovement", () => {
@@ -53,42 +72,39 @@ describe("stepMovement", () => {
       return air;
     };
     const open = airTime();
-    // Head room of 2 m: the head (1.7 m) meets the slab 0.3 m into a 0.84 m jump.
+    // Head room of 2 m: the head (1.78 m) meets the slab 0.22 m into a 0.99 m jump.
     const low = airTime(collider([4, 0.2, 4], [0, 2.1, 0]));
     expect(open).toBeGreaterThan(0.5);
     expect(low).toBeLessThan(open * 0.6);
   });
 
+  it("jumps as high as JUMP_HEIGHT, at any tick rate", () => {
+    for (const rate of [30, 60, 125]) {
+      const { state, input, env } = setup();
+      let top = 0;
+      for (let i = 0; i < rate; i++) {
+        input.jump = i === 0;
+        stepMovement(state, input, 1 / rate, env, EMPTY_HANDS);
+        top = Math.max(top, state.feet.y);
+      }
+      expect(top, `${rate} Hz`).toBeGreaterThan(JUMP_HEIGHT - 0.03);
+      expect(top, `${rate} Hz`).toBeLessThan(JUMP_HEIGHT + 0.005);
+    }
+  });
+
   it("keeps the takeoff's speed in the air, the keys only nudging it", () => {
     const { state, input, run, jump } = setup();
     input.forward = 1;
-    run(0.2);
+    run(0.3);
     jump();
     const takeoff = { ...state.feet };
     input.forward = 0;
     input.right = 1;
     run(0.3);
-    expect(state.feet.z - takeoff.z).toBeLessThan(-0.9); // still carried forward at walking speed
-    expect(state.feet.x - takeoff.x).toBeGreaterThan(0.03); // a slight drift to the right...
-    expect(state.feet.x - takeoff.x).toBeLessThan(0.15); // ...where the ground would have gone 0.96 m
-  });
-
-  it("carries a landing's speed in, easing down to the landing slowdown and back", () => {
-    const { state, input, run, jump } = setup();
-    input.forward = 1;
-    run(0.5);
-    jump();
-    const after: number[] = [];
-    let landed = false;
-    run(1.5, () => {
-      if (landed) {
-        after.push(horizontalSpeed(state));
-      }
-      landed ||= state.grounded;
-    });
-    expect(after[0]).toBeGreaterThan(2.5); // no stop on touchdown
-    expect(Math.min(...after)).toBeLessThan(WALK_SPEED * 0.65);
-    expect(after.at(-1)).toBeCloseTo(WALK_SPEED, 5);
+    expect(state.feet.z - takeoff.z).toBeLessThan(-1.3); // still carried forward at walking speed
+    expect(state.feet.x - takeoff.x).toBeGreaterThan(0.1); // a drift to the right...
+    expect(state.feet.x - takeoff.x).toBeLessThan(0.3); // ...where the ground would have gone over a metre
+    expect(horizontalSpeed(state)).toBeLessThanOrEqual(WALK_SPEED * 1.05); // and no speed to be had from it
   });
 
   it("gets up to speed and skids to a stop, rather than either at once", () => {
@@ -101,59 +117,269 @@ describe("stepMovement", () => {
     input.forward = 0;
     run(DT);
     expect(horizontalSpeed(state)).toBeGreaterThan(2);
-    run(0.3);
+    run(0.5);
     expect(horizontalSpeed(state)).toBe(0);
   });
 
-  it("runs only forward, and only while the weapon allows it", () => {
-    const speedAfter = (keys: Partial<ReturnType<typeof idleInput>>, sprintAllowed = true) => {
+  it("walks slower sideways and backward, and no faster on a diagonal", () => {
+    const speedAfter = (keys: Partial<ReturnType<typeof idleInput>>) => {
+      const { state, input, run } = setup();
+      Object.assign(input, keys);
+      run(1);
+      return horizontalSpeed(state);
+    };
+    expect(speedAfter({ forward: 1 })).toBeCloseTo(WALK_SPEED, 5);
+    expect(speedAfter({ right: 1 })).toBeCloseTo(WALK_SPEED * 0.8, 5);
+    expect(speedAfter({ right: -1 })).toBeCloseTo(WALK_SPEED * 0.8, 5);
+    expect(speedAfter({ forward: -1 })).toBeCloseTo(WALK_SPEED * 0.7, 5);
+    expect(speedAfter({ forward: 1, right: 1 })).toBeCloseTo(WALK_SPEED, 5);
+    expect(speedAfter({ forward: -1, right: 1 })).toBeCloseTo(WALK_SPEED * 0.8, 5);
+  });
+
+  it("sprints only forward, and only while the weapon allows it", () => {
+    const after = (keys: Partial<ReturnType<typeof idleInput>>, sprintAllowed = true) => {
       const { state, input, options, run } = setup();
       Object.assign(input, keys);
       options.sprintAllowed = sprintAllowed;
       run(1);
-      return horizontalSpeed(state);
+      return state;
     };
-    expect(speedAfter({ forward: 1, run: true })).toBeCloseTo(RUN_SPEED, 5);
-    expect(speedAfter({ forward: 1, run: true }, false)).toBeCloseTo(WALK_SPEED, 5);
-    expect(speedAfter({ forward: -1, run: true })).toBeCloseTo(WALK_SPEED, 5);
-    expect(speedAfter({ right: 1, run: true })).toBeCloseTo(WALK_SPEED, 5);
-    expect(speedAfter({ forward: 1, right: 1 })).toBeCloseTo(WALK_SPEED, 5); // a diagonal is no faster
+    expect(horizontalSpeed(after({ forward: 1, run: true }))).toBeCloseTo(RUN_SPEED, 5);
+    expect(RUN_SPEED).toBeCloseTo(WALK_SPEED * 1.5, 10);
+    expect(horizontalSpeed(after({ forward: 1, run: true }, false))).toBeCloseTo(WALK_SPEED, 5);
+    expect(horizontalSpeed(after({ forward: -1, run: true }))).toBeCloseTo(WALK_SPEED * 0.7, 5);
+    expect(horizontalSpeed(after({ right: 1, run: true }))).toBeCloseTo(WALK_SPEED * 0.8, 5);
+    // In a sprint the strafe keys count for two thirds: the sprint curves rather than strafes.
+    const curved = after({ forward: 1, right: 1, run: true });
+    expect(horizontalSpeed(curved)).toBeCloseTo(RUN_SPEED, 5);
+    expect(curved.velocity.x / -curved.velocity.z).toBeCloseTo(0.667, 3);
   });
+});
 
-  it("jumps again on landing while jump is held, and remembers a press made just before landing", () => {
-    const takeoffs = (hold: (t: number, falling: boolean, height: number) => boolean) => {
-      const { state, input, run } = setup();
-      let count = 0;
-      let t = 0;
-      run(2, () => {
-        t += DT;
-        input.jump = hold(t, state.velocity.y < 0, state.feet.y);
-        if (state.jumped && state.velocity.y > 5) {
-          count++;
-        } // the step of a takeoff
-      });
-      return count;
-    };
-    expect(takeoffs(() => true)).toBeGreaterThanOrEqual(3);
-    // One press at the start, one while falling 10 cm above the floor: two jumps.
-    let pressedLate = false;
-    const late = takeoffs((t, falling, height) => {
-      if (t < DT * 1.5) {
-        return true;
+/** The step of a takeoff. */
+function tookOff(state: MovementState): boolean {
+  return state.jumpFrom !== null && state.sinceJump === 0;
+}
+
+describe("a jump", () => {
+  /** How many times `hold` — asked each step whether the key is down — jumps in `seconds`, and when. */
+  const takeoffs = (seconds: number, hold: (state: MovementState, t: number) => boolean, ...extra: THREE.Mesh[]) => {
+    const { state, input, run } = setup(...extra);
+    const times: number[] = [];
+    let t = 0;
+    input.jump = hold(state, t);
+    run(seconds, () => {
+      if (tookOff(state)) {
+        times.push(t);
       }
-      if (falling && height < 0.1 && !pressedLate) {
-        return (pressedLate = true);
-      }
-      return false;
+      t += DT;
+      input.jump = hold(state, t);
     });
-    expect(late).toBe(2);
+    return times;
+  };
+
+  it("is one jump for a held key, however long it is held", () => {
+    expect(takeoffs(3, () => true)).toHaveLength(1);
   });
 
+  it("is not kept for the landing when pressed in the air", () => {
+    // A tap at the start, and another while falling 10 cm above the floor.
+    const tapped = takeoffs(3, (state, t) => t === 0 || (state.velocity.y < 0 && state.feet.y < 0.1 && !state.grounded));
+    expect(tapped).toHaveLength(1);
+    // The same, but held from there through the landing: a held key is not a press.
+    let late = false;
+    const held = takeoffs(3, (state, t) => t === 0 || (late ||= state.velocity.y < 0 && state.feet.y < 0.1));
+    expect(held).toHaveLength(1);
+  });
+
+  it("is taken from ground a unit under the feet, which broken ground leaves there for a tick, and from no further", () => {
+    const pressedAbove = (gap: number) => {
+      const { state, jump } = setup();
+      state.feet.y = gap;
+      state.grounded = false;
+      jump();
+      return tookOff(state);
+    };
+    expect(pressedAbove(1 * UNIT)).toBe(true);
+    expect(pressedAbove(4 * UNIT)).toBe(false);
+  });
+
+  it("is pressed again on the ground to jump again", () => {
+    // Every other step is a new press: each landing is jumped from.
+    let down = false;
+    expect(takeoffs(3, () => (down = !down)).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("does not follow another within JUMP_REPEAT, however soon the ground comes back", () => {
+    // Under a slab the head meets 0.22 m up, a jump is back down in a fifth of a second.
+    let down = false;
+    const times = takeoffs(1.2, () => (down = !down), collider([4, 0.2, 4], [0, 2.1, 0]));
+    expect(times.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < times.length; i++) {
+      const gap = times[i]! - times[i - 1]!;
+      expect(gap).toBeGreaterThanOrEqual(JUMP_REPEAT - 1e-9);
+      expect(gap).toBeLessThan(JUMP_REPEAT + 3 * DT);
+    }
+  });
+
+  it("ends a sprint: the flight coasts at the takeoff's speed and adds nothing to it", () => {
+    const { state, input, run, jump } = setup();
+    input.forward = 1;
+    input.run = true;
+    run(1);
+    expect(wantsSprint(state, input)).toBe(true);
+    jump();
+    const takeoff = horizontalSpeed(state);
+    expect(takeoff).toBeCloseTo(RUN_SPEED, 1);
+    let fastest = 0;
+    run(0.5, () => {
+      expect(state.grounded).toBe(false);
+      // Run is still held, and the one sprint rule says no all the same.
+      expect(wantsSprint(state, input)).toBe(false);
+      fastest = Math.max(fastest, horizontalSpeed(state));
+    });
+    expect(fastest).toBeLessThanOrEqual(takeoff + 1e-9);
+  });
+
+  it("never reaches the run speed from a walk by holding run in the air", () => {
+    const { state, input, run, jump } = setup();
+    input.forward = 1;
+    run(1);
+    jump();
+    input.run = true;
+    let fastest = 0;
+    run(0.55, () => {
+      expect(wantsSprint(state, input)).toBe(false);
+      fastest = Math.max(fastest, horizontalSpeed(state));
+    });
+    expect(fastest).toBeLessThanOrEqual(WALK_SPEED + 1e-9);
+    // And the ground under a held run key sprints again.
+    run(2.5);
+    expect(wantsSprint(state, input)).toBe(true);
+    expect(horizontalSpeed(state)).toBeCloseTo(RUN_SPEED, 5);
+  });
+});
+
+describe("a landing", () => {
+  it("costs a jump its speed twice, grips for LAND_WINDOW, and wears off", () => {
+    const { state, input, run, jump } = setup();
+    input.forward = 1;
+    run(0.5);
+    jump();
+    const after: number[] = [];
+    run(3, () => {
+      if (state.grounded) {
+        after.push(horizontalSpeed(state));
+      }
+    });
+    // The fall's cut on touching down, then the landing's on the first step along the ground.
+    expect(after[0]).toBeLessThan(WALK_SPEED * 0.67 + 1e-6);
+    expect(after[0]).toBeGreaterThan(WALK_SPEED * 0.6);
+    expect(after[1]).toBeLessThan(WALK_SPEED * 0.67 * 0.65 + 0.2);
+    expect(after[1]).toBeGreaterThan(1.5); // and no stop
+    // Still held back half a second later, where an ordinary start would be at full speed.
+    expect(after[30]).toBeLessThan(WALK_SPEED * 0.9);
+    expect(after.at(-1)).toBeCloseTo(WALK_SPEED, 5);
+    expect(state.landing).toBe(0);
+    expect(after.length * DT).toBeGreaterThan(LAND_WINDOW);
+  });
+
+  it("is a jump's alone: a fall takes its cut on touching down, and nothing after", () => {
+    // Off a ledge a metre up: one cut, no window.
+    const high = on(collider([40, 1, 8], [0, -0.5, -2]), collider([40, 1, 40], [0, -1.5, -20]));
+    high.input.forward = 1;
+    let before = 0;
+    let touched = 0;
+    high.run(2.5, () => {
+      if (!high.state.grounded) {
+        before = horizontalSpeed(high.state);
+      } else if (before > 0 && touched === 0) {
+        touched = horizontalSpeed(high.state);
+      }
+      expect(high.state.landing).toBe(0);
+    });
+    expect(high.state.feet.y).toBeCloseTo(-1, 2);
+    expect(touched).toBeCloseTo(before * 0.67, 5);
+    expect(horizontalSpeed(high.state)).toBeCloseTo(WALK_SPEED, 5);
+  });
+
+  it("makes chained jumps slow: timing every landing never beats a walk", () => {
+    const { state, input, run } = setup();
+    input.forward = 1;
+    run(1);
+    let down = false;
+    let fastest = 0;
+    let count = 0;
+    const landings: number[] = [];
+    let airborne = false;
+    run(6, () => {
+      input.jump = down = !down;
+      fastest = Math.max(fastest, horizontalSpeed(state));
+      if (tookOff(state)) {
+        count++;
+      }
+      if (airborne && state.grounded) {
+        landings.push(horizontalSpeed(state));
+      }
+      airborne = !state.grounded;
+    });
+    expect(count).toBeGreaterThanOrEqual(6);
+    expect(fastest).toBeLessThanOrEqual(WALK_SPEED + 1e-9);
+    // Every landing takes the fall's cut from whatever the air gave back.
+    expect(landings.length).toBeGreaterThanOrEqual(6);
+    for (const speed of landings) {
+      expect(speed).toBeLessThanOrEqual(WALK_SPEED * 0.67 + 1e-9);
+    }
+  });
+
+  it("lowers a jump taken inside it, by what is left of it", () => {
+    const apexes = (wait: number) => {
+      const { state, input, run, jump } = setup();
+      const tops: number[] = [];
+      jump();
+      let top = 0;
+      run(1, () => (top = Math.max(top, state.feet.y)));
+      tops.push(top);
+      expect(state.grounded).toBe(true);
+      run(wait);
+      input.jump = false;
+      jump();
+      top = 0;
+      run(1, () => (top = Math.max(top, state.feet.y)));
+      tops.push(top);
+      return tops;
+    };
+    const [first, soon] = apexes(0);
+    expect(first).toBeCloseTo(JUMP_HEIGHT, 1);
+    expect(soon!).toBeLessThan(first! * 0.75);
+    expect(soon!).toBeGreaterThan(first! / 2.5 - 0.02);
+    const [, later] = apexes(1);
+    expect(later!).toBeGreaterThan(soon!);
+    expect(later!).toBeLessThan(first! - 0.02);
+    const [, rested] = apexes(LAND_WINDOW);
+    expect(rested!).toBeCloseTo(first!, 3);
+  });
+
+  it("is shorter, and costs more, well above where the jump took off", () => {
+    // A box 20 units high, jumped onto from beside it.
+    const { state, input, run, jump } = setup(collider([4, 20 * UNIT, 4], [0, 10 * UNIT, -3]));
+    input.forward = 1;
+    run(0.05);
+    jump();
+    let landing = 0;
+    run(1, () => (landing = Math.max(landing, state.landing)));
+    expect(state.feet.y).toBeCloseTo(20 * UNIT, 2);
+    expect(landing).toBeCloseTo(LAND_WINDOW_HIGH, 5);
+  });
+});
+
+describe("the movement state", () => {
   it("is plain data: a JSON copy steps in lockstep with the original", () => {
     const a = setup();
     a.input.forward = 1;
     a.run(0.3);
     a.jump();
+    expect(a.state.jumpFrom).not.toBeNull();
     const copy = JSON.parse(JSON.stringify(a.state)) as typeof a.state;
     const b = setup();
     Object.assign(b.state, copy);
@@ -169,16 +395,17 @@ describe("stepMovement", () => {
 // a phase each end integrated on its own frame times would put a peer's legs in
 // two different places. These are the properties a pose may rely on.
 /** A player on `ground` alone, at the origin, facing -Z. `setup`'s own flat floor would be in the way. */
-function on(ground: THREE.Mesh) {
+function on(...ground: THREE.Mesh[]) {
   const root = new THREE.Group();
-  root.add(ground);
+  root.add(...ground);
   const collision = new CollisionWorld();
   collision.rebuild(root);
   const state = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
   const input = idleInput(0, 0);
+  const env = movementEnv(collision, NO_CLIMBS, PLAYER_MOVEMENT);
   const run = (seconds: number, each?: () => void) => {
     for (let t = 0; t < seconds - 1e-9; t += DT) {
-      stepMovement(state, input, DT, collision, true);
+      stepMovement(state, input, DT, env, EMPTY_HANDS);
       each?.();
     }
   };
@@ -236,6 +463,120 @@ describe("walking down a slope", () => {
   });
 });
 
+/** A face rising towards -Z at `angle`, its foot on the floor at z = -2. */
+function bank(angle: number): THREE.Mesh {
+  const mesh = collider([40, 2, 12], [0, -Math.cos(angle) + 6 * Math.sin(angle), -2 - Math.sin(angle) - 6 * Math.cos(angle)]);
+  mesh.rotation.x = angle;
+  return mesh;
+}
+
+describe("ground", () => {
+  it("is no steeper than 45 degrees: a steeper face is slid down, not stood on", () => {
+    for (const [angle, stood] of [
+      [0.7, true], // 40 degrees
+      [0.9, false], // 52 degrees
+    ] as const) {
+      const { state, run } = on(slope(angle));
+      const before = state.feet.y;
+      let grounded = 0;
+      run(0.5, () => {
+        grounded += state.grounded ? 1 : 0;
+      });
+      expect(grounded > 0, `${angle} rad`).toBe(stood);
+      expect(before - state.feet.y > 0.3, `${angle} rad`).toBe(!stood);
+    }
+  });
+
+  it("is kept to when it is within 9 units below, and fallen to when it is further", () => {
+    const airOver = (drop: number) => {
+      const { state, input, run } = on(collider([40, 1, 8], [0, -0.5, 0]), collider([40, 1, 40], [0, -0.5 - drop, -24]));
+      input.forward = 1;
+      let air = 0;
+      run(2, () => {
+        air += state.grounded ? 0 : 1;
+      });
+      expect(state.feet.y).toBeCloseTo(-drop, 3);
+      return air;
+    };
+    expect(airOver(8 * UNIT)).toBe(0);
+    expect(airOver(12 * UNIT)).toBeGreaterThan(0);
+  });
+});
+
+describe("a step", () => {
+  /** Walk at a ledge `height` tall, two metres ahead, and say where the feet end up. */
+  const walkAt = (height: number, ...extra: THREE.Mesh[]) => {
+    const ctx = setup(collider([40, height, 10], [0, height / 2, -7]), ...extra);
+    ctx.input.forward = 1;
+    ctx.run(1.5);
+    return ctx.state;
+  };
+
+  it("is taken onto a ledge 18 units tall and no taller", () => {
+    const low = walkAt(17.5 * UNIT);
+    expect(low.grounded).toBe(true);
+    expect(low.feet.y).toBeCloseTo(17.5 * UNIT, 3);
+    const high = walkAt(19 * UNIT);
+    expect(high.feet.y).toBeCloseTo(0, 3);
+    expect(high.feet.z).toBeGreaterThan(-2 - 1e-3 + PLAYER_MOVEMENT.radius);
+  });
+
+  it("is as tall as the head room under a low ceiling allows, rather than refused", () => {
+    // Twelve units over the head: room for a ten-unit ledge, not for the whole step.
+    const roof = PLAYER_MOVEMENT.height + 12 * UNIT;
+    const state = walkAt(10 * UNIT, collider([40, 1, 4], [0, roof + 0.5, 0]));
+    expect(state.feet.y).toBeCloseTo(10 * UNIT, 3);
+  });
+
+  it("is not taken onto a face too steep to stand on", () => {
+    // 60 degrees: a walk gets no further up it than its foot.
+    const ctx = setup(bank(Math.PI / 3));
+    ctx.input.forward = 1;
+    let highest = 0;
+    ctx.run(2, () => {
+      highest = Math.max(highest, ctx.state.feet.y);
+    });
+    expect(highest).toBeLessThan(18 * UNIT);
+    expect(ctx.state.feet.z).toBeGreaterThan(-2.5);
+  });
+
+  it("costs speed, by how much of a whole step it is", () => {
+    const slowest = (height: number) => {
+      const ctx = setup(collider([40, height, 10], [0, height / 2, -7]));
+      ctx.input.forward = 1;
+      let least = Infinity;
+      ctx.run(1.2, () => {
+        if (ctx.state.feet.z < -1) {
+          least = Math.min(least, horizontalSpeed(ctx.state));
+        }
+      });
+      expect(ctx.state.feet.y).toBeCloseTo(height, 3);
+      return least / WALK_SPEED;
+    };
+    const stair = slowest(8 * UNIT);
+    const tall = slowest(16 * UNIT);
+    expect(stair).toBeLessThan(0.99);
+    expect(tall).toBeLessThan(stair);
+    expect(tall).toBeGreaterThan(0.15);
+  });
+
+  it("is taken in a jump onto what is under the jump's own height, and nothing above it", () => {
+    const jumpAt = (height: number) => {
+      const ctx = setup(collider([40, height, 10], [0, height / 2, -7]));
+      ctx.input.forward = 1;
+      ctx.run(0.25);
+      ctx.jump();
+      ctx.run(1);
+      return ctx.state;
+    };
+    const under = jumpAt(36 * UNIT);
+    expect(under.grounded).toBe(true);
+    expect(under.feet.y).toBeCloseTo(36 * UNIT, 3);
+    // A step's reach above the jump would clear this one; a jump's own height does not.
+    expect(jumpAt(44 * UNIT).feet.y).toBeCloseTo(0, 3);
+  });
+});
+
 describe("the stride clock", () => {
   it("advances at the run period when running, and wraps", () => {
     const { state, input, run } = setup();
@@ -276,7 +617,7 @@ describe("the stride clock", () => {
     input.run = true;
     run(0.5);
     expect(state.stride).toBeGreaterThan(0);
-    state.ladder = { facing: 0 };
+    state.move = { kind: "ladder", facing: 0 };
     run(1 / 60);
     expect(state.stride).toBe(0);
   });
@@ -362,19 +703,19 @@ describe("the pose blends", () => {
     }
     expect(state.gait).toBe(1);
 
-    state.ladder = { facing: 0 };
+    state.move = { kind: "ladder", facing: 0 };
     for (let t = 0; t < GAIT_BLEND; t += DT) {
       advanceBlends(state, DT);
     }
     expect(state.gait).toBe(0);
 
     // And a mantle, the other kind of climb.
-    state.ladder = null;
+    state.move = WALKING;
     for (let i = 0; i < 60; i++) {
       advanceBlends(state, DT);
     }
     expect(state.gait).toBe(1);
-    state.mantle = { target: { x: 0, y: 1, z: 0 }, left: 0.4, rise: 1, over: false };
+    state.move = { kind: "mantle", target: { x: 0, y: 1, z: 0 }, left: 0.4, rise: 1, over: false };
     for (let t = 0; t < GAIT_BLEND; t += DT) {
       advanceBlends(state, DT);
     }

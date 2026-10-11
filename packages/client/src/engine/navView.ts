@@ -32,7 +32,7 @@ import {
 import { SNAP_SEARCH } from "@3d/shared/nav/snap.js";
 import { LINK_FLAGS, LINK_KINDS, NODE_FLAGS, NODE_TYPES, TRAVERSAL_KINDS } from "@3d/shared/nav/vocab.js";
 import type { CapsuleWorld } from "@3d/shared/sim/capsule.js";
-import type { MovementRules } from "@3d/shared/sim/worldRules.js";
+import type { MovementRules } from "@3d/shared/sim/movement.js";
 
 export type NavViewMode = "off" | "graph" | "everything";
 

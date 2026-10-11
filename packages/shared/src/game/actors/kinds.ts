@@ -11,6 +11,7 @@
 // draw every zombie as whatever took its place.
 
 import type { GameKey } from "../../dsl/resolved.js";
+import { SLOPE_NORMAL_Y } from "../../sim/capsule.js";
 import type { MovementParams } from "../../sim/movement.js";
 import type { ActorSounds } from "./sounds.js";
 
@@ -78,10 +79,10 @@ function zombieSounds(game: GameKey): ActorSounds {
 }
 
 /**
- * A human-sized walker: Kino der Toten's honour guard. The player's capsule, not
- * the entry's 0.41 m by 1.83 m box: the graph's nodes were stood and its parts'
- * corridors sampled with a player's body, and the game's links pass close enough
- * to walls that a wider one would rub. Health is the aitype's 150, which a gametype
+ * A human-sized walker: Kino der Toten's honour guard. Narrower than a player
+ * and than the entry's 0.41 m by 1.83 m box: the game's links pass close enough
+ * to walls that a body as wide as either rubs along them, and a walker has no
+ * speed to rub through with. Health is the aitype's 150, which a gametype
  * prices per round (`ActorSpec.health`); the blow's numbers are placeholders.
  */
 export const ZOMBIE_KIND: ActorKindDef = {
@@ -90,6 +91,8 @@ export const ZOMBIE_KIND: ActorKindDef = {
   height: 1.7,
   walkSpeed: 1.2,
   runSpeed: 2.8,
+  // A walker has no speed to carry it up a bank a player takes at a run, so it treads one.
+  footing: SLOPE_NORMAL_Y,
   health: 150,
   melee: { damage: 50, reach: 1, cooldown: 1, swing: 0.6 },
   corpse: 2,

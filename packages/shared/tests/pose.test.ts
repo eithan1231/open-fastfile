@@ -8,14 +8,18 @@
 // than the body on screen.
 
 import { describe, expect, it } from "vitest";
-import { createMovement, RUN_SPEED, type MovementState } from "../src/sim/movement.js";
+import { createMovement, LAND_WINDOW, RUN_SPEED, type MovementState } from "../src/sim/movement.js";
 import { IDLE_SPEED } from "../src/sim/gait.js";
-import { LAND_RECOVERY } from "../src/sim/stepSlide.js";
-import { mantleDuration } from "../src/sim/mantle.js";
-import { poseLayers, bodyYaw } from "../src/sim/pose.js";
+import { mantleDuration } from "../src/sim/moves/mantle.js";
+import { LAND_DIP, poseLayers, bodyYaw } from "../src/sim/pose.js";
 import { AIM_LIMIT } from "../src/sim/characterDef.js";
 import type { WeaponData } from "../src/sim/weapon.js";
 import { restingKick, restingViewKick } from "../src/sim/recoil.js";
+
+/** The `landing` that has share `t` of the landing's dip still to go: 1 the step it lands, 0 once the dip is over. */
+function dip(t: number): number {
+  return LAND_WINDOW - LAND_DIP * (1 - t);
+}
 
 function movement(over: Partial<MovementState> = {}): MovementState {
   return settled({ ...createMovement({ x: 0, y: 0, z: 0 }, 0, 0), grounded: true, ...over });
@@ -97,7 +101,7 @@ describe("poseLayers is a pure function of the state", () => {
 
   it("gives the same answer for an equal state it has never seen", () => {
     // The real claim: two ends holding equal states agree, having shared no history.
-    const a = movement({ velocity: { x: 2, y: 0, z: -2 }, stride: 0.7, landing: 0.2, gait: 0.8 });
+    const a = movement({ velocity: { x: 2, y: 0, z: -2 }, stride: 0.7, landing: dip(0.4), gait: 0.8 });
     const b = structuredClone(a) as MovementState;
     expect(poseLayers(b, weapon())).toEqual(poseLayers(a, weapon()));
   });
@@ -118,13 +122,13 @@ describe("poseLayers is a pure function of the state", () => {
       running(),
       running({ velocity: { x: 3, y: 0, z: -3 } }),
       movement({ grounded: false, airborne: 1, sinceJump: 0.1 }),
-      running({ landing: 0.3 }),
+      running({ landing: dip(0.6) }),
       // Mid-transition in each direction, which is where a blend has to still sum to 1.
       movement({ velocity: { x: 0, y: 0, z: -RUN_SPEED }, gait: 0.5 }),
       movement({ grounded: false, airborne: 0.5, sinceJump: 0.1 }),
-      running({ landing: 0.3, gait: 0.5, airborne: 0.4 }),
-      movement({ ladder: { facing: 1 } }),
-      movement({ mantle: { target: { x: 0, y: 1, z: 0 }, left: 0.2, rise: 1, over: false } }),
+      running({ landing: dip(0.6), gait: 0.5, airborne: 0.4 }),
+      movement({ move: { kind: "ladder", facing: 1 } }),
+      movement({ move: { kind: "mantle", target: { x: 0, y: 1, z: 0 }, left: 0.2, rise: 1, over: false } }),
     ];
     for (const m of cases) {
       const total = poseLayers(m, weapon()).legs.reduce((sum, l) => sum + l.weight, 0);
@@ -134,7 +138,7 @@ describe("poseLayers is a pure function of the state", () => {
 
   it("keeps every phase inside the clip", () => {
     for (const stride of [0, 0.5, 0.999]) {
-      for (const m of [running({ stride }), movement({ ladder: { facing: 0 }, feet: { x: 0, y: 3.7, z: 0 } })]) {
+      for (const m of [running({ stride }), movement({ move: { kind: "ladder", facing: 0 }, feet: { x: 0, y: 3.7, z: 0 } })]) {
         for (const layer of poseLayers(m, weapon()).legs) {
           expect(layer.phase).toBeGreaterThanOrEqual(0);
           expect(layer.phase).toBeLessThanOrEqual(1);
@@ -181,19 +185,19 @@ describe("what a body is doing", () => {
     // climb takes — and a peer whose first snapshot lands mid-climb starts there.
     const rise = 1.2;
     const total = mantleDuration(rise);
-    const at = (left: number) => poseLayers(movement({ mantle: { target: { x: 0, y: 0, z: 0 }, left, rise, over: false } }), weapon()).legs[0]!;
+    const at = (left: number) => poseLayers(movement({ move: { kind: "mantle", target: { x: 0, y: 0, z: 0 }, left, rise, over: false } }), weapon()).legs[0]!;
     expect(at(total).phase).toBeCloseTo(0, 6);
     expect(at(total / 2).phase).toBeCloseTo(0.5, 6);
     expect(at(0).phase).toBeCloseTo(1, 6);
     expect(at(total).role).toBe("mantle");
     // `over` picks the clip that carries the player across rather than up.
-    const over = poseLayers(movement({ mantle: { target: { x: 0, y: 0, z: 0 }, left: 0.1, rise, over: true } }), weapon()).legs[0]!;
+    const over = poseLayers(movement({ move: { kind: "mantle", target: { x: 0, y: 0, z: 0 }, left: 0.1, rise, over: true } }), weapon()).legs[0]!;
     expect(over.role).toBe("mantleOver");
   });
 
   it("poses a ladder from the feet's height, so a still climber holds a pose", () => {
     const at = (y: number, vy: number) =>
-      poseLayers(movement({ ladder: { facing: 0 }, feet: { x: 0, y, z: 0 }, velocity: { x: 0, y: vy, z: 0 } }), weapon()).legs[0]!;
+      poseLayers(movement({ move: { kind: "ladder", facing: 0 }, feet: { x: 0, y, z: 0 }, velocity: { x: 0, y: vy, z: 0 } }), weapon()).legs[0]!;
     expect(at(0, 1).role).toBe("climbUp");
     expect(at(0, -1).role).toBe("climbDown");
     // The same height twice is the same pose: nothing is integrating.
@@ -201,9 +205,11 @@ describe("what a body is doing", () => {
     expect(at(0, 1).phase).toBeCloseTo(0, 6);
   });
 
-  it("fades a landing out over the simulation's own recovery, on top of the gait", () => {
-    const fresh = legs(running({ landing: 0.5 }));
-    const nearly = legs(running({ landing: 0.05 }));
+  it("fades a landing's dip out over the start of the simulation's own landing, on top of the gait", () => {
+    const fresh = legs(running({ landing: dip(1) }));
+    const nearly = legs(running({ landing: dip(0.1) }));
+    // Past the dip the landing still grips the feet, and shows nothing.
+    expect(legs(running({ landing: dip(0) })).land).toBeUndefined();
     expect(fresh.land).toBeGreaterThan(nearly.land!);
     // And the run keeps what the landing does not: a player who lands mid-sprint
     // keeps running, with a dip in it. Summed over every role, because the run is a
@@ -276,7 +282,7 @@ describe("where a body looks", () => {
   it("faces the view, except on a ladder where it faces the ladder", () => {
     expect(bodyYaw(movement({ yaw: 1.2 }))).toBe(1.2);
     // IW5's `PM_LadderMove` turns the body to the ladder whatever the view does.
-    expect(bodyYaw(movement({ yaw: 1.2, ladder: { facing: 0 } }))).toBeCloseTo(Math.PI, 6);
+    expect(bodyYaw(movement({ yaw: 1.2, move: { kind: "ladder", facing: 0 } }))).toBeCloseTo(Math.PI, 6);
   });
 
   it("turns the aim joint no further than a spine bends", () => {
@@ -352,7 +358,7 @@ describe("a change of pose is blended, not switched", () => {
       const t = i / 10;
       expect(total(movement({ velocity: RUN, gait: t }), weapon())).toBeCloseTo(1, 6);
       expect(total(movement({ velocity: RUN, gait: 1, airborne: t, sinceJump: 0.1 }), weapon())).toBeCloseTo(1, 6);
-      expect(total(movement({ velocity: RUN, gait: 1, landing: t * LAND_RECOVERY }), weapon())).toBeCloseTo(1, 6);
+      expect(total(movement({ velocity: RUN, gait: 1, landing: dip(t) }), weapon())).toBeCloseTo(1, 6);
       expect(total(movement(), weapon({ ads: t }))).toBeCloseTo(1, 6);
       expect(total(movement({ velocity: RUN, gait: 1 }), weapon({ state: "sprintIn", span: 0.2, timer: t * 0.2 }))).toBeCloseTo(1, 6);
     }
@@ -406,7 +412,7 @@ describe("a change of pose is blended, not switched", () => {
       // And in the air over it, and landing out of it, where the same fallback sits
       // underneath another blend.
       distinct(movement({ velocity: STOPPED, gait: t, airborne: t, sinceJump: 0.1 }), weapon());
-      distinct(movement({ velocity: STOPPED, gait: t, landing: t * LAND_RECOVERY }), weapon());
+      distinct(movement({ velocity: STOPPED, gait: t, landing: dip(t) }), weapon());
       distinct(movement({ velocity: STOPPED, gait: t }), weapon({ state: "sprintOut", span: 0.2, timer: t * 0.2 }));
     }
   });
@@ -458,7 +464,7 @@ describe("a change of pose is blended, not switched", () => {
       w: weapon(),
     }));
     sweep("airborne", (t) => ({ m: movement({ velocity: RUN, gait: 1, airborne: t, sinceJump: 0.1 }), w: weapon() }));
-    sweep("landing", (t) => ({ m: movement({ velocity: RUN, gait: 1, landing: t * LAND_RECOVERY }), w: weapon() }));
+    sweep("landing", (t) => ({ m: movement({ velocity: RUN, gait: 1, landing: dip(t) }), w: weapon() }));
     sweep("ads", (t) => ({ m: movement(), w: weapon({ ads: t }) }));
     sweep("ads while firing", (t) => ({ m: movement(), w: weapon({ state: "firing", span: 0.1, timer: 0.05, ads: t }) }));
     sweep("sprint in", (t) => ({ m: movement({ velocity: RUN, gait: 1 }), w: weapon({ state: "sprintIn", span: 0.2, timer: (1 - t) * 0.2 }) }));

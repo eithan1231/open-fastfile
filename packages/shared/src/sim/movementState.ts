@@ -1,76 +1,97 @@
 // What a player's movement *is*: the body, the state a step advances, and the
-// few numbers more than one move reads. No step is here — walking is
-// sim/movement.ts, and the moves that replace it are sim/ladder.ts and
-// sim/mantle.ts — so each of those can import this without importing another.
+// few numbers more than one move reads. No step is here — sim/movement.ts is
+// the step and sim/moves/ has one module per move — so each of those can import
+// this without importing another.
 
-import type { Vec3 } from "./capsule.js";
+import { WALKABLE_NORMAL_Y, type Vec3 } from "./capsule.js";
 import { UNIT } from "./units.js";
 
 // -- The body ----------------------------------------------------------------------
 
-export const RADIUS = 0.3; // m
-export const HEIGHT = 1.7; // m
+// Every number here is the games' own, in their units (reverse/iw5-pmove/).
+
+export const RADIUS = 15 * UNIT;
+export const HEIGHT = 70 * UNIT;
 /**
- * The eye above the feet, m: the games' own viewheight, 60 units.
- *
- * Measured against the bodies rather than chosen as a round number, which is what
- * it used to be. A catalogue body posed standing puts its `tag_eye` at 1.47–1.48 m
- * and the top of its head at 1.62–1.69 m, so an eye at 1.6 sat in the top few
- * centimetres of a peer's head box — and this is where a round leaves from
- * (`Match.trace`), so a player saw and shot over a wall from 12 cm above the head
- * anyone could shoot back at. 60 units leaves the same small gap over a body's own
- * eye that the games leave.
+ * The eye above the feet. A catalogue body posed standing puts its `tag_eye` at
+ * 1.47–1.48 m and the top of its head at 1.62–1.69 m, and a round leaves from
+ * here (`Match.trace`): an eye any higher sees and shoots over a wall from above
+ * the head anyone could shoot back at.
  */
 export const EYE_HEIGHT = 60 * UNIT;
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
 
-// -- Walking and running (Quake's values in brackets) ------------------------------
+// -- Walking and running -----------------------------------------------------------
 
-export const WALK_SPEED = 3.2; // m/s
-export const RUN_SPEED = 5.8; // m/s
+/** m/s, with nothing held: every other speed of a player's is a share of this. */
+export const WALK_SPEED = 190 * UNIT;
+/** A sprint, as a share of the walk. */
+const SPRINT_SCALE = 1.5;
+export const RUN_SPEED = WALK_SPEED * SPRINT_SCALE;
 
 /**
  * The body a step moves and the speeds its keys ask for. A player's is
- * `PLAYER_MOVEMENT`, which is every step's default: a client predicting and a
- * server replaying pass nothing, so they cannot disagree about it. An actor's
- * kind names its own (game/actors/), stepped on the server alone.
+ * `PLAYER_MOVEMENT`, on both ends; an actor's kind names its own
+ * (game/actors/), stepped on the server alone.
  */
 export interface MovementParams {
   /** The capsule, m. */
   readonly radius: number;
   readonly height: number;
-  /** m/s, without and with `run`. */
+  /** m/s forward, without and with a sprint. Sideways, backward and in the air are shares of the walk (sim/moves/walk.ts). */
   readonly walkSpeed: number;
   readonly runSpeed: number;
   /**
-   * Stand on a kerb's corner after stepping onto it, rather than fall back off it.
-   * A player crosses a thin threshold in one tick's move and never needs it; an
-   * actor walking at 0.6 m/s moves a centimetre a tick and is pinned by one
-   * without it (theater's foyer). Off for a player, whose step is pinned bit for
-   * bit (tests/movementParams.test.ts).
+   * The least a contact under this body may face up (`CapsuleResolution.normal.y`)
+   * for it to stand there. A player's is the walkable limit: steeper, it slides,
+   * and gets up a short bank only at speed.
    */
-  readonly rideKerbs?: boolean;
+  readonly footing: number;
 }
 
-export const PLAYER_MOVEMENT: MovementParams = { radius: RADIUS, height: HEIGHT, walkSpeed: WALK_SPEED, runSpeed: RUN_SPEED };
+export const PLAYER_MOVEMENT: MovementParams = {
+  radius: RADIUS,
+  height: HEIGHT,
+  walkSpeed: WALK_SPEED,
+  runSpeed: RUN_SPEED,
+  footing: WALKABLE_NORMAL_Y,
+};
 
 // -- Jumping -----------------------------------------------------------------------
 
-/** Takeoff speed, m/s: a 0.84 m jump, 0.61 s in the air. */
-export const JUMP_SPEED = 5.5;
+export const GRAVITY = 800 * UNIT; // m/s²
+/** How high a jump lifts the feet, and the takeoff speed that does it. */
+export const JUMP_HEIGHT = 39 * UNIT;
+export const JUMP_SPEED = Math.sqrt(2 * JUMP_HEIGHT * GRAVITY);
 /**
- * `sinceJump` counts up to this and stops: the longest any rule looks back at a
- * jump (JUMP_OFF_REPEAT), so the field has a bound to be sent in.
+ * Seconds from one takeoff before the next jump, off the ground or off a
+ * ladder. `sinceJump` counts up to this and stops, being the longest any rule
+ * looks back at a jump, so the field has a bound to be sent in.
  */
-export const JUMP_MEMORY = 0.5; // s
+export const JUMP_REPEAT = 0.5;
+/**
+ * Seconds a landing from a jump is felt for: friction is raised and a jump is
+ * lower, both wearing off across it (sim/moves/walk.ts). A landing well above
+ * the takeoff starts it part-way in, at LAND_WINDOW_HIGH.
+ */
+export const LAND_WINDOW = 1.8;
+export const LAND_WINDOW_HIGH = 1.2;
 
 // -- State -------------------------------------------------------------------------
 
+/** Walking, running, jumping and falling: the move a player is in unless another has taken over. */
+export interface WalkMove {
+  kind: "walk";
+}
+
 /**
- * A climb under way. Null unless the player is mantling, which is what makes it
- * one bit on the wire in the ordinary case rather than three fields of zeroes.
+ * A climb under way: the player is on rails, with no gravity, no friction, no
+ * keys and no collision resolution. The path was checked clear before it began
+ * (sim/moves/mantle.ts), and resolving against the corner it hugs would only
+ * nudge it off the line a server replays.
  */
-export interface MantleState {
+export interface MantleMove {
+  kind: "mantle";
   /** The feet position this climb ends at, fixed when it started. */
   target: Vec3;
   /** Seconds left of it. */
@@ -90,11 +111,9 @@ export interface MantleState {
   over: boolean;
 }
 
-/**
- * A ladder being climbed. Null unless the player is on one, which makes it one
- * bit on the wire in the ordinary case.
- */
-export interface LadderState {
+/** A ladder being climbed: steered by the view and the keys, and still resolved against the world. */
+export interface LadderMove {
+  kind: "ladder";
   /**
    * Which way the side they grabbed faces, as a yaw (its outward normal, the way
    * a player facing out from it would look). Fixed at the grab, as the game's
@@ -104,6 +123,15 @@ export interface LadderState {
 }
 
 /**
+ * Which move owns a player's step. Exactly one does, so every reader switches
+ * on `kind` rather than testing the moves one by one.
+ */
+export type Move = WalkMove | MantleMove | LadderMove;
+
+/** The walk every state shares, so entering it allocates nothing. Frozen: a move's fields are only ever its own. */
+export const WALKING: WalkMove = Object.freeze({ kind: "walk" });
+
+/**
  * Everything about a player's movement that changes as they play, as plain
  * JSON-safe data (no three.js values, no Infinity): what a network sends.
  * tests/player.test.ts runs a JSON copy in lockstep to keep it complete.
@@ -111,39 +139,31 @@ export interface LadderState {
 export interface MovementState {
   /** The bottom of the capsule, world metres. */
   feet: Vec3;
-  /** m/s. */
+  /** m/s. Walking, it lies along the ground under the feet, so it rises and falls with a slope. */
   velocity: Vec3;
   /** Radians: yaw about +Y (0 faces -Z), pitch up positive. */
   yaw: number;
   pitch: number;
-  /** Standing on something after the last step. */
+  /** Standing on walkable ground after the last step: what the next one walks on, jumps from and sprints on. */
   grounded: boolean;
-  /** Seconds the ground still counts after leaving it (COYOTE_TIME); 0 once gone or spent on a jump. */
-  coyote: number;
-  /** Seconds a jump press still waits for the ground (JUMP_BUFFER). */
-  jumpBuffer: number;
-  /** In the air from a jump, not a fall, so the landing slows the player. */
-  jumped: boolean;
-  /** Seconds left of the landing slowdown (LAND_RECOVERY). */
-  landing: number;
   /**
-   * The climb under way, or null. While this is set the player is on rails: no
-   * gravity, no friction, no keys and no collision resolution. The path was
-   * checked clear before the climb began (sim/mantle.ts), and nothing it was
-   * checked against moves; resolving against the corner it hugs would only
-   * nudge it off the line a server replays.
+   * The feet's height at the takeoff of the jump under way, or null: in the air
+   * from a jump rather than a fall, until the first step back on the ground —
+   * which is the one that takes the landing's cost.
    */
-  mantle: MantleState | null;
-  /** The ladder being climbed, or null. While set, the ladder move replaces walking. */
-  ladder: LadderState | null;
+  jumpFrom: number | null;
+  /** Seconds left of the landing from a jump (LAND_WINDOW); 0 once it has worn off, or in the air. */
+  landing: number;
+  /** The move that owns this player's steps: walking, unless a climb or a ladder has taken over. */
+  move: Move;
   /**
    * Off a ladder by any way but a jump, and not yet back on the ground: no
    * ladder can be grabbed until they are. The game's pm_flags 0x1000.
    */
   ladderLock: boolean;
-  /** Seconds since the last jump, stopping at JUMP_MEMORY. */
+  /** Seconds since the last takeoff, stopping at JUMP_REPEAT. */
   sinceJump: number;
-  /** Jump was held last step, so a held key is not a new press: a ladder is jumped off by pressing. */
+  /** Jump was held last step, so a held key is not a new press: a jump, and a jump off a ladder, each need one. */
   jumpHeld: boolean;
   /**
    * How much of a gait is under way: 0 standing still, 1 moving.
@@ -161,9 +181,8 @@ export interface MovementState {
    * How far off the ground the *pose* is: 0 standing, 1 airborne. The same kind of
    * smoothed boolean as `gait`, chasing `grounded`.
    *
-   * Its own field rather than derived from `coyote`, `sinceJump` and `landing`
-   * between them — those would each cover one way of leaving or meeting the ground
-   * and disagree about walking off a ledge, which is clever where this is clear.
+   * Its own field rather than derived from `sinceJump` and `landing` between
+   * them: those cover a jump, and say nothing about walking off a ledge.
    */
   airborne: number;
   /**
@@ -210,14 +229,11 @@ export function createMovement(feet: Vec3, yaw: number, pitch: number): Movement
     yaw,
     pitch: clampPitch(pitch),
     grounded: false,
-    coyote: 0,
-    jumpBuffer: 0,
-    jumped: false,
+    jumpFrom: null,
     landing: 0,
-    mantle: null,
-    ladder: null,
+    move: WALKING,
     ladderLock: false,
-    sinceJump: JUMP_MEMORY,
+    sinceJump: JUMP_REPEAT,
     jumpHeld: false,
     gait: 0,
     airborne: 0,

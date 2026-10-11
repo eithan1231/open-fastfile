@@ -26,8 +26,8 @@ describe.skipIf(!exported("nuked-bo1"))("nuked-bo1's navigation bake", () => {
       usable: 314,
       unusable: { INSIDE: 2 },
       derived: { pairs: 0, candidates: 0, probed: 0, valid: 0 },
-      valid: 1470,
-      reasons: { STUCK: 22, NODE: 19, TIMEOUT: 5 },
+      valid: 1474,
+      reasons: { STUCK: 19, NODE: 19, TIMEOUT: 4 },
       traversals: {
         JUMP_DOWN: { valid: 2, invalid: 2 },
         MANTLE_OVER: { valid: 0, invalid: 2 },
@@ -51,16 +51,16 @@ describe.skipIf(!exported("cairo-bo1"))("cairo-bo1's navigation bake", () => {
     expect(game.valid / game.all).toBeGreaterThan(GAME_LINK_FLOOR);
     expect(game.validBetweenUsable / game.betweenUsable).toBeGreaterThan(GAME_LINK_FLOOR);
     expect(pinned(summary)).toEqual({
-      usable: 653,
-      unusable: { INSIDE: 2 },
+      usable: 651,
+      unusable: { INSIDE: 4 },
       derived: { pairs: 0, candidates: 0, probed: 0, valid: 0 },
-      valid: 3116,
-      reasons: { STUCK: 152, NODE: 26, TIMEOUT: 11 },
-      traversals: { MANTLE_OVER: { valid: 4, invalid: 12 } },
+      valid: 3110,
+      reasons: { STUCK: 139, TIMEOUT: 10, NODE: 46 },
+      traversals: { MANTLE_OVER: { valid: 3, invalid: 13 } },
     });
     // The game's graph is one strong component; ours is not, because the export
     // collides with script brush models TDM deletes (docs/cod/navigation.md).
-    expect(spawns).toEqual({ spawns: 283, inLargest: 60, noNode: 23, largest: 294 });
+    expect(spawns).toEqual({ spawns: 283, inLargest: 60, noNode: 23, largest: 293 });
   }, 120_000);
 });
 

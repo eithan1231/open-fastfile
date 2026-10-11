@@ -16,11 +16,35 @@ export interface Vec3 {
   z: number;
 }
 
+/**
+ * The least a surface's normal may point up (its y) and still be ground: about
+ * 45.6° from level. Anything steeper is not stood on, and a body on it slides.
+ * reverse/iw5-pmove has where the number comes from.
+ */
+export const WALKABLE_NORMAL_Y = 0.7;
+/**
+ * The least a contact may point up and still be under a capsule rather than
+ * beside it. Between this and WALKABLE_NORMAL_Y a surface is a slope to slide on.
+ */
+export const SLOPE_NORMAL_Y = 0.3;
+
 export interface CapsuleResolution {
   /** New feet (bottom-of-capsule) position after resolving penetrations. */
   position: Vec3;
-  /** True if the capsule ended up resting on a roughly-upward-facing surface. */
+  /** True if the capsule was pushed out of ground: something walkable under it. */
   grounded: boolean;
+  /**
+   * Where the capsule's bottom is held up from: the unit direction from the
+   * most level thing it was pushed out of to its axis. A face's normal on a
+   * face; on a corner, the way from the corner — so `radius * (1 - normal.y)`
+   * is how far above the feet the contact is. Zero when nothing under it was
+   * touched.
+   *
+   * `grounded` is not `normal.y >= WALKABLE_NORMAL_Y`: the corner of a walkable
+   * face is ground however far round the bottom it is, down to SLOPE_NORMAL_Y,
+   * because a box would be standing on the face (docs/engine/collision.md).
+   */
+  normal: Vec3;
 }
 
 /**
@@ -67,10 +91,10 @@ export interface CapsuleWorld {
   overlapsCapsule(position: Vec3, radius: number, height: number): boolean;
   /**
    * The height of the first standable surface straight down from `from`, no
-   * further than `distance` below it, or null. Standable as `resolveCapsule`
-   * means it: nothing steeper than its ground slope.
+   * further than `distance` below it, or null. Standable is WALKABLE_NORMAL_Y.
+   * Writes the surface's unit normal, pointing up, into `normal` when given.
    */
-  groundBelow(from: Vec3, distance: number): number | null;
+  groundBelow(from: Vec3, distance: number, normal?: Vec3): number | null;
   /**
    * The first thing along `direction` (a unit vector) from `from`, no further than
    * `distance`, or null.

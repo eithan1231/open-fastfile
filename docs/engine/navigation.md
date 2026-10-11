@@ -165,7 +165,7 @@ jittering against a ledge moves, but not forward.
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | walk                                          | Face the next node, forward; run beyond 2 m of where the path stops. A node mid-path is passed within 0.6 m, or once past it along its link within 1.2 m                                                      |
 | `STEP_UP`, `MANTLE_*`, `JUMP_UP`, `JUMP_DOWN` | Walk at the end; when blocked, press jump for one tick. With a mantle volume there the press climbs; without one it is a jump. A jump down walks off its edge, and presses only where a railing is in the way |
-| `JUMP_ACROSS`                                 | Run if it is longer than 3.5 m, else walk; take off at the edge (within the coyote window), when blocked, or past the run-up with no edge met                                                                 |
+| `JUMP_ACROSS`                                 | Run if it is longer than 2.4 m, else walk; take off on the ground past the run-up, or when blocked. A path that stops is braked for as far out as the skid is long                                            |
 | `LADDER_UP`                                   | Face along the link, forward, pitch 0.6 rad (full climbing speed); over the top, walk to the end                                                                                                              |
 | `LADDER_DOWN`                                 | Back off the top facing the ladder; on it, pitch −60° and forward; standing at the foot, let go of forward, which lets go of the ladder                                                                       |
 | a ladder grabbed on any other link            | Jump off it towards the target, or let go of forward if standing                                                                                                                                              |
@@ -340,7 +340,7 @@ with.
 
 The bake is CPU-bound in the collision queries, and nearly all of it is the
 simulation. Profiled on dome, 75% of the validation is `resolveCapsule`,
-`stepUp`'s overlap tests are most of the rest, and the follower itself is under
+a step's overlap tests are most of the rest, and the follower itself is under
 1%. Measured in the game server's tests (`navBake*.test.ts`), on one core. Only
 dome's bake runs in a plain `pnpm test`; the others take a minute or more and
 run with `NAV_BAKE_ALL=1`:

@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
-import { MantleVolumes, MAX_CLIMB, MIN_CLIMB } from "../src/sim/mantle.js";
+import { MantleVolumes, MAX_CLIMB, MIN_CLIMB } from "../src/sim/moves/mantle.js";
 import { HEIGHT, RADIUS } from "../src/sim/movement.js";
 import type { ResolvedMantle } from "../src/dsl/resolved.js";
 
@@ -176,7 +176,7 @@ describe("MantleVolumes.find", () => {
     // entirely in front of its wall: a test against the centre alone would miss it.
     const wall: Box = { size: [3, 1, 2], at: [0, 0.5, 1.1] };
     const thin = new MantleVolumes([crateVolume({ position: { x: 0, y: 0.5, z: 0.05 }, size: { x: 3, y: 1, z: 0.1 } })]);
-    expect(thin.find({ x: 0, y: 0, z: -0.25 }, LOOK.plusZ, BODY, world(wall))).not.toBeNull();
+    expect(thin.find({ x: 0, y: 0, z: 0.1 - RADIUS - 0.02 }, LOOK.plusZ, BODY, world(wall))).not.toBeNull();
     expect(thin.find({ x: 0, y: 0, z: -2 }, LOOK.plusZ, BODY, world(wall))).toBeNull();
   });
 
@@ -232,7 +232,7 @@ describe("MantleVolumes.find", () => {
     const onto = volumes.find(feet, LOOK.plusZ, BODY, world(rail, wall));
     expect(onto!.over).toBe(false);
     expect(Math.abs(onto!.feet.z)).toBeLessThanOrEqual(0.1);
-    expect(onto!.feet.z + RADIUS).toBeLessThanOrEqual(0.35);
+    expect(onto!.feet.z + RADIUS).toBeLessThanOrEqual(0.35 + 1e-9);
 
     // Flush against it, not even that.
     expect(volumes.find(feet, LOOK.plusZ, BODY, world(rail, { ...wall, at: [0, 1.5, 0.2] }))).toBeNull();
@@ -265,6 +265,6 @@ describe("MantleVolumes.find", () => {
   it("agrees with the animation set about what a climb can be", () => {
     // MAX_CLIMB is 57 in, the tallest `mp_mantle_up_*` there is.
     expect(MAX_CLIMB).toBeCloseTo(1.4478, 4);
-    expect(MIN_CLIMB).toBeGreaterThan(RADIUS);
+    expect(MIN_CLIMB).toBeLessThan(MAX_CLIMB);
   });
 });

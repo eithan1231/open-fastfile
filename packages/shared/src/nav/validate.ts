@@ -14,9 +14,7 @@
 
 import type { PlayerInput } from "../sim/input.js";
 import { idleInput } from "../sim/input.js";
-import type { CapsuleWorld } from "../sim/capsule.js";
-import { createMovement, stepMovement, WALK_SPEED, type MovementState } from "../sim/movement.js";
-import type { MovementRules } from "../sim/worldRules.js";
+import { createMovement, EMPTY_HANDS, stepMovement, WALK_SPEED, type MovementEnv, type MovementState } from "../sim/movement.js";
 import { createCursor, followPath, type FollowGraph } from "./follow.js";
 import { LINK_REASON, LINK_STATUS } from "./graph.js";
 import { ABILITIES, LINK_KINDS } from "./vocab.js";
@@ -36,8 +34,8 @@ const SETTLE_TICKS = 2;
 
 /** What a link's validation needs. */
 export interface ValidateEnv {
-  readonly world: CapsuleWorld;
-  readonly rules: MovementRules;
+  /** The world, its climbs and a player's body: what the follower is stepped in. */
+  readonly movement: MovementEnv;
   /** The match's step, s: `1 / tickRate`. A link is walked at the rate a bot walks it. */
   readonly dt: number;
   readonly graph: FollowGraph;
@@ -84,7 +82,7 @@ export function simulateLink(env: ValidateEnv, link: number, out: LinkOutcome): 
   const s: MovementState = createMovement({ x: sx, y: sy, z: sz }, Math.atan2(-dx, -dz), 0);
   const settle = idleInput(s.yaw, 0);
   for (let i = 0; i < SETTLE_TICKS; i++) {
-    stepMovement(s, settle, env.dt, env.world, true, env.rules.mantles, env.rules.ladders);
+    stepMovement(s, settle, env.dt, env.movement, EMPTY_HANDS);
   }
 
   one[0] = link;
@@ -110,19 +108,19 @@ export function simulateLink(env: ValidateEnv, link: number, out: LinkOutcome): 
       out.requires = requires;
       return out;
     }
-    stepMovement(s, input, env.dt, env.world, true, env.rules.mantles, env.rules.ladders);
+    stepMovement(s, input, env.dt, env.movement, EMPTY_HANDS);
 
-    if (s.mantle) {
+    if (s.move.kind === "mantle") {
       requires |= ABILITIES.MANTLE;
     }
-    if (s.ladder) {
+    if (s.move.kind === "ladder") {
       requires |= ABILITIES.LADDER;
     }
-    if (s.jumped && s.sinceJump === 0) {
+    if (s.jumpFrom !== null && s.sinceJump === 0) {
       requires |= ABILITIES.JUMP;
     }
     // A drop is measured from the top of a flight to where it lands.
-    if (s.grounded || s.mantle || s.ladder) {
+    if (s.grounded || s.move.kind !== "walk") {
       if (airTop - s.feet.y > DROP_ABILITY_HEIGHT) {
         requires |= ABILITIES.DROP;
       }

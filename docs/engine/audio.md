@@ -465,10 +465,10 @@ and cannot say whether they land on the beat.
   plays is this engine's decision and not the game's — an open question rather
   than an omission.
 
-  The simulation has **two** speeds to put on those five: `WALK_SPEED` (3.2 m/s)
-  with nothing held, which is what the legs play the _combat run_ at, and
-  `RUN_SPEED` (5.8) with the run key, which is the sprint clip. So 3.2 is the
-  bank's `run` and 5.8 is its `sprint`, and `walk` is what is left underneath — a
+  The simulation has **two** speeds to put on those five: `WALK_SPEED` with
+  nothing held, which is what the legs play the _combat run_ at, and `RUN_SPEED`
+  with the run key, which is the sprint clip. So the walk speed is the bank's
+  `run` and the run speed is its `sprint`, and `walk` is what is left underneath — a
   landing's slowdown, a strafe into a wall, the first ticks off a standstill.
   `prone` and `scrape` are **unreachable**: there is no stance below standing and
   no slide, and neither is invented an alias here. The thresholds
@@ -493,11 +493,11 @@ and cannot say whether they land on the beat.
   client's draw times part of the answer.
 
 **Landings.** The transition is `grounded`, and `MovementState.landing` is **not**
-the test although it is the obvious one: `integrate` only sets it when `jumped` is
-true, so it misses every fall that began by walking off something. One sound on
-the tick the feet touch — not one per tick of the recovery — gated on how fast the
-body was actually falling, because `grounded` flickers over imported triangle soup
-and that is what `coyote` exists for.
+the test although it is the obvious one: it is a jump's alone, so it misses every
+fall that began by walking off something. One sound on the tick the feet touch —
+not one per tick of the recovery — gated on how fast the body was actually
+falling, because `grounded` can drop for a tick or two over imported triangle
+soup and that is not a landing.
 
 **The bank has no jump.** Nothing in IW5's whole 7,387-alias bank is a jump, an exert or a
 grunt; `gear_rattle_*` covers landing, mantling, walking, running, sprinting and

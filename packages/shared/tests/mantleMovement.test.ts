@@ -11,9 +11,19 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
 import { idleInput, type PlayerInput } from "../src/sim/input.js";
-import { createMovement, HEIGHT, RADIUS, stepMovement, type MovementState } from "../src/sim/movement.js";
-import { mantleDuration } from "../src/sim/mantle.js";
-import { MantleVolumes, MAX_CLIMB, MIN_CLIMB } from "../src/sim/mantle.js";
+import {
+  createMovement,
+  EMPTY_HANDS,
+  HEIGHT,
+  movementEnv,
+  PLAYER_MOVEMENT,
+  RADIUS,
+  stepMovement,
+  type MantleMove,
+  type MovementState,
+} from "../src/sim/movement.js";
+import { NO_LADDERS } from "../src/sim/moves/ladder.js";
+import { mantleDuration, MantleVolumes, MAX_CLIMB, MIN_CLIMB } from "../src/sim/moves/mantle.js";
 import { movementSchema } from "../src/net/messages/player.js";
 import { BitReader, BitWriter } from "../src/net/codec/bits.js";
 import type { ResolvedMantle } from "../src/dsl/resolved.js";
@@ -55,14 +65,23 @@ function setup(volumes: ResolvedMantle[] = [ledgeVolume()], extra: THREE.Mesh[] 
   const mantles = new MantleVolumes(volumes);
   const state = createMovement({ x: 0, y: 0, z: -1.8 }, 0, 0);
   const input = idleInput(0, 0);
+  const env = movementEnv(collision, { mantles, ladders: NO_LADDERS }, PLAYER_MOVEMENT);
   const run = (seconds: number, each?: () => void) => {
     for (let t = 0; t < seconds - 1e-9; t += DT) {
-      stepMovement(state, input, DT, collision, true, mantles);
+      stepMovement(state, input, DT, env, EMPTY_HANDS);
       each?.();
     }
   };
   run(0.5); // settle onto the floor
-  return { state, input, run, collision, mantles };
+  return { state, input, run, collision, env };
+}
+
+/** The climb `state` is in. Throws, so a test that is not climbing fails where it says so. */
+function climb(state: MovementState): MantleMove {
+  if (state.move.kind !== "mantle") {
+    throw new Error(`not climbing: ${state.move.kind}`);
+  }
+  return state.move;
 }
 
 /** Press and release jump within one step. */
@@ -76,25 +95,25 @@ describe("mantling", () => {
   it("climbs a ledge instead of jumping at it", () => {
     const { state, input, run } = setup();
     press(input, run);
-    expect(state.mantle).not.toBeNull();
+    expect(state.move.kind).toBe("mantle");
     // A jump would have put velocity on the clock; a mantle takes it away.
     expect(state.velocity.y).toBe(0);
-    expect(state.mantle!.rise).toBeCloseTo(LEDGE_TOP, 6);
+    expect(climb(state).rise).toBeCloseTo(LEDGE_TOP, 6);
   });
 
   it("jumps normally where there is no volume, however climbable the geometry", () => {
     const { state, input, run } = setup([]);
     press(input, run);
-    expect(state.mantle).toBeNull();
+    expect(state.move.kind).toBe("walk");
     expect(state.velocity.y).toBeGreaterThan(0);
   });
 
   it("ends standing on the surface, at the height the volume's top named", () => {
     const { state, input, run } = setup();
     press(input, run);
-    const target = { ...state.mantle!.target };
+    const target = { ...climb(state).target };
     run(mantleDuration(LEDGE_TOP) + 4 * DT);
-    expect(state.mantle).toBeNull();
+    expect(state.move.kind).toBe("walk");
     expect(state.feet.y).toBeCloseTo(target.y, 2);
     expect(state.feet.z).toBeLessThan(-2); // over the edge, onto the block
     expect(state.grounded).toBe(true);
@@ -147,9 +166,9 @@ describe("mantling", () => {
     const { state, input, run } = setup();
     press(input, run);
     const start = { ...state.feet };
-    const top = state.mantle!.target.y;
+    const top = climb(state).target.y;
     run(mantleDuration(LEDGE_TOP), () => {
-      if (state.mantle && state.feet.y < top) {
+      if (state.move.kind === "mantle" && state.feet.y < top) {
         expect(state.feet.z).toBeCloseTo(start.z, 9);
       }
     });
@@ -160,17 +179,17 @@ describe("mantling", () => {
     // A slab 2 m over the ledge: the player fits under it on the floor, not on the block.
     const { state, input, run } = setup([ledgeVolume()], [collider([40, 0.2, 2], [0, 2.1, -2.5])]);
     press(input, run);
-    expect(state.mantle).toBeNull();
+    expect(state.move.kind).toBe("walk");
     expect(state.velocity.y).toBeGreaterThan(0);
   });
 
   it("does not start a second climb while one is running", () => {
     const { state, input, run } = setup();
     press(input, run);
-    const first = state.mantle!.target;
+    const first = climb(state).target;
     input.jump = true;
     run(2 * DT);
-    expect(state.mantle!.target).toEqual(first);
+    expect(climb(state).target).toEqual(first);
   });
 
   it("lets the player look around mid-climb", () => {
@@ -187,11 +206,11 @@ describe("mantling", () => {
     // A server replays a client's own steps, so the trajectory must be a
     // function of (feet, target, left) and not of how it was sliced up.
     const at = (dt: number) => {
-      const { state, input, run, collision, mantles } = setup();
+      const { state, input, run, env } = setup();
       press(input, run);
       const total = mantleDuration(LEDGE_TOP) + 0.05;
       for (let t = 0; t < total; t += dt) {
-        stepMovement(state, input, dt, collision, true, mantles);
+        stepMovement(state, input, dt, env, EMPTY_HANDS);
       }
       return state.feet;
     };
@@ -224,12 +243,12 @@ describe("mantling", () => {
   });
 
   it("survives a JSON round-trip in lockstep, so a peer's climb is not a teleport", () => {
-    const { state, input, run, collision, mantles } = setup();
+    const { state, input, run, env } = setup();
     press(input, run);
     let copy: MovementState = JSON.parse(JSON.stringify(state));
     for (let i = 0; i < 40; i++) {
-      stepMovement(state, input, DT, collision, true, mantles);
-      stepMovement(copy, input, DT, collision, true, mantles);
+      stepMovement(state, input, DT, env, EMPTY_HANDS);
+      stepMovement(copy, input, DT, env, EMPTY_HANDS);
       copy = JSON.parse(JSON.stringify(copy));
       expect(copy).toEqual(state);
     }
@@ -241,11 +260,11 @@ describe("mantling", () => {
     const writer = new BitWriter();
     movementSchema.write(writer, state);
     const decoded = movementSchema.read(new BitReader(writer.finish()));
-    expect(decoded.mantle).not.toBeNull();
-    expect(decoded.mantle!.rise).toBeCloseTo(state.mantle!.rise, 2);
-    expect(decoded.mantle!.left).toBeCloseTo(state.mantle!.left, 2);
-    expect(decoded.mantle!.target.y).toBeCloseTo(state.mantle!.target.y, 5);
-    expect(decoded.mantle!.over).toBe(state.mantle!.over);
+    expect(decoded.move.kind).toBe("mantle");
+    expect(climb(decoded).rise).toBeCloseTo(climb(state).rise, 2);
+    expect(climb(decoded).left).toBeCloseTo(climb(state).left, 2);
+    expect(climb(decoded).target.y).toBeCloseTo(climb(state).target.y, 5);
+    expect(climb(decoded).over).toBe(climb(state).over);
   });
 
   it("carries whether the climb is a vault, rather than leaving a peer to guess", () => {
@@ -254,7 +273,7 @@ describe("mantling", () => {
     const rail = collider([40, LEDGE_TOP, 0.3], [0, LEDGE_TOP / 2, -2.15]);
     const vault = setup([over], [rail], false);
     press(vault.input, vault.run);
-    expect(vault.state.mantle!.over).toBe(true);
+    expect(climb(vault.state).over).toBe(true);
     // Down the far side once it is over.
     vault.run(mantleDuration(LEDGE_TOP) + 1);
     expect(vault.state.feet.z).toBeLessThan(-2.3);
@@ -263,11 +282,11 @@ describe("mantling", () => {
     // Asked for, but the block goes on for metres: nowhere to vault to.
     const deep = setup([over]);
     press(deep.input, deep.run);
-    expect(deep.state.mantle!.over).toBe(false);
+    expect(climb(deep.state).over).toBe(false);
 
     const plain = setup([ledgeVolume()], [rail], false);
     press(plain.input, plain.run);
-    expect(plain.state.mantle!.over).toBe(false);
+    expect(climb(plain.state).over).toBe(false);
   });
 
   it("costs one bit when nobody is climbing", () => {
@@ -278,7 +297,7 @@ describe("mantling", () => {
       return writer.finish().byteLength;
     };
     const idle = size(state);
-    state.mantle = { target: { x: 1, y: 2, z: 3 }, left: 0.5, rise: 1, over: false };
+    state.move = { kind: "mantle", target: { x: 1, y: 2, z: 3 }, left: 0.5, rise: 1, over: false };
     expect(size(state)).toBeGreaterThan(idle);
   });
 });

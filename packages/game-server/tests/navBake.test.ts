@@ -25,9 +25,9 @@ describe.skipIf(!exported("dome-mw3"))("dome-mw3's navigation bake", () => {
       usable: 508,
       // Two jump-down ends float 3.7 m over nothing our collision has.
       unusable: { INSIDE: 1, NO_GROUND: 2 },
-      derived: { pairs: 3471, candidates: 6940, probed: 4147, valid: 4144 },
-      valid: 4148,
-      reasons: { BLOCKED: 2774, RISE: 8, GAP: 11, TIMEOUT: 1, FELL: 2, NODE: 2 },
+      derived: { pairs: 3472, candidates: 6942, probed: 3945, valid: 3941 },
+      valid: 3945,
+      reasons: { BLOCKED: 2969, GAP: 21, RISE: 7, TIMEOUT: 4, NODE: 2 },
       traversals: { JUMP_DOWN: { valid: 1, invalid: 2 }, LADDER_UP: { valid: 2, invalid: 0 }, STEP_UP: { valid: 1, invalid: 0 } },
     });
     expect(spawns.inLargest).toBe(spawns.spawns);

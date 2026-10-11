@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CollisionWorld } from "../src/collision/world.js";
 import { idleInput } from "../src/sim/input.js";
-import { createMovement, HEIGHT, RADIUS, stepMovement } from "../src/sim/movement.js";
+import { createMovement, EMPTY_HANDS, HEIGHT, movementEnv, NO_CLIMBS, PLAYER_MOVEMENT, RADIUS, stepMovement } from "../src/sim/movement.js";
 import { STEP_HEIGHT } from "../src/sim/stepSlide.js";
 
 const DT = 1 / 60;
@@ -29,9 +29,10 @@ function setup(rise: number, extra: THREE.Mesh[] = []) {
   const state = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
   const input = idleInput(0, 0);
   let sunk = 0;
+  const env = movementEnv(world, NO_CLIMBS, PLAYER_MOVEMENT);
   const run = (seconds: number) => {
     for (let t = 0; t < seconds - 1e-9; t += DT) {
-      stepMovement(state, input, DT, world, true);
+      stepMovement(state, input, DT, env, EMPTY_HANDS);
       if (world.overlapsCapsule(state.feet, RADIUS, HEIGHT)) {
         sunk++;
       }

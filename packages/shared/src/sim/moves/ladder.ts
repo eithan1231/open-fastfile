@@ -12,12 +12,13 @@
 // What a ladder means is in dsl/resolved.ts's `ResolvedLadder`; how the grab
 // and the climb use this, under "The climb" below and in docs/engine/player.md.
 
-import type { ResolvedLadder } from "../dsl/resolved.js";
-import type { CapsuleWorld, Vec3 } from "./capsule.js";
-import type { PlayerInput } from "./input.js";
-import { JUMP_SPEED, PLAYER_MOVEMENT, type LadderState, type MovementParams, type MovementState } from "./movementState.js";
-import { integrate } from "./stepSlide.js";
-import { UNIT } from "./units.js";
+import type { ResolvedLadder } from "../../dsl/resolved.js";
+import type { Vec3 } from "../capsule.js";
+import type { PlayerInput } from "../input.js";
+import type { MovementEnv } from "../movementEnv.js";
+import { JUMP_SPEED, WALKING, type LadderMove, type MovementParams, type MovementState } from "../movementState.js";
+import { ladderSlide } from "../stepSlide.js";
+import { UNIT } from "../units.js";
 
 /**
  * The probe is the body with each horizontal half-width shrunk by this, and its
@@ -157,7 +158,7 @@ export const NO_LADDERS = new LadderVolumes([]);
 // game has them. BO1 runs the same code with the same numbers. The derivation is
 // in docs/engine/player.md#ladders.
 
-/** The speed a climb is a share of: the games' `g_speed`, 190 units/s, not our walk speed. */
+/** The speed a climb is a share of, whatever the body's own walk is. */
 const LADDER_SPEED = 190 * UNIT;
 /** Of LADDER_SPEED: straight up or down at full pitch, and sideways. */
 const LADDER_CLIMB_SHARE = 0.5;
@@ -169,9 +170,8 @@ const LADDER_PUSH = 50 * UNIT;
 /** How far ahead a probe looks for a ladder, standing and in the air. */
 const LADDER_REACH_GROUND = 8 * UNIT;
 const LADDER_REACH_AIR = 30 * UNIT;
-/** No ladder is grabbed this soon after a jump, and one is only jumped off this long after the last. */
+/** No ladder is grabbed this soon after a jump. One is jumped off no sooner than any jump follows another (JUMP_REPEAT). */
 const LADDER_GRAB_DELAY = 0.3; // s
-export const JUMP_OFF_REPEAT = 0.5; // s
 /** A jump off a ladder keeps this share of the jump's rise, and leaves at this speed along the ground. */
 const JUMP_OFF_RISE = 0.75;
 const JUMP_OFF_SPEED = 128 * UNIT;
@@ -179,7 +179,7 @@ const JUMP_OFF_SPEED = 128 * UNIT;
 const LADDER_YAW_CAP = (100 * Math.PI) / 180;
 
 /** The outward normal a ladder's `facing` names, horizontal and unit. */
-export function ladderNormal(ladder: LadderState): { x: number; z: number } {
+export function ladderNormal(ladder: Readonly<LadderMove>): { x: number; z: number } {
   return { x: -Math.sin(ladder.facing), z: -Math.cos(ladder.facing) };
 }
 
@@ -191,10 +191,10 @@ export function ladderNormal(ladder: LadderState): { x: number; z: number } {
  * the view's delta angles.
  */
 export function ladderYaw(s: Readonly<MovementState>, yaw: number): number {
-  if (!s.ladder || s.grounded) {
+  if (s.move.kind !== "ladder" || s.grounded) {
     return yaw;
   }
-  const toward = s.ladder.facing + Math.PI;
+  const toward = s.move.facing + Math.PI;
   const delta = Math.atan2(Math.sin(yaw - toward), Math.cos(yaw - toward));
   if (Math.abs(delta) <= LADDER_YAW_CAP) {
     return yaw;
@@ -204,8 +204,8 @@ export function ladderYaw(s: Readonly<MovementState>, yaw: number): number {
 
 /** Leave the ladder, if on one, without a jump: no other ladder until the ground. */
 function letGo(s: MovementState): void {
-  if (s.ladder) {
-    s.ladder = null;
+  if (s.move.kind === "ladder") {
+    s.move = WALKING;
     s.ladderLock = true;
   }
 }
@@ -220,11 +220,11 @@ function ladderReach(s: Readonly<MovementState>): number {
  * next step tests, before its other conditions (the lock, a jump's delay, the
  * forward key), which is what the climb view (`M`) wants to show.
  */
-export function ladderAhead(s: Readonly<MovementState>, ladders: LadderVolumes, body: MovementParams = PLAYER_MOVEMENT): LadderHit | null {
+export function ladderAhead(s: Readonly<MovementState>, ladders: LadderVolumes, body: MovementParams): LadderHit | null {
   let dirX = -Math.sin(s.yaw);
   let dirZ = -Math.cos(s.yaw);
-  if (s.ladder && !s.grounded) {
-    const normal = ladderNormal(s.ladder);
+  if (s.move.kind === "ladder" && !s.grounded) {
+    const normal = ladderNormal(s.move);
     dirX = -normal.x;
     dirZ = -normal.z;
   }
@@ -240,7 +240,8 @@ export function ladderAhead(s: Readonly<MovementState>, ladders: LadderVolumes, 
  * on, which is how stepping off at the bottom works. A first grab checks a
  * second probe straight in along the side's normal, as the game does.
  */
-export function checkLadder(s: MovementState, input: PlayerInput, ladders: LadderVolumes, body: MovementParams): void {
+export function checkLadder(s: MovementState, input: PlayerInput, env: MovementEnv): void {
+  const { ladders, body } = env;
   if (s.ladderLock) {
     return;
   }
@@ -250,13 +251,14 @@ export function checkLadder(s: MovementState, input: PlayerInput, ladders: Ladde
   }
   const hit = ladderAhead(s, ladders, body);
   if (hit && (!s.grounded || input.forward > 0)) {
-    if (s.ladder) {
+    if (s.move.kind === "ladder") {
       return;
     }
     if (ladders.trace(s.feet, -hit.x, -hit.z, ladderReach(s), body)) {
-      s.ladder = { facing: Math.atan2(-hit.x, -hit.z) };
+      s.move = { kind: "ladder", facing: Math.atan2(-hit.x, -hit.z) };
       // Whatever jump brought them here is over; the next ground is not its landing.
-      s.jumped = false;
+      s.jumpFrom = null;
+      s.landing = 0;
       return;
     }
   }
@@ -273,9 +275,9 @@ export function checkLadder(s: MovementState, input: PlayerInput, ladders: Ladde
  * that half of the velocity stops. No gravity; collision still runs, because a
  * ladder is steered, not a rail.
  */
-export function climbLadder(s: MovementState, input: PlayerInput, dt: number, world: CapsuleWorld, body: MovementParams): void {
+export function climbLadder(s: MovementState, ladder: LadderMove, input: PlayerInput, dt: number, env: MovementEnv): void {
   const v = s.velocity;
-  const normal = ladderNormal(s.ladder!);
+  const normal = ladderNormal(ladder);
   const upScale = Math.max(-1, Math.min(1, (Math.sin(s.pitch) + 0.25) * 2.5));
   // The view's flat right, laid onto the ladder's plane and left unnormalised:
   // strafing at a ladder side-on is slower, as it is in the game.
@@ -327,15 +329,16 @@ export function climbLadder(s: MovementState, input: PlayerInput, dt: number, wo
     const out = v.x * normal.x + v.z * normal.z;
     v.x -= normal.x * out;
     v.z -= normal.z * out;
-    const moving = v.x !== 0 || v.y !== 0 || v.z !== 0;
-    if (moving && v.x * v.x + v.z * v.z <= v.y * v.y) {
+    // Asked of the climb itself, so what the projections above leave of a
+    // sideways slide — too small to square — is not a climber moving.
+    if (v.y !== 0 && v.x * v.x + v.z * v.z <= v.y * v.y) {
       v.x -= normal.x * LADDER_PUSH;
       v.z -= normal.z * LADDER_PUSH;
     }
   }
 
   // Standing, or climbing upward: the games step a climber onto the top.
-  integrate(s, dt, world, s.grounded || v.y > 0, body);
+  ladderSlide(s, dt, env, s.grounded || v.y > 0);
 }
 
 /**
@@ -344,8 +347,8 @@ export function climbLadder(s: MovementState, input: PlayerInput, dt: number, wo
  * that is where the view points; looking at it, the view is mirrored off it, so
  * either way the jump leaves the ladder behind.
  */
-export function jumpOffLadder(s: MovementState): void {
-  const normal = ladderNormal(s.ladder!);
+export function jumpOffLadder(s: MovementState, ladder: LadderMove): void {
+  const normal = ladderNormal(ladder);
   let x = -Math.sin(s.yaw);
   let z = -Math.cos(s.yaw);
   const into = x * normal.x + z * normal.z;
@@ -359,10 +362,9 @@ export function jumpOffLadder(s: MovementState): void {
   s.velocity.x = x * JUMP_OFF_SPEED;
   s.velocity.y = JUMP_SPEED * JUMP_OFF_RISE;
   s.velocity.z = z * JUMP_OFF_SPEED;
-  s.ladder = null;
+  s.move = WALKING;
   s.grounded = false;
-  s.coyote = 0;
-  s.jumpBuffer = 0;
-  s.jumped = true;
+  s.jumpFrom = s.feet.y;
+  s.landing = 0;
   s.sinceJump = 0;
 }

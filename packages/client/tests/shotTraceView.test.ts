@@ -86,10 +86,11 @@ function armed(over: Partial<typeof AWKWARD> = {}): Armed {
 function ground(wallAt: number | null = null): CapsuleWorld {
   return {
     ready: true,
-    resolveCapsule: (position: Vec3, _r: number, _h: number, out?: { position: Vec3; grounded: boolean }) => {
-      const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false };
+    resolveCapsule: (position: Vec3, _r: number, _h: number, out?: { position: Vec3; grounded: boolean; normal: Vec3 }) => {
+      const result = out ?? { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
       result.position = { ...position };
       result.grounded = false;
+      result.normal = { x: 0, y: 0, z: 0 };
       return result;
     },
     overlapsCapsule: () => false,

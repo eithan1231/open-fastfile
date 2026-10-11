@@ -53,12 +53,22 @@ import type { CapsuleResolution, CapsuleWorld, Vec3 } from "@3d/shared/sim/capsu
 import { rayBox } from "@3d/shared/sim/hit.js";
 import type { HitLocation } from "@3d/shared/sim/hitLocations.js";
 import { idleInput } from "@3d/shared/sim/input.js";
-import { createMovement, GRAVITY, horizontalSpeed, stepMovement, type MovementParams, type MovementState } from "@3d/shared/sim/movement.js";
+import {
+  createMovement,
+  EMPTY_HANDS,
+  GRAVITY,
+  horizontalSpeed,
+  movementEnv,
+  stepMovement,
+  type MovementEnv,
+  type MovementRules,
+  type MovementState,
+} from "@3d/shared/sim/movement.js";
 import { IDLE_SPEED } from "@3d/shared/sim/gait.js";
 import type { NavGraph } from "@3d/shared/nav/graph.js";
 import { NO_INDEX_16 } from "@3d/shared/nav/format.js";
 import { TRAVERSAL_KINDS } from "@3d/shared/nav/vocab.js";
-import { KILL_PLANE_MARGIN, movementRules, type MovementRules } from "@3d/shared/sim/worldRules.js";
+import { KILL_PLANE_MARGIN, movementRules } from "@3d/shared/sim/worldRules.js";
 import type { BodyView, LoadedActorRig } from "./bodies.js";
 import { thinkOrStand } from "./bots.js";
 import { PlayerHistory } from "./history.js";
@@ -124,8 +134,8 @@ interface Actor {
   readonly gait: ActorGait;
   /** Its body, head and clips, drawn from the seed as the client draws them; undefined for a capsule. */
   readonly look: ActorLook | undefined;
-  /** The kind's capsule at this actor's own speed: its gait clip's root motion. */
-  readonly body: MovementParams;
+  /** What it is stepped in: the match's collision and climbs, and the kind's capsule at this actor's own speed (its gait clip's root motion). */
+  readonly env: MovementEnv;
   readonly movement: MovementState;
   /** Where in its gait clip's cycle it is, 0..1: advanced by the ground it covers, so its feet do not slide. */
   cycle: number;
@@ -190,7 +200,7 @@ export class Actors {
   private readonly boxMin: Vec3 = { x: 0, y: 0, z: 0 };
   private readonly boxMax: Vec3 = { x: 0, y: 0, z: 0 };
   private readonly pushed: Vec3 = { x: 0, y: 0, z: 0 };
-  private readonly resolution: CapsuleResolution = { position: { x: 0, y: 0, z: 0 }, grounded: false };
+  private readonly resolution: CapsuleResolution = { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
 
   constructor(
     private readonly collision: CapsuleWorld,
@@ -241,7 +251,13 @@ export class Actors {
       kindIndex: actorKindIndex(kind.id),
       gait,
       look,
-      body: { radius: kind.radius, height: kind.height, walkSpeed: speed, runSpeed: speed, rideKerbs: true },
+      env: movementEnv(this.collision, this.rules, {
+        radius: kind.radius,
+        height: kind.height,
+        walkSpeed: speed,
+        runSpeed: speed,
+        footing: kind.footing,
+      }),
       movement,
       cycle: 0,
       health: Math.max(1, Math.round(health)),
@@ -341,7 +357,7 @@ export class Actors {
         this.cross(actor, host.tick, host.dt);
         continue;
       }
-      stepMovement(m, input, host.dt, this.collision, true, this.rules.mantles, this.rules.ladders, actor.body);
+      stepMovement(m, input, host.dt, actor.env, EMPTY_HANDS);
       if (m.feet.y < this.killPlane) {
         host.fell(actor.id, actor.health);
         continue;
@@ -366,7 +382,7 @@ export class Actors {
   private separate(actor: Actor, dt: number): void {
     const m = actor.movement;
     const v = m.velocity;
-    const { radius, height } = actor.body;
+    const { radius, height } = actor.env.body;
     let px = 0;
     let pz = 0;
     for (const other of this.actors.values()) {
@@ -374,13 +390,13 @@ export class Actors {
         continue;
       }
       const o = other.movement.feet;
-      if (o.y >= m.feet.y + height || m.feet.y >= o.y + other.body.height) {
+      if (o.y >= m.feet.y + height || m.feet.y >= o.y + other.env.body.height) {
         continue;
       }
       let nx = m.feet.x - o.x;
       let nz = m.feet.z - o.z;
       const d = Math.hypot(nx, nz);
-      const depth = radius + other.body.radius - d;
+      const depth = radius + other.env.body.radius - d;
       if (depth <= 0) {
         continue;
       }
@@ -471,7 +487,7 @@ export class Actors {
       const across = Math.hypot(to.x - from.x, to.z - from.z);
       const drop = Math.max(0, from.y - to.y);
       const rise = Math.max(0, to.y - from.y);
-      seconds = Math.max(MIN_CROSSING, across / actor.body.runSpeed, rise / actor.body.runSpeed, Math.sqrt((2 * drop) / GRAVITY));
+      seconds = Math.max(MIN_CROSSING, across / actor.env.body.runSpeed, rise / actor.env.body.runSpeed, Math.sqrt((2 * drop) / GRAVITY));
     }
     if (Math.hypot(to.x - from.x, to.z - from.z) > 0.05) {
       m.yaw = Math.atan2(-(to.x - from.x), -(to.z - from.z));

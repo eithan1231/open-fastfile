@@ -42,7 +42,7 @@ const LIP_SAMPLES = Array.from({ length: 8 }, (_, k) => [Math.cos((k * Math.PI) 
 const UPPER_HEIGHT = HEIGHT - STEP_HEIGHT;
 
 const probe: Vec3 = { x: 0, y: 0, z: 0 };
-const resolved = { position: { x: 0, y: 0, z: 0 }, grounded: false };
+const resolved = { position: { x: 0, y: 0, z: 0 }, grounded: false, normal: { x: 0, y: 0, z: 0 } };
 
 /**
  * Whether a body standing at (x, ground, z) is clear of everything above a

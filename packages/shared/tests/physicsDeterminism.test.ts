@@ -47,7 +47,7 @@ const PINNED_VERSION = "0.20.0";
  * Changing the fixture or the engine changes it; changing it for any other reason
  * is the bug this test exists to find.
  */
-const REFERENCE = "61aebe1e4fae5a8e38ef0d1e4a8ae841a06613082af07131f2e93f76c64a1c5e";
+const REFERENCE = "3dee9611b585ab5c93f9d24afaaa9435a4f14f9d2e7cccf6b79e5d5469bfd7c1";
 const STEPS = 600;
 
 beforeAll(async () => {

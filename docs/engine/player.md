@@ -17,21 +17,23 @@ keyboard, mouse ─▶ FirstPersonControls ─▶ PlayerInput ─▶ Player.step
                                                                               that produced it (net/connection)
 ```
 
-| File                                      | What                                                                  |
-| ----------------------------------------- | --------------------------------------------------------------------- |
-| `shared` `sim/input.ts`                   | `PlayerInput`: one step's command, and the sprint rule                |
-| `shared` `sim/movement.ts`                | `stepMovement`: walking, running, jumping, and which move owns a step |
-| `shared` `sim/movementState.ts`           | `MovementState`, the body, and the numbers more than one move reads   |
-| `shared` `sim/stepSlide.ts`               | The end of a free step: the capsule's move, `stepUp`, `stepDown`      |
-| `shared` `sim/gait.ts`                    | The stride clock and the pose blends                                  |
-| `shared` `sim/ladder.ts`                  | The world's ladders, the grab and the climb                           |
-| `shared` `sim/weapon.ts`                  | `WeaponController` and `WeaponData`: the held weapon's state machine  |
-| `shared` `sim/weaponDef.ts`               | `WeaponDef`: what a weapon _is_, read off the exporter's GLB          |
-| `shared` `sim/weaponRegistry.ts`          | The catalogue: every weapon both ends can build, and its `hash`       |
-| `shared` `sim/player.ts`                  | `Player`: steps both on one input; `snapshot` / `restore`             |
-| `shared` `sim/capsule.ts`                 | `CapsuleWorld`: the three.js-free view of collision a step gets       |
-| `shared` `sim/mantle.ts`                  | The world's mantle volumes, the query a step makes, and the climb     |
-| `client` `engine/controls/firstPerson.ts` | Devices → `PlayerInput`, the held pose, the camera                    |
+| File                                      | What                                                                 |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| `shared` `sim/input.ts`                   | `PlayerInput`: one step's command                                    |
+| `shared` `sim/movement.ts`                | `stepMovement`: which move owns a step, and the sprint rule          |
+| `shared` `sim/movementState.ts`           | `MovementState`, the body, and the numbers more than one move reads  |
+| `shared` `sim/movementEnv.ts`             | `MovementEnv` and `Carry`: what a step is made in, and with          |
+| `shared` `sim/moves/walk.ts`              | Walking, running, jumping, falling and landing                       |
+| `shared` `sim/stepSlide.ts`               | The end of a free step: the move, the step up and down, the ground   |
+| `shared` `sim/gait.ts`                    | The stride clock and the pose blends                                 |
+| `shared` `sim/moves/ladder.ts`            | The world's ladders, the grab and the climb                          |
+| `shared` `sim/weapon.ts`                  | `WeaponController` and `WeaponData`: the held weapon's state machine |
+| `shared` `sim/weaponDef.ts`               | `WeaponDef`: what a weapon _is_, read off the exporter's GLB         |
+| `shared` `sim/weaponRegistry.ts`          | The catalogue: every weapon both ends can build, and its `hash`      |
+| `shared` `sim/player.ts`                  | `Player`: steps both on one input; `snapshot` / `restore`            |
+| `shared` `sim/capsule.ts`                 | `CapsuleWorld`: the three.js-free view of collision a step gets      |
+| `shared` `sim/moves/mantle.ts`            | The world's mantle volumes, the query a step makes, and the climb    |
+| `client` `engine/controls/firstPerson.ts` | Devices → `PlayerInput`, the held pose, the camera                   |
 
 ## State for the network
 
@@ -103,12 +105,21 @@ adopted.
 reads only the input. Movement asks the weapon whether a sprint may run
 (`WeaponController.sprinting`). Nothing else connects the two.
 
-`stepMovement`'s capsule and speeds are `MovementParams`, and a player never
-passes any: the default is `PLAYER_MOVEMENT`, bit for bit what the step was
-before it had parameters (`tests/movementParams.test.ts` holds a digest of it).
-An actor's kind passes its own ([actors](actors.md)). Friction's floor is the
-lower of `STOP_SPEED` and the walk speed, or a body slower than 1.5 m/s could
-never overcome it.
+**The step is `stepMovement(state, input, dt, env, carry)`** (`sim/movement.ts`).
+`env` is what the step is made in and does not change while a world is loaded
+(`MovementEnv`, `sim/movementEnv.ts`): the collision `world`, the `mantles` and
+`ladders` the world declares, and the `body` — a `MovementParams`, the capsule,
+its two speeds and its `footing`. A player's is `PLAYER_MOVEMENT`
+(`tests/movementParams.test.ts` holds a digest of its step); an actor's kind names
+its own ([actors](actors.md)). `carry` is what is in the hands, as far as movement
+cares: whether it lets a sprint run.
+
+**Exactly one move owns a step**: `state.move` is `walk`, `mantle` or `ladder`,
+a union, and each is a module under `sim/moves/` that the step dispatches to.
+A move's own fields (a climb's target, a ladder's facing) exist only while it is
+the one under way, on the wire as in the state. Every free step ends in
+`sim/stepSlide.ts`, which moves the capsule, keeps it out of the world, steps it
+up and down, and says whether it ends on the ground.
 
 ## Recoil is two kicks
 
@@ -352,15 +363,20 @@ the two ends disagree today, is in
 
 ## What a player can do
 
-Movement is Quake's, as CoD's is: keys add acceleration towards a target speed
-and friction takes it away, so speed carries through landings and stops take a
-moment. The numbers are at the top of `sim/movement.ts`.
+Keys add acceleration towards a target speed and friction takes it away, so
+stops take a moment. Every number is the games' own, written in their units
+(`sim/units.ts`: one is 2.54 cm) in `sim/movementState.ts`, `sim/moves/walk.ts`
+and `sim/stepSlide.ts`; where each comes from, and what was read to find it, is
+[reverse/iw5-pmove](../../reverse/iw5-pmove/README.md).
 
-- **Walk** at 3.2 m/s in any direction. A diagonal is no faster.
-- **Run** at 5.8 m/s, only while holding run **and** moving forward (the sprint
-  rule, `wantsSprint`), and only while the weapon is sprinting: firing, aiming
-  or reloading drops the player to a walk until it is done. Empty-handed, the
-  sprint rule alone decides.
+- **The body** is a capsule of radius 15 and height 70, with the eye at 60.
+- **Walk** at 190 units a second forward, 0.8 of that sideways and 0.7 backward.
+  A diagonal is no faster than its faster axis.
+- **Run** at 1.5 times the walk, with one definition for movement, the weapon
+  and the pose alike (`wantsSprint`): run held, moving forward, jump not held,
+  walking, and not in a jump. The weapon must allow it as well: firing, aiming
+  or reloading drops the player to a walk until it is done. A sprint's sideways
+  share is 0.667.
 - **Sprint to fire.** The trigger takes the weapon out of a sprint, and the round
   leaves when the sprint-out is done — the weapon file's own `sprintOutTime`,
   0.2 s on a pistol against 0.3 s on most rifles, so the cost of sprinting is a
@@ -369,33 +385,47 @@ moment. The numbers are at the top of `sim/movement.ts`.
   and a held trigger come out the same. The sights are the other way: they may
   start coming up _during_ the sprint-out, so aiming out of a run is one motion
   and firing out of one is not.
-- **Jump**: 5.5 m/s up against 18 m/s² of gravity, a 0.84 m jump lasting
-  0.61 s. Holding jump jumps again on each landing. A press up to 0.15 s before
-  touching down still jumps (the buffer), and so does one up to 0.12 s after
-  walking off a ledge (coyote time), which also covers the resolver's
-  one-frame `grounded` dropouts on triangle soup.
-- **In the air** the keys only nudge (a twentieth of the ground's acceleration), and
-  letting go keeps the takeoff's speed.
-- **Landing from a jump** (not from a fall) halves the target speed and raises
-  friction, recovering over 0.5 s, like CoD's `jump_slowdownEnable`.
+- **Jump** 39 units high, against a gravity of 800 a second squared. A jump is a
+  press: made on the ground, on the step the key goes down. A key held, or
+  pressed in the air, jumps nothing when the ground comes back, and no jump
+  follows another within half a second (`JUMP_REPEAT`). The one allowance is
+  for broken ground, which drops a walk for a tick at a time: a press made
+  while not rising, with ground within two units under the feet (`JUMP_REACH`),
+  is a press made on it. `jumpFrom` is the height
+  it took off from, and is what says a player is in a jump rather than a fall.
+- **In the air** the keys only nudge (a ninth of the ground's acceleration,
+  towards the walk speed whatever is held), and letting go keeps the takeoff's
+  speed. A sprint ends at the takeoff.
+- **Landing from a jump** costs speed twice — 0.67 for coming down 12 units or
+  more, as any fall does, and 0.65 for the jump — and starts a window of 1.8 s
+  (`state.landing`) in which friction is raised, by 2.5 times at first and
+  wearing off, and a jump is lower by what is left of it. A landing 18 units or
+  more above the takeoff costs 0.5 and starts the window at 1.2 s. Timing every
+  landing is therefore slower than walking.
 - **Hitting a ceiling** ends the jump there.
-- **Stairs and ledges** up to 0.46 m (IW5's 18 units) are walked up: the
-  capsule's rounded bottom slides up anything under its 0.3 m radius, and a
-  move blocked by something taller is made again from 0.46 m up and set down
-  on it (`stepUp`, IW5's step-slide move at 0x424a30). Only standing players
-  step, and players climbing a ladder upward; a step never goes past 0.46 m,
-  never through a low ceiling, and never where sliding along a wall would do.
-  See [collision](collision.md).
-- **And back down the same height** (`stepDown`). A move along a slope is
-  horizontal, so walking _down_ one ends in the air every tick and gravity needs
-  two or three ticks to bring the capsule back — `grounded` flickered for those,
-  and with it the ground friction, the ground acceleration, and the `airborne`
-  pose blend, so a body walking down a hill crossfaded between falling and
-  walking several times a second. A step that started on the ground and ended off
-  it, with nothing carrying the player upward, stands on whatever is within
-  0.46 m below. Walking off a kerb therefore sticks to it, as the games do; a
-  takeoff never reaches it (a jump clears `grounded` before the move), and
-  anything taller than a step is still a fall.
+- **Ground** is what faces up by 0.7 or more (`WALKABLE_NORMAL_Y`, a slope of
+  about 45°), within a quarter of a unit of the feet. Steeper is slid down. A
+  walk's velocity lies along the ground under it.
+- **A step up** is tried when a move on the ground is blocked, or the ground
+  under it is steeper than 0.9: the move is made again from up to 18 units
+  higher — as high as the head room allows, so a low ceiling shortens a step
+  rather than forbidding it — and set down. It is kept only if it got further
+  along the way the move was going, so sliding along a ledge is never a step, and
+  only onto something that can be stood on. A step in a jump is the same, onto
+  nothing higher than the jump itself reaches.
+- **A step down**: a walk that leaves the ground stays on whatever is within 9
+  units below it. Further is a fall.
+- **Every step up or down costs speed**, by how much of 18 units it was: 0.2 for
+  a whole one, rising to 1 for none.
+
+Three of those rules are stated for a box and made by a capsule over a resolver
+that pushes out of what it overlaps, and [collision](collision.md#ground) says
+how: the corner of a ledge under the rounded bottom, a groove between two, and a
+ledge met from beside. What does not carry over: velocity is not clipped along a
+wall, a kerb under a third of the radius is ridden up without the step's cost,
+and a blocked step goes a tenth of the radius past where it was stopped.
+
+- **Mantle check**: while jump is held and no ladder is.
 - **Mantle** a ledge between 0.35 m and 1.45 m by jumping into it, where the
   world declares a `mantle` volume. See below.
 - **Climb a ladder** by walking or falling into one the world declares: the view
@@ -431,7 +461,7 @@ mantles by declaring them ([AUTHORING.md](../../worlds/AUTHORING.md)).
 
 A volume is an oriented box **around** what it marks — on dome-mw3, the crate or
 the sill with about 0.4 m to spare on every side — with its **top level with the
-surface the player ends on**. `sim/mantle.ts` holds them and answers the one
+surface the player ends on**. `sim/moves/mantle.ts` holds them and answers the one
 question a step asks: from here, facing this way, is there anything to climb,
 and can the capsule get there? The volume answers the first half and the world's
 collision the second, in three steps:
@@ -537,7 +567,7 @@ Everything below is IW5's own code, read from `iw5mp.exe` —
 `PM_CheckLadderMove` (0x4230d0), `PM_LadderMove` (0x423380), the jump off
 (0x416780), the view cap (0x420990) — and BO1 runs the same code with the same
 numbers. The constants are in game units under "The climb" in
-`sim/ladder.ts`; `reverse/iw5-ladders/` has the derivation.
+`sim/moves/ladder.ts`; `reverse/iw5-ladders/` has the derivation.
 
 **Grabbing** (`checkLadder`) is a box trace every step. The probe is the body
 with 6 units off each side and 8 off the bottom, swept 8 units ahead standing or
@@ -546,7 +576,7 @@ the ladder, so looking away does not let go. It grabs when it meets a ladder
 side and the player is in the air, or standing and pushing forward; a first
 grab checks a second probe straight in along that side's normal. The side's
 normal is kept as `LadderState.facing` and never refreshed while climbing.
-`sim/ladder.ts` sweeps the probe against the ladder boxes with plain numbers, so
+`sim/moves/ladder.ts` sweeps the probe against the ladder boxes with plain numbers, so
 the grab needs no geometry library; the one thing it cannot see is a wall between
 the player and a ladder, which no map builds.
 
@@ -586,7 +616,7 @@ the body clips' own root motion (1.77 m/s up, 1.38 m/s down) sits with the
 game's numbers, not with ours.
 
 **Getting off:** at the top, the push presses the player against the ladder,
-and once their feet are within 0.46 m of its top the step-up sets them on it,
+and once their feet are within a step of its top the step up sets them on it,
 as the game does; the probe then clears the ladder and they let go. **From the
 top**, walk backward off the edge: falling past the ladder facing it, the
 probe catches the climb side. Walking forward at a ladder from its landing

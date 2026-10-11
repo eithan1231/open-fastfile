@@ -10,15 +10,20 @@ import * as THREE from "three";
 import { MeshBVH, StaticGeometryGenerator } from "three-mesh-bvh";
 import { HullIndex } from "./hullIndex.js";
 import type { HullPlacement } from "./hulls.js";
-import type { CapsuleResolution as SimResolution, CapsuleWorld, RayHit, TraceChannel, Vec3 } from "../sim/capsule.js";
+import {
+  SLOPE_NORMAL_Y,
+  WALKABLE_NORMAL_Y,
+  type CapsuleResolution as SimResolution,
+  type CapsuleWorld,
+  type RayHit,
+  type TraceChannel,
+  type Vec3,
+} from "../sim/capsule.js";
 import { DEFAULT_SURFACE, type SurfaceType } from "../sim/surfaces.js";
 import type { Presence } from "../worlds/presence.js";
 import { compactVertices } from "./compact.js";
 import { blocksAi, blocksShots } from "./source.js";
 import { applyMergedSurfaces, faceSurface, triangleSurfaces } from "./surfaces.js";
-
-/** Below this normal.y (~60° from horizontal), a surface is too steep to stand on: slide along it rather than clearing the penetration straight up. */
-const MIN_GROUND_NORMAL_Y = 0.5;
 
 /** One removable part's collision: its own trees, split as the map's are. */
 interface PartTrees {
@@ -69,11 +74,17 @@ const UNMASKED: QueryMask = { channel: "player", base: true, part: () => true, h
  */
 const OVERLAP_SKIN = 0.005;
 
+/** How far off a capsule's surface something may be and still be touching it, as a share of its radius. */
+const TOUCH = 1e-3;
+/** The least a capsule is pushed, as a share of its radius, for the way it went to say what holds it. */
+const WEDGE_MIN = 1e-4;
+
 export interface CapsuleResolution {
   /** New feet (bottom-of-capsule) position after resolving penetrations. */
   position: THREE.Vector3;
-  /** True if the capsule ended up resting on a roughly-upward-facing surface. */
+  /** See `CapsuleResolution` in sim/capsule.ts for both. */
   grounded: boolean;
+  normal: THREE.Vector3;
 }
 
 /** One piece of geometry a BVH was built from, where to draw it, and what each of its triangles is made of. */
@@ -96,8 +107,28 @@ interface Scratch {
   capsulePoint: THREE.Vector3;
   direction: THREE.Vector3;
   normal: THREE.Vector3;
+  /** What a push says the capsule is standing on: see `pushOutOfBvh`. */
+  contact: THREE.Vector3;
   ray: THREE.Ray;
   rayEnd: THREE.Vector3;
+}
+
+/** The most level thing under a capsule that one `resolveCapsule` has met so far. */
+interface Support {
+  readonly normal: THREE.Vector3;
+  /** Something was met at all, and whether the best of it is walkable. */
+  found: boolean;
+  walkable: boolean;
+}
+
+/** Keep `contact` if it is better ground than what `support` holds: walkable over steep, then the more level. */
+function offer(support: Support, contact: THREE.Vector3, walkable: boolean): void {
+  if (support.found && (support.walkable !== walkable ? support.walkable : support.normal.y >= contact.y)) {
+    return;
+  }
+  support.normal.copy(contact);
+  support.found = true;
+  support.walkable = walkable;
 }
 
 export class CollisionWorld {
@@ -110,9 +141,12 @@ export class CollisionWorld {
     capsulePoint: new THREE.Vector3(),
     direction: new THREE.Vector3(),
     normal: new THREE.Vector3(),
+    contact: new THREE.Vector3(),
     ray: new THREE.Ray(),
     rayEnd: new THREE.Vector3(),
   };
+  /** What the `resolveCapsule` under way has found under the capsule. Scratch: reset per call. */
+  private readonly support: Support = { normal: new THREE.Vector3(), found: false, walkable: false };
   /**
    * What stops a bullet: the `solid` brushes and the visible `soup` shell.
    *
@@ -145,8 +179,9 @@ export class CollisionWorld {
   private readonly hulls = new HullIndex();
   /** Hulls the last `traceRay` considered. See `traceCandidates`. */
   private candidates = 0;
-  /** What the last `groundHit` landed on. Scratch: read it in the same statement, or not at all. */
+  /** What the last `groundHit` landed on, and its normal pointing up. Scratch: read them in the same statement, or not at all. */
   private hitSurface: SurfaceType = DEFAULT_SURFACE;
+  private readonly hitNormal = new THREE.Vector3();
   /** Each solid's trees, by its index in `ResolvedWorld.solids`; undefined for one with no triangles here. */
   private parts: (PartTrees | undefined)[] = [];
   /** The trees one query walks, refilled per query. Never held across a call. */
@@ -503,8 +538,12 @@ export class CollisionWorld {
    */
   resolveCapsule(position: Vec3, radius: number, height: number, out?: CapsuleResolution, mask: QueryMask = UNMASKED): CapsuleResolution {
     const trees = this.capsuleTrees(mask);
+    const support = this.support;
+    support.found = false;
+    support.walkable = false;
+    support.normal.set(0, 0, 0);
     if (trees.length === 0 && this.hulls.count === 0) {
-      return write(out, position.x, position.y, position.z, false);
+      return write(out, position.x, position.y, position.z, support);
     }
 
     const scratch = this.scratch;
@@ -512,15 +551,13 @@ export class CollisionWorld {
     segment.start.set(position.x, position.y + radius, position.z);
     segment.end.set(position.x, position.y + Math.max(height - radius, radius), position.z);
 
-    let grounded = false;
-
     // Both trees: a player is stopped by the world *and* by the invisible clips
     // over its windows. Two passes over two trees visit the same triangles one
     // merged tree used to, so the set of pushes is unchanged.
     for (const tree of trees) {
-      pushOutOfBvh(tree, segment, radius, scratch.bounds, scratch, (direction) => {
-        if (direction.y > 0.5) {
-          grounded = true;
+      pushOutOfBvh(tree, segment, radius, scratch.bounds, scratch, (_direction, _depth, contact, walkable) => {
+        if (contact) {
+          offer(support, contact, walkable);
         }
       });
     }
@@ -541,18 +578,29 @@ export class CollisionWorld {
         localSegment.end.copy(segment.end).applyMatrix4(hull.inverse);
 
         // Mirror each local push onto the world segment: rotate the direction, scale the depth.
-        pushOutOfBvh(hull.bvh, localSegment, localRadius, scratch.localBounds, scratch, (direction, depth) => {
+        pushOutOfBvh(hull.bvh, localSegment, localRadius, scratch.localBounds, scratch, (direction, depth, contact, walkable) => {
           direction.applyMatrix3(hull.rotation).normalize();
           segment.start.addScaledVector(direction, depth * hull.scale);
           segment.end.addScaledVector(direction, depth * hull.scale);
-          if (direction.y > 0.5) {
-            grounded = true;
+          if (contact) {
+            offer(support, contact.applyMatrix3(hull.rotation).normalize(), walkable);
           }
         });
       }
     }
 
-    return write(out, segment.start.x, segment.start.y - radius, segment.start.z, grounded);
+    if (!support.found) {
+      // Held up by nothing under it, and still pushed up more than aside: it is
+      // wedged between things beside it, a groove between two ledges. A box
+      // stands on both, so that is ground, facing the way it was pushed.
+      const wedged = scratch.direction.set(segment.start.x - position.x, segment.start.y - radius - position.y, segment.start.z - position.z);
+      const pushed = wedged.length();
+      if (pushed > WEDGE_MIN * radius && wedged.y >= WALKABLE_NORMAL_Y * pushed) {
+        offer(support, wedged.multiplyScalar(1 / pushed), true);
+      }
+    }
+
+    return write(out, segment.start.x, segment.start.y - radius, segment.start.z, support);
   }
 
   /** See `CapsuleWorld.overlapsCapsule`. Stops at the first triangle it finds. */
@@ -581,9 +629,17 @@ export class CollisionWorld {
   }
 
   /** See `CapsuleWorld.groundBelow`. The nearest standable hit across the map and its props. */
-  groundBelow(from: Vec3, distance: number, mask: QueryMask = UNMASKED): number | null {
+  groundBelow(from: Vec3, distance: number, normal?: Vec3, mask: QueryMask = UNMASKED): number | null {
     const along = this.groundHit(from, distance, mask);
-    return along === null ? null : from.y - along;
+    if (along === null) {
+      return null;
+    }
+    if (normal) {
+      normal.x = this.hitNormal.x;
+      normal.y = this.hitNormal.y;
+      normal.z = this.hitNormal.z;
+    }
+    return from.y - along;
   }
 
   /** See `CapsuleWorld.surfaceAt`. The same hit `groundBelow` measures, named. */
@@ -610,8 +666,9 @@ export class CollisionWorld {
       ray.direction.set(0, -1, 0);
       const hit = tree.raycastFirst(ray, THREE.DoubleSide, 0, distance);
       // Either winding: imported soup is not reliably outward-facing (docs/cod/pitfalls.md).
-      if (hit?.face && Math.abs(hit.face.normal.y) >= MIN_GROUND_NORMAL_Y && hit.distance < nearest) {
+      if (hit?.face && Math.abs(hit.face.normal.y) >= WALKABLE_NORMAL_Y && hit.distance < nearest) {
         nearest = hit.distance;
+        this.hitNormal.copy(hit.face.normal);
         this.hitSurface = hit.faceIndex === undefined || hit.faceIndex === null ? DEFAULT_SURFACE : faceSurface(tree.geometry, hit.faceIndex);
       }
     }
@@ -633,16 +690,21 @@ export class CollisionWorld {
       if (!hit?.face) {
         continue;
       }
-      normal.copy(hit.face.normal).applyMatrix3(hull.rotation);
+      normal.copy(hit.face.normal).applyMatrix3(hull.rotation).normalize();
       const along = (hit.distance / far) * distance;
-      if (Math.abs(normal.y) >= MIN_GROUND_NORMAL_Y && along < nearest) {
+      if (Math.abs(normal.y) >= WALKABLE_NORMAL_Y && along < nearest) {
         nearest = along;
+        this.hitNormal.copy(normal);
         // A prop hull is a model's collision shape and carries no surface: the
         // exporter writes them only for a map's own clipmap. `default`, honestly.
         this.hitSurface = DEFAULT_SURFACE;
       }
     }
 
+    // Either winding answers, so the normal is turned to point up.
+    if (this.hitNormal.y < 0) {
+      this.hitNormal.negate();
+    }
     return nearest === Infinity ? null : nearest;
   }
 }
@@ -663,23 +725,28 @@ function boundsOf(a: MeshBVH | undefined, b: MeshBVH | undefined): THREE.Box3 | 
 }
 
 /** Fill a caller's resolution, or make one when it did not bring its own. */
-function write(out: CapsuleResolution | undefined, x: number, y: number, z: number, grounded: boolean): CapsuleResolution {
+function write(out: CapsuleResolution | undefined, x: number, y: number, z: number, support: Support): CapsuleResolution {
   if (!out) {
-    return { position: new THREE.Vector3(x, y, z), grounded };
+    return { position: new THREE.Vector3(x, y, z), grounded: support.walkable, normal: support.normal.clone() };
   }
-  // Field by field, not `.set()`: the simulation (engine/player/capsule.ts)
-  // passes a plain { x, y, z } scratch object, which has no Vector3 methods.
+  // Field by field, not `.set()`: the simulation (sim/capsule.ts) passes plain
+  // { x, y, z } scratch objects, which have no Vector3 methods.
   out.position.x = x;
   out.position.y = y;
   out.position.z = z;
-  out.grounded = grounded;
+  out.grounded = support.walkable;
+  out.normal.x = support.normal.x;
+  out.normal.y = support.normal.y;
+  out.normal.z = support.normal.z;
   return out;
 }
 
 /**
  * Push `segment` out of every triangle of `bvh` it penetrates, growing the
- * query bounds as it moves. `onPush` gets each unit direction (scratch; it may
- * mutate it) and depth.
+ * query bounds as it moves. `onPush` gets each unit direction and depth, and —
+ * for a push from under the capsule — where it is held up from (`contact`, the
+ * unit direction from what it touches to its axis) and whether that is
+ * walkable. Both vectors are scratch, in the segment's space; it may mutate them.
  */
 function pushOutOfBvh(
   bvh: MeshBVH,
@@ -687,25 +754,29 @@ function pushOutOfBvh(
   radius: number,
   bounds: THREE.Box3,
   scratch: Scratch,
-  onPush: (direction: THREE.Vector3, depth: number) => void,
+  onPush: (direction: THREE.Vector3, depth: number, contact: THREE.Vector3 | null, walkable: boolean) => void,
 ): void {
   bounds.makeEmpty();
   bounds.expandByPoint(segment.start);
   bounds.expandByPoint(segment.end);
-  bounds.min.addScalar(-radius);
-  bounds.max.addScalar(radius);
+  // What the capsule only touches is asked what it is too: pushed off the wall
+  // face of a ledge's corner, it rests against the top face without sinking
+  // into it, and which of the two a shapecast visits first is nobody's rule.
+  const reach = radius * (1 + TOUCH);
+  bounds.min.addScalar(-reach);
+  bounds.max.addScalar(reach);
 
-  const { triPoint, capsulePoint, direction } = scratch;
+  const { triPoint, capsulePoint, direction, contact } = scratch;
 
   bvh.shapecast({
     intersectsBounds: (box) => box.intersectsBox(bounds),
     intersectsTriangle: (tri) => {
       const distance = tri.closestPointToSegment(segment, triPoint, capsulePoint);
-      if (distance >= radius) {
+      if (distance >= reach) {
         return;
       }
 
-      let depth = radius - distance;
+      let depth = Math.max(0, radius - distance);
       direction.subVectors(capsulePoint, triPoint);
       const len = direction.length();
       if (len > 1e-8) {
@@ -716,12 +787,22 @@ function pushOutOfBvh(
         direction.set(0, 1, 0);
       }
 
-      // On standable ground, clear the penetration vertically rather than along
-      // the normal. Along the normal, gravity's per-frame sinking returns as
-      // sideways motion and a standing player creeps downhill (~13 cm/s on 30°).
-      // Walls and ceilings are untouched. "Up" is the segment's space: world up
-      // for the world mesh and yaw-only props.
-      if (direction.y >= MIN_GROUND_NORMAL_Y) {
+      // What the capsule stands on here. The rounded bottom on the corner of a
+      // walkable face stands on that face, as a box would, however far round
+      // the bottom the corner is — up to SLOPE_NORMAL_Y, past which the corner
+      // is beside the capsule, not under it.
+      const under = direction.y >= SLOPE_NORMAL_Y;
+      const walkable = direction.y >= WALKABLE_NORMAL_Y || (under && Math.abs(tri.getNormal(scratch.normal).y) >= WALKABLE_NORMAL_Y);
+      if (under) {
+        contact.copy(direction);
+      }
+
+      // On ground it meets from above, clear the penetration vertically rather
+      // than along the normal: along it, each tick's sink returns as sideways
+      // motion and a standing player creeps downhill. Walls, ceilings and a
+      // corner met from the side are untouched. "Up" is the segment's space:
+      // world up for the world mesh and yaw-only props.
+      if (direction.y >= WALKABLE_NORMAL_Y) {
         depth /= direction.y;
         direction.set(0, 1, 0);
       }
@@ -731,7 +812,7 @@ function pushOutOfBvh(
       bounds.expandByPoint(segment.start);
       bounds.expandByPoint(segment.end);
 
-      onPush(direction, depth);
+      onPush(direction, depth, under ? contact : null, walkable);
     },
   });
 }
@@ -794,8 +875,8 @@ class MaskedWorld implements CapsuleWorld {
     return this.collision.overlapsCapsule(position, radius, height, this.mask);
   }
 
-  groundBelow(from: Vec3, distance: number): number | null {
-    return this.collision.groundBelow(from, distance, this.mask);
+  groundBelow(from: Vec3, distance: number, normal?: Vec3): number | null {
+    return this.collision.groundBelow(from, distance, normal, this.mask);
   }
 
   surfaceAt(from: Vec3, distance: number): SurfaceType | null {

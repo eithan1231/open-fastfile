@@ -26,11 +26,16 @@
 // which is the same number on both ends, since both read it from the catalogue.
 
 import { AIM_LIMIT, RUN_DIRECTIONS, type CharacterRole } from "./characterDef.js";
-import { mantleDuration } from "./mantle.js";
-import type { MovementState } from "./movement.js";
-import { LAND_RECOVERY } from "./stepSlide.js";
+import { mantleDuration } from "./moves/mantle.js";
+import { LAND_WINDOW, type MovementState } from "./movement.js";
 import { UNIT } from "./units.js";
 import type { WeaponData } from "./weapon.js";
+
+/**
+ * Seconds of a landing the body dips for, from the start of LAND_WINDOW. A
+ * landing that starts further into its window than this shows none.
+ */
+export const LAND_DIP = 0.5;
 
 /** How far the feet climb in one loop of the ladder clips (IW5's own rise and drop). */
 const CLIMB_UP_RISE = 37.1 * UNIT;
@@ -72,8 +77,8 @@ export interface PoseLayers {
 }
 
 /** Which way a body faces: the view, except on a ladder, where it faces the ladder (IW5's `PM_LadderMove`). */
-export function bodyYaw(state: Pick<MovementState, "yaw" | "ladder">): number {
-  return state.ladder ? state.ladder.facing + Math.PI : state.yaw;
+export function bodyYaw(state: Pick<MovementState, "yaw" | "move">): number {
+  return state.move.kind === "ladder" ? state.move.facing + Math.PI : state.yaw;
 }
 
 /**
@@ -177,20 +182,21 @@ function weigh(layers: readonly PoseLayer[], by: number): PoseLayer[] {
 function legLayers(movement: MovementState, weapon: WeaponData | null): PoseLayer[] {
   // A climb first, and to the exclusion of everything else: the player is on rails
   // for its duration, so none of the ground or air states apply.
-  if (movement.mantle) {
-    const duration = mantleDuration(movement.mantle.rise);
+  const move = movement.move;
+  if (move.kind === "mantle") {
+    const duration = mantleDuration(move.rise);
     // Scrubbed by how far through the climb they are rather than played at its own
     // speed, so the body arrives at the top exactly when the capsule does however
     // long the climb takes. Also means a peer whose first snapshot lands mid-climb
     // starts in the right pose instead of at the beginning.
-    const done = duration > 0 ? clamp01((duration - movement.mantle.left) / duration) : 1;
-    return [{ role: movement.mantle.over ? "mantleOver" : "mantle", weight: 1, phase: done }];
+    const done = duration > 0 ? clamp01((duration - move.left) / duration) : 1;
+    return [{ role: move.over ? "mantleOver" : "mantle", weight: 1, phase: done }];
   }
 
   // On a ladder, likewise. Posed from the feet's height rather than a clock, so a
   // still climber holds a pose and a fast one moves through it faster — the same
   // bargain, against the game's own CLIMBUP and CLIMBDOWN rises.
-  if (movement.ladder) {
+  if (move.kind === "ladder") {
     const up = movement.velocity.y >= 0;
     const loop = movement.feet.y / (up ? CLIMB_UP_RISE : CLIMB_DOWN_DROP);
     const phase = loop - Math.floor(loop);
@@ -200,7 +206,7 @@ function legLayers(movement: MovementState, weapon: WeaponData | null): PoseLaye
 
   // Off the ground and on it, blended rather than switched: `airborne` is a smoothed
   // `grounded`, so walking off a ledge and landing both crossfade. `sinceJump` stops
-  // counting at JUMP_MEMORY, which is longer than the clip, so a long fall holds the
+  // counting at JUMP_REPEAT, which is longer than the clip, so a long fall holds the
   // jump's last frame — which is what a clip that plays once does anyway.
   const air = ease(movement.airborne);
   const layers = weigh([{ role: "jump", weight: 1, phase: clamp01(movement.sinceJump) }], air);
@@ -214,11 +220,12 @@ function groundLayers(movement: MovementState, weapon: WeaponData | null): PoseL
 
   // The landing is an overlay over whatever is underneath: a player who lands
   // mid-sprint keeps running, with a dip in it. Timed by the simulation's own
-  // recovery rather than the clip's length, because that timer is in the state.
-  if (movement.landing <= 0) {
+  // landing rather than the clip's length, because that timer is in the state:
+  // the dip is the first LAND_DIP of it.
+  const share = ease(clamp01((movement.landing - (LAND_WINDOW - LAND_DIP)) / LAND_DIP));
+  if (share <= 0) {
     return out;
   }
-  const share = ease(movement.landing / LAND_RECOVERY);
   return [...weigh(out, 1 - share), { role: "land", weight: share, phase: 1 - share }];
 }
 

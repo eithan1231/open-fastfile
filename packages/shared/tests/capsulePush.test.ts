@@ -84,7 +84,7 @@ describe("resolveCapsule — the world-mesh BVH pass", () => {
 
     const resolved = collision.resolveCapsule(new THREE.Vector3(0.9, 1, 0), RADIUS, HEIGHT);
 
-    expect(resolved.position.x).toBeCloseTo(0.7, 5); // pushed off the near face, still inside
+    expect(resolved.position.x).toBeCloseTo(1 - RADIUS, 5); // pushed off the near face, still inside
   });
 
   it("does not mutate the position it was handed", () => {
@@ -232,19 +232,21 @@ describe("resolveCapsule — reusing the caller's resolution", () => {
 
   it("fills the resolution it was handed, and returns that same object", () => {
     const collision = floor();
-    const out = { position: new THREE.Vector3(), grounded: false };
+    const out = { position: new THREE.Vector3(), grounded: false, normal: new THREE.Vector3() };
 
     const resolved = collision.resolveCapsule(new THREE.Vector3(0, -0.4, 0), RADIUS, HEIGHT, out);
 
     expect(resolved).toBe(out);
     expect(out.position.y).toBeCloseTo(0, 4);
     expect(out.grounded).toBe(true);
+    expect(out.normal.toArray()).toEqual([0, 1, 0]);
 
     // And it is reused, not reallocated: a second call overwrites the same vector.
     collision.resolveCapsule(new THREE.Vector3(5, 4, 5), RADIUS, HEIGHT, out);
     expect(resolved.position.toArray()).toEqual(out.position.toArray());
     expect(out.position.y).toBeCloseTo(4, 4);
     expect(out.grounded).toBe(false);
+    expect(out.normal.toArray()).toEqual([0, 0, 0]);
   });
 
   it("hands back independent results when the caller brings nothing", () => {

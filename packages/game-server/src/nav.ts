@@ -18,7 +18,7 @@ import { NavBake, type NavBakeSummary } from "@3d/shared/nav/bake.js";
 import type { NavFile } from "@3d/shared/nav/format.js";
 import type { NavGraph } from "@3d/shared/nav/graph.js";
 import type { CapsuleWorld } from "@3d/shared/sim/capsule.js";
-import type { MovementRules } from "@3d/shared/sim/worldRules.js";
+import type { MovementRules } from "@3d/shared/sim/movement.js";
 import { linksThroughParts, type NavPart } from "@3d/shared/nav/parts.js";
 import { actorMover } from "@3d/shared/nav/mover.js";
 import { config } from "./config.js";

@@ -15,7 +15,7 @@
 // docs/engine/navigation.md has the numbers each is tuned by.
 
 import type { CapsuleWorld } from "../sim/capsule.js";
-import type { MovementRules } from "../sim/worldRules.js";
+import { movementEnv, PLAYER_MOVEMENT, type MovementRules } from "../sim/movement.js";
 import { derivePairs, DERIVE_DEFAULTS, type DeriveOptions } from "./derive.js";
 import { NO_INDEX_16, type NavFile } from "./format.js";
 import { allocateGraph, LINK_ORIGIN, LINK_REASON, LINK_REASON_NAMES, LINK_STATUS, NavGraph, TRAVERSAL_KIND_NAMES, type NavGraphData } from "./graph.js";
@@ -309,7 +309,8 @@ export class NavBake {
     yield "derive";
 
     // 3. Walk every link still undecided.
-    const env: ValidateEnv = { world: this.world, rules: this.rules, dt: 1 / this.tickRate, graph: g, nodeAbilities: nodes.abilities };
+    const movement = movementEnv(this.world, this.rules, PLAYER_MOVEMENT);
+    const env: ValidateEnv = { movement, dt: 1 / this.tickRate, graph: g, nodeAbilities: nodes.abilities };
     const outcome: LinkOutcome = { status: 0, reason: 0, seconds: 0, requires: 0, ticks: 0 };
     for (let k = 0; k < g.linkCount; k++) {
       if (g.status[k] !== LINK_STATUS.UNKNOWN) {

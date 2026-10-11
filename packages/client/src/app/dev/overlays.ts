@@ -288,7 +288,7 @@ export class Overlays {
       primary.push(climb ? `climb ${climb.rise.toFixed(2)} m${climb.over ? " (over)" : ""}` : "no climb here");
       if (this.mantles.ladderCount) {
         // On one, or reaching one: which is the difference a stuck grab needs.
-        const on = firstPerson.player.movement.ladder !== null;
+        const on = firstPerson.player.movement.move.kind === "ladder";
         primary.push(on ? "on a ladder" : this.mantles.ladderAhead ? "ladder ahead" : "no ladder ahead");
       }
     }

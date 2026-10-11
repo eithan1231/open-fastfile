@@ -5,12 +5,25 @@
 // camera: engine/controls/firstPerson.ts drives the local player, and a remote
 // one would step on the inputs a server relays. docs/engine/player.md.
 
-import { wantsSprint, type PlayerInput } from "./input.js";
+import type { PlayerInput } from "./input.js";
 import { LOADOUT_SLOTS, loadoutWeapons, type Loadout, type LoadoutWeapon } from "./loadout.js";
 import { mayCarry } from "./weaponCategory.js";
-import { clampPitch, createMovement, EYE_HEIGHT, horizontalSpeed, stepMovement, type CapsuleWorld, type MovementState, type Vec3 } from "./movement.js";
-import { NO_LADDERS, type LadderVolumes } from "./ladder.js";
-import { NO_MANTLES, type MantleVolumes } from "./mantle.js";
+import {
+  clampPitch,
+  createMovement,
+  EYE_HEIGHT,
+  horizontalSpeed,
+  movementEnv,
+  NO_CLIMBS,
+  PLAYER_MOVEMENT,
+  stepMovement,
+  wantsSprint,
+  type CapsuleWorld,
+  type MovementEnv,
+  type MovementRules,
+  type MovementState,
+  type Vec3,
+} from "./movement.js";
 import type { Holder } from "./recoil.js";
 import type { WeaponController, WeaponData } from "./weapon.js";
 import { fittedSlots, NOTHING_FITTED, sameFitted, type Fitted, type WeaponId, type WeaponRegistry } from "./weaponRegistry.js";
@@ -178,9 +191,10 @@ export class Player {
   private fallOut: FallOut = "respawn";
   /** See `PlayerState.armed`. */
   private arming = 0;
-  /** Where this world lets them climb. A world's, not a player's, like the spawn and the kill plane. */
-  private mantles: MantleVolumes = NO_MANTLES;
-  private ladders: LadderVolumes = NO_LADDERS;
+  /** Where a step happens: the collision, this body, and the climbs the world allows (`setClimbs`). */
+  private env: MovementEnv;
+  /** What the held weapon says about each step, refilled in place. */
+  private readonly stepCarry = { sprint: true };
   /** What the held weapon is asked for each step, refilled in place; `setInput` copies what it keeps. */
   private readonly weaponInput = { trigger: false, ads: false, sprint: false };
   /** What the held weapon is told about its holder each step, refilled in place (sim/recoil.ts). */
@@ -193,9 +207,11 @@ export class Player {
    * the callers that have no catalogue to give (tests, and a world with none).
    */
   constructor(
-    private readonly world: CapsuleWorld,
+    world: CapsuleWorld,
     private weapons?: WeaponRegistry,
-  ) {}
+  ) {
+    this.env = movementEnv(world, NO_CLIMBS, PLAYER_MOVEMENT);
+  }
 
   /**
    * Hand this player a catalogue it was built without.
@@ -382,7 +398,7 @@ export class Player {
     if (this.fallOut === "die" && this.outOfWorld) {
       return;
     }
-    const climbing = this.body.mantle !== null || this.body.ladder !== null;
+    const climbing = this.body.move.kind !== "walk";
     const weapon = this.held;
     // From the state the step *starts* from, like `advanceStride`: a replay of
     // the same input has the same speed here only if it is read before the move.
@@ -390,7 +406,7 @@ export class Player {
     if (weapon) {
       this.weaponInput.trigger = input.fire && !climbing;
       this.weaponInput.ads = input.ads && !climbing;
-      this.weaponInput.sprint = wantsSprint(input) && !climbing;
+      this.weaponInput.sprint = wantsSprint(this.body, input);
       weapon.setInput(this.weaponInput);
       if (climbing) {
         this.stow();
@@ -406,7 +422,8 @@ export class Player {
       this.finishSwap();
       this.unstow();
     }
-    stepMovement(this.body, input, dt, this.world, this.held?.sprinting ?? true, this.mantles, this.ladders);
+    this.stepCarry.sprint = this.held?.sprinting ?? true;
+    stepMovement(this.body, input, dt, this.env, this.stepCarry);
     if (this.fallOut === "respawn" && this.outOfWorld) {
       this.respawn();
     }
@@ -595,19 +612,14 @@ export class Player {
     return this.team;
   }
 
-  /** The volumes this world lets them climb (sim/mantle.ts). Set by `applyWorldRules`. */
-  setMantles(mantles: MantleVolumes): void {
-    this.mantles = mantles;
-  }
-
-  /** The ladders this world lets them climb (sim/ladder.ts). Set by `applyWorldRules`. */
-  setLadders(ladders: LadderVolumes): void {
-    this.ladders = ladders;
+  /** The mantle volumes and ladders this world lets them climb. Set by `applyWorldRules`. */
+  setClimbs(rules: MovementRules): void {
+    this.env = movementEnv(this.env.world, rules, this.env.body);
   }
 
   /** Whether a climb is under way, for a caller that must not interrupt one. */
   get mantling(): boolean {
-    return this.body.mantle !== null;
+    return this.body.move.kind === "mantle";
   }
 
   // -- Health ------------------------------------------------------------------------
