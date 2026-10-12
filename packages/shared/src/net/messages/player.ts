@@ -15,7 +15,7 @@ import { EYE_PATHS, type MovementState } from "../../sim/movement.js";
 import { MAX_HEALTH, type PlayerState } from "../../sim/player.js";
 import { MAX_ATTACHMENT_SLOTS, MAX_FITTED_ATTACHMENTS, MAX_WEAPONS } from "../../sim/weaponRegistry.js";
 import { MAX_POINTS } from "../../game/matchValues.js";
-import { axis, climb, combatTimer, eyeTimer, landTimer, metres, pitch, shortTimer, unit, vec3, weaponTimer, yaw } from "./fields.js";
+import { axis, combatTimer, eyeTimer, landTimer, mantleRow, mantleTimer, metres, pitch, shortTimer, unit, vec3, weaponTimer, yaw } from "./fields.js";
 
 export const movementSchema = struct({
   feet: vec3,
@@ -28,12 +28,12 @@ export const movementSchema = struct({
   landing: landTimer,
   /**
    * Which move owns the player's steps: two bits for the walk nearly everybody
-   * is in, and a climb's target and timers or a ladder's yaw only while
-   * somebody is on one.
+   * is in, and a mantle's ledge, direction, row and clock or a ladder's yaw
+   * only while somebody is on one.
    */
   move: union("kind", {
     walk: {},
-    mantle: { target: vec3, left: shortTimer, rise: climb, over: bool },
+    mantle: { ledge: vec3, yaw, row: mantleRow, over: bool, left: mantleTimer },
     ladder: { facing: yaw },
   }),
   /**

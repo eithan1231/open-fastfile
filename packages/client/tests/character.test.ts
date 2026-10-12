@@ -582,7 +582,7 @@ describe("the mixer, driven by phases rather than by time", () => {
     const a = new CharacterAnimator(history);
     const b = new CharacterAnimator(fresh);
     a.update({ ...running, velocity: { x: 0, y: 0, z: -RUN_SPEED } }, weapon({ state: "sprinting" }), 1 / 60);
-    a.update({ ...running, move: { kind: "mantle", target: { x: 0, y: 1, z: 0 }, left: 0.2, rise: 1, over: false } }, weapon(), 1 / 60);
+    a.update({ ...running, move: { kind: "mantle", ledge: { x: 0, y: 1, z: 0 }, yaw: 0, row: 3, over: false, left: 0.2 } }, weapon(), 1 / 60);
     a.update(running, weapon(), 1 / 60);
     b.update(running, weapon(), 1 / 60);
     expect(apart(bones(history), bones(fresh))).toBeLessThan(1e-9);

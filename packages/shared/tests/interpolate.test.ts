@@ -127,7 +127,7 @@ function distinctive(): MovementState {
     grounded: true,
     jumpFrom: 2.25,
     landing: 0.33,
-    move: { kind: "mantle", target: { x: 9, y: 8, z: 7 }, left: 0.44, rise: 1.25, over: true },
+    move: { kind: "mantle", ledge: { x: 9, y: 8, z: 7 }, yaw: 1.9, row: 5, over: true, left: 0.44 },
     stance: { kind: "prone", heading: 1.1, torso: -0.2 },
     eyeShift: { path: "crouchToProne", elapsed: 0.21 },
     ladderLock: true,
@@ -155,13 +155,13 @@ describe("every field survives", () => {
     const dst = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
     copyMovement(src, dst);
     src.feet.x = 999;
-    (src.move as MantleMove).target.y = 999;
+    (src.move as MantleMove).ledge.y = 999;
     expect(dst.feet.x).toBe(1.5);
-    expect((dst.move as MantleMove).target.y).toBe(8);
+    expect((dst.move as MantleMove).ledge.y).toBe(8);
   });
 
   it("copyMovement copies every kind of move, over every kind", () => {
-    const moves: Move[] = [WALKING, { kind: "mantle", target: { x: 9, y: 8, z: 7 }, left: 0.44, rise: 1.25, over: true }, { kind: "ladder", facing: 2.1 }];
+    const moves: Move[] = [WALKING, { kind: "mantle", ledge: { x: 9, y: 8, z: 7 }, yaw: 1.9, row: 5, over: true, left: 0.44 }, { kind: "ladder", facing: 2.1 }];
     for (const from of moves) {
       for (const over of moves) {
         const src = { ...distinctive(), move: structuredClone(from) };

@@ -246,11 +246,11 @@ export interface ResolvedSound {
 /**
  * Where a player may climb: one of the map's own mantle volumes.
  *
- * The box encloses the obstacle with room to spare on every side, and its **top
- * is the surface they end on**, so `size` carries the region and roughly the
- * climb height at once; the collision decides the rest (sim/moves/mantle.ts). Nothing
- * draws it and nothing collides with it — it is a permission region, and putting
- * it in a BVH would make every ledge an invisible wall.
+ * The box encloses the obstacle with room to spare on every side. A probe
+ * swept ahead of a player meets one of its sides, which is the permission and
+ * the direction; where the ledge is and how high, the collision says
+ * (sim/moves/mantle.ts). Nothing draws it and nothing collides with it:
+ * putting it in a BVH would make every ledge an invisible wall.
  *
  * A world point is inside it when `rotateY(point - position, -yaw)` lies within
  * half of `size` on each axis. The exporter fits its boxes with that same
@@ -266,12 +266,13 @@ export interface ResolvedMantle {
   position: Vec3;
   /** Radians about +Y, three.js' convention. */
   yaw: number;
-  /** The box's full extents. `size.y` is the climb height. */
+  /** The box's full extents. Its height has only to meet a body's: no ledge height is read from it. */
   size: Vec3;
   /**
    * Which mantle the source map called this, when it said: `onto` climbs onto
-   * the surface, `over` vaults across it. The game spells the first `mantle_on`,
-   * but `on` is a boolean in this DSL, so the node says `onto`.
+   * the surface, `over` vaults across it where there is the room. The game
+   * spells the first `mantle_on`, but `on` is a boolean in this DSL, so the
+   * node says `onto`.
    *
    * Undefined is the common case rather than the exception — a Black Ops volume
    * never names one, and neither does an axial brush on any game — so a reader

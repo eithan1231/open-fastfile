@@ -399,14 +399,15 @@ describe("the weapon on a climb", () => {
     expect(weapon.data.state).toBe("idle");
   });
 
-  it("goes away for a mantle too, so nothing is fired mid-climb", () => {
-    // A 1 m step with a mantle volume on its edge, in place of the platform.
+  /** A player against a step `units` tall with a mantle volume on its edge, jump down and the mantle begun. */
+  function mantling(units: number) {
+    const top = units * UNIT;
     const root = new THREE.Group();
-    root.add(collider([40, 1, 40], [0, -0.5, 0]), collider([40, 1, 8], [0, 0.5, -7]));
+    root.add(collider([40, 1, 40], [0, -0.5, 0]), collider([40, top, 8], [0, top / 2, -7]));
     const world = new CollisionWorld();
     world.rebuild(root);
     const player = new Player(world);
-    const mantles = new MantleVolumes([{ id: 0, tags: [], position: { x: 0, y: 0.5, z: -3 }, yaw: 0, size: { x: 4, y: 1, z: 0.5 } }]);
+    const mantles = new MantleVolumes([{ id: 0, tags: [], position: { x: 0, y: top / 2, z: -3 }, yaw: 0, size: { x: 4, y: top, z: 0.5 } }]);
     player.setClimbs({ mantles, ladders: NO_LADDERS });
     const weapon = new WeaponController(weaponDef({ clipSize: 30 }));
     player.equip(weapon);
@@ -419,12 +420,41 @@ describe("the weapon on a climb", () => {
     input.jump = true;
     player.step(input, DT);
     expect(player.mantling).toBe(true);
-    input.fire = true;
-    while (player.mantling) {
+    return { player, weapon, input };
+  }
+
+  it("goes away for a mantle onto all but the lowest ledges, and comes back after", () => {
+    for (const units of [33, 45, 57]) {
+      const { player, weapon, input } = mantling(units);
+      input.fire = true;
+      input.reload = true;
+      let stowed = 0;
+      while (player.mantling) {
+        player.step(input, DT);
+        stowed += player.snapshot().stowed ? 1 : 0;
+      }
+      expect(stowed, `${units} units`).toBeGreaterThan(10);
+      expect(weapon.data.ammo).toBe(30);
+      expect(["dropping", "lowered"]).toContain(weapon.data.state);
+      input.fire = false;
+      input.reload = false;
       player.step(input, DT);
+      expect(player.snapshot().stowed).toBe(false);
+      expect(weapon.data.state).toBe("raising");
     }
-    expect(weapon.data.ammo).toBe(30);
-    expect(weapon.data.state).not.toBe("firing");
+  });
+
+  it("stays in the hands for a mantle onto the two lowest, and fires there", () => {
+    for (const units of [21, 27]) {
+      const { player, weapon, input } = mantling(units);
+      input.fire = true;
+      while (player.mantling) {
+        player.step(input, DT);
+        expect(player.snapshot().stowed).toBe(false);
+      }
+      expect(weapon.data.ammo, `${units} units`).toBeLessThan(30);
+      expect(weapon.data.state).not.toBe("lowered");
+    }
   });
 
   it("finishes a swap the climb held up, rather than raising the old weapon over it", () => {

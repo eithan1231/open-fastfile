@@ -378,11 +378,12 @@ volume encloses the ledge it marks, so one that collided would be an invisible
 wall round every ledge in the map. They are not in `collision.glb` either — the
 exporter writes them as world-file nodes precisely so that nothing can sweep
 them into a collision mesh by accident. `sim/moves/mantle.ts` holds them, and asks the
-collision the rest through `CapsuleWorld`: where the ledge is
-(`groundBelow`, a ray straight down) and whether the capsule fits on the way
-(`overlapsCapsule`, which treats touching as clear). A lying body's legs are
-asked with the one query that is not upright, `overlapsSweep`: a ball carried
-along a line, which also counts a surface the line passes clean through
+collision the rest through `CapsuleWorld`: where the ledge is (`overlapsSweep`,
+a ball carried forward and then down, and `resolveCapsule` for what it came
+down on) and whether the capsule fits on the way (`overlapsCapsule`, which
+treats touching as clear). `overlapsSweep` is the one query that is not
+upright: a ball carried along a line, which also counts a surface the line
+passes clean through. A lying body's legs are asked with it too
 ([player.md](player.md#prone-blocked)).
 
 The game's own mantle brushes carry contents `0x01000000`, which blocks nobody,

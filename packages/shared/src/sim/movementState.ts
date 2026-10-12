@@ -91,30 +91,28 @@ export interface WalkMove {
 }
 
 /**
- * A climb under way: the player is on rails, with no gravity, no friction, no
+ * A mantle under way: the player is on rails, with no gravity, no friction, no
  * keys and no collision resolution. The path was checked clear before it began
  * (sim/moves/mantle.ts), and resolving against the corner it hugs would only
  * nudge it off the line a server replays.
  */
 export interface MantleMove {
   kind: "mantle";
-  /** The feet position this climb ends at, fixed when it started. */
-  target: Vec3;
-  /** Seconds left of it. */
-  left: number;
-  /** The whole climb's height, m. Fixed at the start, so the animation it picks does not change under it. */
-  rise: number;
+  /** The feet on the ledge it climbs: where the way up ends, fixed when it started. */
+  ledge: Vec3;
+  /** The way it goes, as a yaw: in through the face it started at. The view is held about this, and a vault runs along it. */
+  yaw: number;
   /**
-   * A vault across the obstacle rather than a step up onto it (`kind: over`,
-   * with somewhere to vault to).
-   *
-   * On the wire, and for one reason: a snapshot carries the climb but not the
-   * volume it came from, so without this bit a peer's animator would have to
-   * guess which of the two it is playing — and the heights of the two kinds
-   * overlap, so there is no guess to make. One bit, inside a struct that only
-   * exists while somebody is actually climbing.
+   * Which row of `MANTLE_ROWS` (sim/moves/mantle.ts): the ledge's height as
+   * the games class it, which times the move, picks its exit and says whether
+   * the weapon stays out. An index and not the height, so a rounded copy of
+   * this state cannot fall in another row.
    */
+  row: number;
+  /** A vault: on past the ledge and down its far side, which no ledge height says. */
   over: boolean;
+  /** Seconds left of the whole move. */
+  left: number;
 }
 
 /** A ladder being climbed: steered by the view and the keys, and still resolved against the world. */

@@ -34,7 +34,7 @@ keyboard, mouse ─▶ FirstPersonControls ─▶ PlayerInput ─▶ Player.step
 | `shared` `sim/weaponRegistry.ts`          | The catalogue: every weapon both ends can build, and its `hash`        |
 | `shared` `sim/player.ts`                  | `Player`: steps both on one input; `snapshot` / `restore`              |
 | `shared` `sim/capsule.ts`                 | `CapsuleWorld`: the three.js-free view of collision a step gets        |
-| `shared` `sim/moves/mantle.ts`            | The world's mantle volumes, the query a step makes, and the climb      |
+| `shared` `sim/moves/mantle.ts`            | The world's mantle volumes, the query a step makes, and the move       |
 | `client` `engine/controls/firstPerson.ts` | Devices → `PlayerInput`, the held pose, the camera                     |
 
 ## State for the network
@@ -125,7 +125,7 @@ whoever turned a key into the input.
 
 **Exactly one move owns a step**: `state.move` is `walk`, `mantle` or `ladder`,
 a union, and each is a module under `sim/moves/` that the step dispatches to.
-A move's own fields (a climb's target, a ladder's facing) exist only while it is
+A move's own fields (a mantle's ledge, a ladder's facing) exist only while it is
 the one under way, on the wire as in the state. Every free step ends in
 `sim/stepSlide.ts`, which moves the capsule, keeps it out of the world, steps it
 up and down, and says whether it ends on the ground.
@@ -444,10 +444,9 @@ wall, a kerb under a third of the radius is ridden up without the step's cost,
 and a blocked step goes a tenth of the radius past where it was stopped.
 
 - **Crouch and go prone** (`C` and left `Ctrl`). See [stance](#stance).
-- **Mantle check**: while jump is held and no ladder is, by a player who began
-  the step standing.
-- **Mantle** a ledge between 0.35 m and 1.45 m by jumping into it, where the
-  world declares a `mantle` volume. See below.
+- **Mantle** a ledge more than 18 and no more than 60 units above the feet by
+  holding jump at it, standing, where the world declares a `mantle` volume: from
+  the ground, the air or a ladder. See [below](#mantling).
 - **Climb a ladder** by walking or falling into one the world declares: the view
   steers it, the strafe keys move along it, and jump pushes off. See below.
 - **Falling off the world** (50 m below its lowest floor) respawns the player at
@@ -517,7 +516,8 @@ What the keys ask for, against what the world allows (`stepStance`):
 - **Going prone starts a landing's grip** (`state.landing`), which is what stops
   a running body sliding as it drops.
 - **A ladder is climbed standing** and a lying player cannot take hold of one. A
-  climb is started standing, and during one only the eye moves.
+  mantle is started standing with the eye at rest; during one the stance is the
+  mantle's to hold ([below](#mantling)), and only the eye moves.
 - **Prone under a weapon that is aimed or firing, the movement keys do nothing**
   (`Carry.braced`).
 
@@ -556,8 +556,8 @@ step, five collision queries each, which is two to four times a standing walk.
 
 ### The view caps are one mechanism
 
-A move may cap the view: a ladder in the air, and lying prone. `sim/view.ts` is
-the one place either is applied (`capYaw`, `capPitch`), a function of the state
+A move may cap the view: a ladder in the air, a mantle, and lying prone.
+`sim/view.ts` is the one place any of them is applied (`capYaw`, `capPitch`), a function of the state
 and the angle asked for. The step applies it to the input, and
 `FirstPersonControls` asks `Player.viewYaw` and `viewPitch` the same question of
 the mouse movement no step has spent yet, so the camera stops at a cap rather
@@ -653,105 +653,173 @@ Open:
 
 ## Mantling
 
-Climbing is **authored, not detected**. The engine never looks at geometry for a
-ledge; it tests the player against `mantle` volumes the world declares, which is
-how the games do it — imported maps carry about 70 each, from the brushes their
-clipmap marks `0x01000000` (`scripts/cod/mantle.py`). A hand-authored world gets
-mantles by declaring them ([AUTHORING.md](../../worlds/AUTHORING.md)).
+A mantle is **authored, then found**. A world declares `mantle` volumes
+([AUTHORING.md](../../worlds/AUTHORING.md)) — an imported map's are its own
+mantle brushes — and a volume is a permission and a direction and nothing more:
+where the ledge is, how high it is and whether a body fits there, the world's
+collision says. A volume is an oriented box **around** what it marks, a little
+proud of it on every side.
 
-A volume is an oriented box **around** what it marks — on dome-mw3, the crate or
-the sill with about 0.4 m to spare on every side — with its **top level with the
-surface the player ends on**. `sim/moves/mantle.ts` holds them and answers the one
-question a step asks: from here, facing this way, is there anything to climb,
-and can the capsule get there? The volume answers the first half and the world's
-collision the second, in three steps:
+When a mantle starts, where its ledge is, how long it takes, how it ends and
+what it holds of the view, the stance and the weapon are the games', in their
+units: [reverse/iw5-mantle](../../reverse/iw5-mantle/README.md) has where each
+was read. The way the capsule travels between the start and the end is not
+theirs, and [has its own heading](#the-path-is-not-the-games).
 
-1. **The face.** Any of the four sides. The player must be within their radius of
-   the box and facing into a side within 60°; the climb goes straight in through
-   that side, whichever way they are looking inside that cone. At a corner, the
-   side they are further outside of wins. That is the games' model: a trace
-   ahead hits a mantle brush, and the side it hits sets the direction.
-2. **The ledge.** Rays straight down (`CapsuleWorld.groundBelow`), every 5 cm
-   along the climb, find the first surface within 15 cm of the box's top. It has
-   to begin within 0.3 m of the front of the capsule, and its height — not the
-   box's — sets the rise. `onto` lands a radius past the edge, or as far in as
-   the ledge goes if it is narrower. `over` lands a radius past the ledge's far
-   edge and falls from there; with no room there it climbs onto the ledge instead,
-   which is why `MantleState.over` comes from the result, not the volume.
-3. **The path.** Straight up to the ledge's height, then straight across to the
-   landing. Both legs are tested with `CapsuleWorld.overlapsCapsule` every half
-   radius; anything in the way — a beam overhead, a window's mullion — refuses
-   the climb, and the press becomes an ordinary jump. Half a radius apart, the
-   most anything can reach into the swept shape unseen is under a centimetre.
+**When.** Every step jump is down — pressed or held, so a key held while
+walking or jumping into range starts one with no press at that moment — by a
+body **standing with its eye at rest**: not crouched, not prone, not on the way
+between. On the ground, in the air or on a ladder alike. It is asked after the
+stance and before the ladder and the jump, so a press into a ledge mantles
+rather than jumps, and a mantle from a ladder lets go of it with `ladderLock`
+set. A key still down when a mantle ends does not jump: a jump is a press.
 
-The volume query itself needs no geometry library, so this lives in `sim/`
-rather than `collision/` and reaches the BVH only through `CapsuleWorld`. Both
-ends answer it by running the same code over the same world file and the same
-collision mesh.
+**The question** is `MantleVolumes.find` (`sim/moves/mantle.ts`), in three parts:
 
-A jump press is checked against the volumes _before_ it becomes a jump, so a jump
-into a ledge climbs it. It is deliberately not gated on being grounded: in the
-games a mantle can start from a jump or a fall, and the volume is what decides
-whether there is anything there.
+1. **The face.** A line as tall as the body, 0.1 thick, is swept along the
+   view's yaw from 14.9 units behind the feet — as far back as the body's front
+   is ahead — to 20 units past that front. The first volume side it enters is
+   the mantle's direction: **straight in through the side, not along the
+   view**, and the view must be within 60° of that. A volume has only to stand
+   somewhere in the body's height; its own height is read for nothing else. **A
+   probe that starts inside a volume finds nothing**, so a body deep in one, or
+   with another just behind it, has no mantle. A body standing on a volume's
+   top is not in it: half a unit under the top still counts as on it.
+2. **The ledge.** The body's own ball, radius 15, is carried 16 units forward
+   along that direction from 60, then 40, then 20 units above the feet, and
+   from there let down. The first height it gets forward from untouched, to
+   come to rest on ground, has found the ledge: **16 units ahead of the feet
+   wherever the body stood, more than 18 above them and no higher than the
+   ball was carried**. Lower is a step's. The two lower heights are for a sill
+   under a lintel. A crouched body must fit on the ledge or there is no
+   mantle, and where a standing one does not, the mantle is made crouched.
+3. **Onto or over.** A volume whose `kind` is `over` asks for a vault: on 31
+   units past the ledge, to end 18 below it. It is one if the body makes that
+   run and that drop touching nothing — so not with a wall in the run, and not
+   with a floor within 18 units under its far end. Otherwise, and for every
+   other volume, the mantle ends on the ledge.
 
-Five things about the climb itself are load-bearing:
+The ledge is measured from the feet, so a wall too tall from the ground comes
+into reach from the top of a jump with the key still down.
 
-- **It never breaks collision, and never resolves it either.** The path is
-  checked before the climb starts, and nothing it was checked against moves (a
-  built world is static; other players are not colliders). Resolving mid-climb
-  would only nudge the capsule off the corner it hugs, and off the line a server
-  replays. Gravity, friction and the keys are off too — the player is on rails
-  until it ends. Looking around still works: the view is absolute in the input,
-  so refusing it would only make the camera fight the mouse.
-- **It is a pure function of (feet, target, time left).** Which leg the player
-  is on follows from their feet: below the target's height is the rise, level
-  with it is the traverse. Each step covers the share of the remaining path that
-  `dt` is of the time remaining, which is exactly constant speed. That is what
-  lets a server replaying the same inputs land in the same place rather than
-  approximately there, at any tick rate.
-- **It is slow.** About 0.03 m a tick, against `FirstPersonControls`'s 1 m
-  teleport threshold, so the camera interpolates a climb like any walk.
-- **The timings are the games' own.** 0.33 s at the shortest climb to 0.83 s at
-  the tallest, interpolated, because `mp_mantle_up_21` through `_57` are named in
-  inches and rise monotonically. `MAX_CLIMB` is 57 in for the same reason: past
-  that there is no animation, so the climb is refused rather than played at the
-  wrong height. **Making mantling faster than the original is a change to
-  `MANTLE_TIME_LOW` and `MANTLE_TIME_HIGH` and nothing else.**
-- **It sends geometry, never a volume id.** `MovementState.mantle` is nullable
-  (one bit when nobody is climbing) and carries a target position, the time left,
-  the rise and one bit for `over`. Entity ids are positional, so a client and a
-  server on different world text would address different volumes; a position and
-  a timer cannot. `over` is on the wire because a snapshot has the climb but not
-  the volume, and the two kinds' heights overlap — there is no guess a peer could
-  make instead.
+The games trace boxes. Here a trace is a ball carried along its line
+(`CapsuleWorld.overlapsSweep`); how far down it gets is found by halving, and
+what it came down on is asked of the resolver. **Ground is the resolver's
+`grounded`, not the slope of the contact**: a ball let down past the edge of a
+level top, or onto the higher of two steps, rests on a corner, where a flat box
+would be standing on the top — the same rule that lets a walking body stand on
+an edge ([collision](collision.md)). The ledge's height is that corner's, so
+the feet rest a little under it. A corner the ball slipped past round its side
+but a box's flat underside would have met is too high, and refused. What a ball
+cannot do is feel under the box's corners: a top that reaches only those is
+not found.
 
-**The weapon goes away for it**, as for a ladder
-([below](#the-weapon-on-a-climb)). No weapon file declares a mantle clip — none
-of 156 dumped MW3 weapon files — and no `viewmodel_*mantle*` asset exists, so the
-viewmodel only plays its putaway. The body clips live in `common_mp.ff` with
-every other `pb_`/`pt_` clip; `characterAnimator.ts` scrubs one from the
-simulation's clock so the body arrives at the top when the capsule does.
+The volume test is plain numbers and everything else goes through
+`CapsuleWorld`, so this lives in `sim/` and both ends answer it by running the
+same code over the same world file and the same collision mesh.
+
+**It costs nothing where there is nothing.** A step with jump held and no
+volume within a metre is a lookup in a grid of 8 m cells. Beside a volume it is
+a few lines of arithmetic per volume, and collision is asked only once a face
+is met within the 60°: two sweeps where nothing is ahead, three against a wall
+too tall, ten queries to refuse what the ball rests on — once, however many
+heights would have come down on it — and some forty a step where there is a
+ledge and no clear path to it. `packages/game-server/tests/mantleWorld.test.ts`
+pins how many of an imported map's volumes can be mantled at all.
+
+### The path is not the games'
+
+The games move a mantling player along a clip's root motion with collision off.
+Here **a mantle never moves the capsule through the world, and never leaves it
+inside it**. The path is straight up to the ledge's height, straight across
+onto it, and for a vault on across and straight down. Before the mantle starts
+every leg is tested with `CapsuleWorld.overlapsCapsule` every half radius — half
+a radius apart, the most anything can reach into the swept shape unseen is
+under a centimetre — first with the standing hull, then with the crouched one.
+The tallest that makes it is the hull the mantle is made in. **A ledge with no
+clear path to it is no mantle**, decided at the start, so none stops half way;
+the key is then an ordinary jump.
+
+What that costs against the games: a climb past something the capsule would
+clip (a mullion, a beam) is refused where they make it; the path is two or
+three straight legs at a steady speed where theirs is a curve, mostly up
+first; and the feet start where they are rather than being moved the few units
+that make the clip end on the ledge.
+
+Six things about the move itself are load-bearing:
+
+- **It never resolves collision.** The path was tested before it started, and
+  nothing it was tested against moves (a built world is static; other players
+  are not colliders). Resolving mid-mantle would only nudge the capsule off the
+  corner it hugs, and off the line a server replays. Gravity, friction and the
+  keys are off too: the player is on rails until it ends.
+- **It is a function of the feet and the move.** A mantle has two parts, each
+  with its own time: onto the ledge, and — a vault — over it. Which part it is
+  in follows from the time left, and which leg of the part from the feet. Each
+  step covers the share of what is left of the part that `dt` is of the time
+  left of it, which is a steady speed along each. So a server replaying the
+  same inputs lands in the same place at any tick rate, and a state adopted
+  from a snapshot carries on from where its feet are.
+- **Its time is the row's.** The ledge's height picks the nearest of seven rows
+  (`MANTLE_ROWS`), and the row times the move, sets how it ends and says
+  whether the weapon stays out:
+
+  | Ledge, units | Onto it, ms | Vault after, ms | Speed on the ledge, u/s | Vault's end, u/s forward / down | Weapon |
+  | ------------ | ----------- | --------------- | ----------------------- | ------------------------------- | ------ |
+  | 57           | 833         | 233             | 19.6                    | 138 / 131                       | away   |
+  | 51           | 800         | 233             | 20.4                    | 138 / 131                       | away   |
+  | 45           | 600         | 400             | 34.1                    | 78 / 79                         | away   |
+  | 39           | 600         | 400             | 34.1                    | 78 / 79                         | away   |
+  | 33           | 500         | 400             | 39.7                    | 78 / 79                         | away   |
+  | 27           | 433         | 467             | 38.8                    | 67 / 80                         | out    |
+  | 21           | 333         | 467             | 44.2                    | 67 / 80                         | out    |
+
+  The step that starts a mantle is its first, so one lasts exactly its time.
+
+- **It ends moving.** Onto a ledge: on it, on the ground, with the row's speed
+  along the mantle. Over one: in the air 31 units past the ledge and 18 below
+  it, with the vault's speed forward and down, and the next step is a fall.
+- **It holds the view and the stance.** The view's yaw stays within 60° of the
+  mantle's direction, through [the one mechanism](#the-view-caps-are-one-mechanism)
+  a ladder and a prone body use, so the camera stops at the cap; the pitch is
+  free. A mantle made crouched crouches the body on its first step, and the
+  step returns `crouch` for as long as it lasts — the forced stance a client's
+  toggle follows. Its last step returns `stand` where there is the room to,
+  and the keys' own stance stands the body up from there; on a ledge with only
+  a crouch's room it returns `crouch`, and the body stays down.
+- **It sends geometry, never a volume id.** The `mantle` variant of `move`
+  carries the ledge (a position), the direction (a yaw, 16 bits), the row
+  (3 bits), `over` (1) and the time left (9 bits over the longest mantle, 2 ms):
+  125 bits, only while somebody mantles. Entity ids are positional, so a client
+  and a server on different world text would address different volumes; a
+  position and a clock cannot. The row travels as its index and not as a
+  height, so a rounded copy cannot fall in another row; `over` travels because
+  no ledge height says it.
+
+**The weapon stays out for the two lowest rows and goes away for the rest**
+([below](#the-weapon-on-a-climb)). The body plays one clip for the way onto the
+ledge and one for a vault's part after it, each scrubbed by how far through its
+part the move is (`mantleProgress`), so the body arrives when the capsule does.
 
 Open, and worth knowing before trusting a map:
 
-- **320 of the 3,006 imported volumes are over 2 m tall** — a whole wall — and
-  none of them is an `over`. Those exceed `MAX_CLIMB`, so they refuse rather than
-  animate, and what the maps meant by them has not been settled in game.
-- **The volume's top is the landing surface for 84% of them** by the exporter's
-  own check, which reads brush bounds only and no triangle soup, so the real
-  figure is higher. The climb traces for the surface within 15 cm of the top, so
-  a volume further off than that climbs nothing.
-- **Every side of a volume is climbable**, where the games may allow only the
-  sides whose material says so. The exporter collapses a brush's side materials
-  into one `kind`, so the per-side answer is not in the world file. On
-  dome-mw3 every volume climbs from at least one side and five from three or
-  more; whether the games allow each of those has not been checked in game.
-- **A server replays a climb from the input, like the rest of a player's
-  movement**, against its own copy of the volumes. A client whose climb the
+- **Nothing has been seen in a browser.** Every rule is from the games' code
+  and every test is headless.
+- **Every side of a volume climbs, and a vault is the volume's to ask for.**
+  The games read both off the face the probe met. A world file carries one
+  `kind` for the whole volume and nothing per side, so a side the map meant to
+  refuse climbs, and a volume that names no kind never vaults.
+- **A volume that stands far proud of its obstacle cannot be climbed.** The
+  probe starts 14.9 units behind the feet, and inside a volume it finds
+  nothing: the games' rule, which a box fitted loosely round a brush turns into
+  a ledge that does nothing.
+- **Nothing shows that a mantle is available.** `find` is the test a hint
+  would draw from.
+- **Two clips, not ten.** One onto a ledge and one over it, each stretched to
+  its row's time, where the games have a clip a row and three vaults.
+- **A server replays a mantle from the input, like the rest of a player's
+  movement**, against its own copy of the volumes. A client whose mantle the
   server's replay did not start is corrected out of it on the next snapshot.
-- **Two clips, not ten.** One step-up and one vault, stretched to whatever climb
-  they are playing, instead of the games' seven height-indexed clips plus three
-  vaults.
 
 ## Ladders
 
@@ -860,11 +928,13 @@ Open:
 
 ## The weapon on a climb
 
-A climb — a ladder or a mantle — **puts the weapon away**. The games change to
-no weapon for both (IW5 0x42a270, with one mantle type excepted that we have not
-identified): a quick putaway, nothing in hand for the length of it, and the same
-weapon back afterwards. `Player.step` does the same, in the shared simulation
-because `WeaponData` is on the wire and a server replays it:
+A climb **puts the weapon away**: a ladder always, and a mantle onto any but the
+two lowest rows of [its table](#mantling), which keep it in the hands, firing
+and all. That is one rule, `stowsWeapon(move)` (`sim/movement.ts`), read off the
+move itself. Away means a quick putaway, nothing in hand for the length of it,
+and the same weapon back afterwards with a quick raise. `Player.step` does it
+in the shared simulation, because `WeaponData` is on the wire and a server
+replays it:
 
 - While climbing, the trigger, the sights and a sprint are not asked for, a
   reload is not started, a swap is not started, and a putaway that has not

@@ -54,9 +54,10 @@ describe.skipIf(!exported("cairo-bo1"))("cairo-bo1's navigation bake", () => {
       usable: 651,
       unusable: { INSIDE: 4 },
       derived: { pairs: 0, candidates: 0, probed: 0, valid: 0 },
-      valid: 3110,
-      reasons: { STUCK: 139, TIMEOUT: 10, NODE: 46 },
-      traversals: { MANTLE_OVER: { valid: 3, invalid: 13 } },
+      valid: 3111,
+      reasons: { STUCK: 138, TIMEOUT: 10, NODE: 46 },
+      // The four that validate are window sills, each mantled crouched: a standing body does not fit in the opening.
+      traversals: { MANTLE_OVER: { valid: 4, invalid: 12 } },
     });
     // The game's graph is one strong component; ours is not, because the export
     // collides with script brush models TDM deletes (docs/cod/navigation.md).

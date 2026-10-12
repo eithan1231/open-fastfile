@@ -22,7 +22,7 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { couldHitBody, POSE_MARGIN, PRONE_REACH, type Hitbox } from "@3d/shared/rig/hitboxes.js";
 import { CROUCHING, createMovement, EYE_PATHS, RADIUS, type MovementState, type Stance } from "@3d/shared/sim/movement.js";
-import { mantleDuration } from "@3d/shared/sim/moves/mantle.js";
+import { MANTLE_ROWS } from "@3d/shared/sim/moves/mantle.js";
 import { eyePathEnds, eyePathSeconds } from "@3d/shared/sim/stance.js";
 import { poseBody, type LoadedBody } from "../src/bodies.js";
 import { catalogueBodies, GAMES, sidecar } from "./catalogueBodies.js";
@@ -70,12 +70,14 @@ function poses(): { name: string; movement: MovementState }[] {
     out.push({ name: `jump ${since}`, movement });
   }
 
-  for (const rise of [0.5, 1, 1.5]) {
+  // Both of a mantle's clips, start to end: the way onto the ledge, and a vault's part after it.
+  for (const row of [0, 3, 6]) {
     for (const through of [0, 0.2, 0.4, 0.6, 0.8, 1]) {
       for (const over of [false, true]) {
         const movement = createMovement({ x: 0, y: 0, z: 0 }, 0, 0);
-        movement.move = { kind: "mantle", target: { x: 0, y: rise, z: -1 }, left: mantleDuration(rise) * (1 - through), rise, over };
-        out.push({ name: `${over ? "vault" : "mantle"} ${rise} ${through}`, movement });
+        const part = over ? MANTLE_ROWS[row]!.over.seconds : MANTLE_ROWS[row]!.up;
+        movement.move = { kind: "mantle", ledge: { x: 0, y: MANTLE_ROWS[row]!.height, z: -0.4 }, yaw: 0, row, over, left: part * (1 - through) };
+        out.push({ name: `${over ? "vault" : "mantle"} ${row} ${through}`, movement });
       }
     }
   }

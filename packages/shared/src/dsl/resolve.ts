@@ -486,12 +486,12 @@ class ResolveContext {
     });
   }
 
-  /** `mantle` nodes in one scope: always a box, whose top the simulation reads as a height. */
+  /** `mantle` nodes in one scope: always a box with a height, the span of a body's own height it has to meet. */
   resolveMantles(body: Statement[], scope: Scope, out: ResolvedMantle[]): void {
     this.resolvePlaced(body, scope, "mantle", out, (stmt, position, rotation) => {
       const size = vecOf(findProp(stmt, "size"), toMeters);
       if (size.y <= 0) {
-        this.err(`a mantle's "size" needs a height: its top is the surface a player ends on`, stmt.span, "mantle-size");
+        this.err(`a mantle's "size" needs a height: a volume with none is beside nobody`, stmt.span, "mantle-size");
         return undefined;
       }
 

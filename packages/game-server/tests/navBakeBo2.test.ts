@@ -24,17 +24,18 @@ describe.skipIf(!exported("la-bo2"))("la-bo2's navigation bake", () => {
       usable: 992,
       unusable: { NO_GROUND: 41, INSIDE: 1 },
       derived: { pairs: 0, candidates: 0, probed: 0, valid: 0 },
-      valid: 2402,
-      reasons: { NODE: 118, STUCK: 22, TIMEOUT: 3 },
+      valid: 2405,
+      reasons: { NODE: 118, STUCK: 22 },
       traversals: {
         // mantle_over_40: an AI's vault over a 40-inch wall, where our player has no mantle.
         MANTLE_OVER: { valid: 0, invalid: 8 },
         JUMP_DOWN: { valid: 4, invalid: 0 },
-        MANTLE_ON: { valid: 3, invalid: 3 },
+        // Two of them are 1.75 m up: out of a mantle's reach from the ground, and in it from the jump a held key begins.
+        MANTLE_ON: { valid: 6, invalid: 0 },
         LADDER_UP: { valid: 0, invalid: 1 },
       },
     });
-    expect(spawns).toEqual({ spawns: 285, inLargest: 284, noNode: 1, largest: 946 });
+    expect(spawns).toEqual({ spawns: 285, inLargest: 284, noNode: 1, largest: 952 });
   }, 120_000);
 });
 

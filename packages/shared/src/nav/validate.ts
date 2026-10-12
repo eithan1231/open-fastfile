@@ -23,7 +23,7 @@ import { ABILITIES, LINK_KINDS } from "./vocab.js";
 export const DROP_ABILITY_HEIGHT = 1;
 /** Below both ends by this much, m, the follower has fallen off something and will not be back. */
 const FELL_BELOW = 4;
-/** Seconds added to a traversal's time limit: a mantle alone takes up to 0.83. */
+/** Seconds added to a traversal's time limit: a mantle alone takes up to 1.07. */
 const TRAVERSAL_ALLOWANCE = 1.5;
 /** Seconds per metre of height in the time limit: under a ladder's climbing speed (2.4 m/s). */
 const VERTICAL_ALLOWANCE = 1 / 1.2;

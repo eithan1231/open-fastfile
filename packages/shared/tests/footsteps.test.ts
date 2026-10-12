@@ -333,7 +333,7 @@ describe("the watcher", () => {
     watcher.observe(state, world);
     // A climb zeroes the clock. Read as an advance, 0.9 -> 0 would cross the
     // last footfall of the cycle and play a step nobody took.
-    state.move = { kind: "mantle", target: { x: 0, y: 1, z: 0 }, left: 0.4, rise: 1, over: false };
+    state.move = { kind: "mantle", ledge: { x: 0, y: 1, z: 0 }, yaw: 0, row: 3, over: false, left: 0.4 };
     state.stride = 0;
     expect(watcher.observe(state, world)).toEqual([]);
   });

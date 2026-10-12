@@ -124,19 +124,44 @@ describe("MantleView", () => {
     expect(view.liveObject.visible).toBe(false);
   });
 
-  it("draws the path a climb would take: up from the feet, then across to the landing", () => {
+  it("draws the path a mantle would take: up from the feet, across, and down where it vaults", () => {
+    const position = (view: MantleView) => view.liveObject.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const at = (view: MantleView, i: number) => new THREE.Vector3().fromBufferAttribute(position(view), i);
+    const state = createMovement({ x: 0, y: 0, z: STAND }, Math.PI, 0);
+
+    const onto = new MantleView();
+    onto.build([volume()]);
+    onto.setVisible(true);
+    const ledge = onto.update(state, railWorld())!;
+    // After the box's 24 vertices: feet → corner, corner → ledge, and a third leg with no length.
+    expect(at(onto, 24).toArray()).toEqual([0, 0, expect.closeTo(STAND, 5)]);
+    expect(at(onto, 25).y).toBeCloseTo(ledge.ledge.y, 5);
+    expect(at(onto, 25).z).toBeCloseTo(STAND, 5);
+    expect(at(onto, 27).z).toBeCloseTo(ledge.ledge.z, 5);
+    expect(at(onto, 29).distanceTo(at(onto, 28))).toBeCloseTo(0, 6);
+
+    const over = new MantleView();
+    over.build([volume({ kind: "over" })]);
+    over.setVisible(true);
+    const vault = over.update(state, railWorld())!;
+    expect(vault.over).toBe(true);
+    expect(at(over, 27).y).toBeCloseTo(vault.ledge.y, 5);
+    expect(at(over, 27).z).toBeCloseTo(vault.end.z, 5);
+    expect(at(over, 29).y).toBeCloseTo(vault.end.y, 5);
+    expect(at(over, 29).z).toBeCloseTo(vault.end.z, 5);
+  });
+
+  it("offers nothing to a body the simulation would not let mantle", () => {
     const view = new MantleView();
     view.build([volume()]);
     view.setVisible(true);
-    const state = createMovement({ x: 0, y: 0, z: STAND }, Math.PI, 0);
-    const found = view.update(state, railWorld())!;
-    const position = view.liveObject.geometry.getAttribute("position") as THREE.BufferAttribute;
-    const at = (i: number) => new THREE.Vector3().fromBufferAttribute(position, i);
-    // After the box's 24 vertices: feet → corner, corner → landing.
-    expect(at(24).toArray()).toEqual([0, 0, expect.closeTo(STAND, 5)]);
-    expect(at(25).y).toBeCloseTo(found.feet.y, 5);
-    expect(at(25).z).toBeCloseTo(STAND, 5);
-    expect(at(27).z).toBeCloseTo(found.feet.z, 5);
+    const world = railWorld();
+    const crouched = createMovement({ x: 0, y: 0, z: STAND }, Math.PI, 0);
+    crouched.stance = { kind: "crouch" };
+    expect(view.update(crouched, world)).toBeNull();
+    const rising = createMovement({ x: 0, y: 0, z: STAND }, Math.PI, 0);
+    rising.eyeShift = { path: "crouchToStand", elapsed: 0.1 };
+    expect(view.update(rising, world)).toBeNull();
   });
 
   it("reports no live climb while hidden, so the readout cannot go stale", () => {

@@ -17,6 +17,7 @@ import {
   PLAYER_MOVEMENT,
   STAND_EYE_HEIGHT,
   stepMovement,
+  stowsWeapon,
   wantsSprint,
   type CapsuleWorld,
   type MovementEnv,
@@ -74,8 +75,8 @@ export interface PlayerState {
    */
   swapping: boolean;
   /**
-   * The weapon was put away for a climb (a ladder or a mantle) and comes back
-   * up when it ends. State for the same reason as `swapping`: nothing else says
+   * The weapon was put away for a climb (a ladder, or a mantle that takes it)
+   * and comes back up when it ends. State for the same reason as `swapping`: nothing else says
    * that a lowered weapon is waiting for the climb rather than lowered for good.
    */
   stowed: boolean;
@@ -389,11 +390,10 @@ export class Player {
    * One step of play. The weapon goes first: it reads only the input, and
    * movement then asks it whether a sprint may run (see stepMovement).
    *
-   * A climb — a ladder or a mantle — takes the weapon away, as the games do
-   * (IW5 0x42a270 changes to no weapon for both): no trigger, no sights, no
-   * reload and no swap until it ends, and then the same weapon comes back. It
-   * is decided on the state the step starts from, so a server replaying the
-   * same inputs reaches the same hand.
+   * A climb takes the weapon away where the move says so (`stowsWeapon`): no
+   * trigger, no sights, no reload and no swap until it ends, and then the same
+   * weapon comes back. It is decided on the state the step starts from, so a
+   * server replaying the same inputs reaches the same hand.
    */
   step(input: PlayerInput, dt: number): void {
     // Held where they fell, for a server to kill. Derived from where they are
@@ -403,7 +403,7 @@ export class Player {
       this.forced = null;
       return;
     }
-    const climbing = this.body.move.kind !== "walk";
+    const climbing = stowsWeapon(this.body.move);
     const weapon = this.held;
     // From the state the step *starts* from, like `advanceStride`: a replay of
     // the same input has the same speed here only if it is read before the move.

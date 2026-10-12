@@ -86,11 +86,22 @@ export function spawnConnectivity(
   return { spawns: world.spawnPoints.length, inLargest, noNode, largest: sizes[largestId]! };
 }
 
-export async function bake(slug: string): Promise<{ summary: NavBakeSummary; graph: NavGraph; world: ResolvedWorld; collision: CapsuleWorld }> {
+/** Whether `slug` is on disk with the collision a movement query reads. */
+export function hasCollision(slug: string): boolean {
+  return ["world.world", "assets/collision.glb"].every((f) => fs.existsSync(path.join(WORLDS, slug, f)));
+}
+
+/** One world off disk with its collision built, as a game server holds it. */
+export async function loadCollision(slug: string): Promise<{ world: ResolvedWorld; collision: CapsuleWorld; source: WorldSource }> {
   const source = dirSource(slug);
   const world = (await loadResolvedWorld(source)).world!;
-  expect(world.navigation?.source).toBeDefined();
   const collision = (await buildServerCollision(world, source, catalogFile))!.world;
+  return { world, collision, source };
+}
+
+export async function bake(slug: string): Promise<{ summary: NavBakeSummary; graph: NavGraph; world: ResolvedWorld; collision: CapsuleWorld }> {
+  const { world, collision, source } = await loadCollision(slug);
+  expect(world.navigation?.source).toBeDefined();
   const file = decodeNav((await source.asset(world.navigation!.source))!);
   const { graph, summary } = bakeNav(file, collision, movementRules(world), { tickRate: TICK_RATE }, () => performance.now());
   return { summary, graph, world, collision };

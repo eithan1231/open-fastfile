@@ -11,10 +11,10 @@ import type { CapsuleWorld, Vec3 } from "./capsule.js";
 import { advanceBlends, advanceStride } from "./gait.js";
 import type { PlayerInput } from "./input.js";
 import { checkLadder, climbLadder, jumpOffLadder } from "./moves/ladder.js";
-import { advanceMantle, startMantle } from "./moves/mantle.js";
+import { advanceMantle, mantleStows, startMantle } from "./moves/mantle.js";
 import { walk } from "./moves/walk.js";
 import type { Carry, MovementEnv } from "./movementEnv.js";
-import { JUMP_REPEAT, type MovementState, type StanceKind } from "./movementState.js";
+import { JUMP_REPEAT, type Move, type MovementState, type StanceKind } from "./movementState.js";
 import { advanceEye, followSlope, standFits, stepStance, turnBody } from "./stance.js";
 import { capPitch, capYaw } from "./view.js";
 
@@ -39,6 +39,15 @@ export function wantsSprint(s: Readonly<MovementState>, input: PlayerInput, env:
 }
 
 /**
+ * Whether `move` takes the weapon out of the hands for as long as it lasts: a
+ * ladder does, and a mantle onto all but the lowest ledges. The one rule a
+ * holder of a weapon reads (sim/player.ts).
+ */
+export function stowsWeapon(move: Readonly<Move>): boolean {
+  return move.kind === "ladder" || (move.kind === "mantle" && mantleStows(move));
+}
+
+/**
  * Advance `s` by `dt` seconds of `input`, in `env`. `carry` is the held
  * weapon's say: it pauses a sprint to reload, aim or fire, and holds a lying
  * body still.
@@ -48,7 +57,6 @@ export function wantsSprint(s: Readonly<MovementState>, input: PlayerInput, env:
  */
 export function stepMovement(s: MovementState, input: PlayerInput, dt: number, env: MovementEnv, carry: Carry): StanceKind | null {
   // The view first, as far as the move and the stance allow it (sim/view.ts).
-  // Mid-climb it is free: refusing it would only make the camera fight the mouse.
   const lying = s.stance.kind === "prone" ? s.stance : null;
   const still = lying !== null && carry.braced;
   if (lying) {
@@ -71,18 +79,25 @@ export function stepMovement(s: MovementState, input: PlayerInput, dt: number, e
   if (s.move.kind === "mantle") {
     // On rails, and the stance with it: only the eye finishes what it was doing.
     advanceEye(s, dt, s.stance.kind);
-    advanceMantle(s, s.move, dt);
-    return null;
+    return advanceMantle(s, s.move, dt, env);
   }
 
-  // A jump and a climb are made standing. Pressed ducked, the key stands the
-  // player up instead, and nothing is left of the press to jump with once they are.
-  const upright = s.stance.kind === "stand";
-  let jump = pressed && upright;
+  // A jump is made standing. Pressed ducked, the key stands the player up
+  // instead, and nothing is left of the press to jump with once they are.
+  let jump = pressed && s.stance.kind === "stand";
   const forced = stepStance(s, input, dt, env, sprinting, pressed);
 
   if (s.grounded) {
     s.ladderLock = false;
+  }
+  // A mantle is asked for every step the key is down, pressed or held, before
+  // the ladder and the jump: on the ground, in the air or on a ladder, by a
+  // body standing with its eye at rest. Its first step is this one.
+  if (input.jump && s.stance.kind === "stand" && s.eyeShift === null) {
+    const found = env.mantles.find(s.feet, s.yaw, env.body, env.world);
+    if (found) {
+      return advanceMantle(s, startMantle(s, found, dt), dt, env) ?? forced;
+    }
   }
   checkLadder(s, input, env);
   if (s.move.kind === "ladder") {
@@ -93,18 +108,9 @@ export function stepMovement(s: MovementState, input: PlayerInput, dt: number, e
       return forced;
     }
     // The rest of this step is the air move the game runs after one, with
-    // nothing left of the press to climb a ledge or jump again with.
+    // nothing left of the press to jump again with.
     jumpOffLadder(s, s.move);
     jump = false;
-  } else if (input.jump && upright) {
-    // Before the jump, and for as long as the key is down: a press into a
-    // ledge climbs it rather than jumping at it, and so does a jump held into
-    // one. Not gated on the ground — the volume says whether there is a climb.
-    const target = env.mantles.find(s.feet, s.yaw, env.body, env.world);
-    if (target) {
-      startMantle(s, target);
-      return forced;
-    }
   }
 
   walk(s, input, dt, env, jump, sprinting, still);

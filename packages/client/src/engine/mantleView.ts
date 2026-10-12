@@ -8,18 +8,17 @@
 //   every volume   a wireframe box, coloured by the kind the source map named
 //                  (`onto`, `over`, or unnamed — which most Black Ops volumes
 //                  and a third of Modern Warfare's are).
-//   the live one   the volume the player could climb *right now*, highlighted,
-//                  with the path the capsule would take and a marker where
-//                  they would come down. This asks
+//   the live one   the volume whose face the player's probe meets *right now*
+//                  with a mantle to start, highlighted, with the path the
+//                  capsule would take — up, across, and down for a vault — and
+//                  a marker where it leaves them. This asks
 //                  `MantleVolumes.find` — the same call `stepMovement` makes —
-//                  so it cannot disagree with what actually happens when you
-//                  press jump. That is what makes it worth having: a volume you
-//                  are standing in that stays unhighlighted is the answer to
+//                  so it cannot disagree with what holding jump does. A volume
+//                  in front of you that stays unhighlighted is the answer to
 //                  "why did that not climb?".
 //
-// A volume's **top face is the surface you land on**, so the top edges are drawn
-// brighter than the rest: a box whose bright edge does not sit on the ledge is a
-// map that breaks the convention the exporter assumes.
+// A volume's top edges are drawn brighter than the rest: an exporter fits the
+// box's top to its obstacle's. Where the ledge is, the collision says.
 //
 // Ladders get the same pair: every ladder as an orange box, with its one
 // climbable side bright where the map names one, and the side the grab check's
@@ -29,7 +28,7 @@
 import * as THREE from "three";
 import type { ResolvedLadder, ResolvedMantle } from "@3d/shared/dsl/resolved.js";
 import { ladderAhead, LadderVolumes, type LadderHit } from "@3d/shared/sim/moves/ladder.js";
-import { MantleVolumes, type MantleTarget } from "@3d/shared/sim/moves/mantle.js";
+import { MantleVolumes, type MantleFound } from "@3d/shared/sim/moves/mantle.js";
 import type { CapsuleWorld, Vec3 } from "@3d/shared/sim/capsule.js";
 import { PLAYER_MOVEMENT, type MovementState } from "@3d/shared/sim/movement.js";
 
@@ -72,8 +71,8 @@ const FACE_EDGES: Record<NonNullable<ResolvedLadder["face"]>, ReadonlySet<number
 
 /** The volume the player can climb right now. */
 const LIVE_COLOUR = new THREE.Color(0x5cff9d);
-/** Vertices the live outline draws: the box's edges, the path's two legs, the landing cross's three arms. */
-const LIVE_POINTS = (12 + 2 + 3) * 2;
+/** Vertices the live outline draws: the box's edges, the path's three legs, the end cross's three arms. */
+const LIVE_POINTS = (12 + 3 + 3) * 2;
 
 /** How much darker a volume's non-top edges are drawn. */
 const SIDE_DIM = 0.45;
@@ -119,7 +118,7 @@ export class MantleView {
   private ladders = new LadderVolumes([]);
   private shown = false;
   /** What `update` last found, so the stats readout reads it rather than querying again. */
-  private live: MantleTarget | null = null;
+  private live: MantleFound | null = null;
   private liveLadder: LadderHit | null = null;
 
   /** Scratch, so a per-frame update allocates nothing. */
@@ -153,8 +152,8 @@ export class MantleView {
     return this.shown;
   }
 
-  /** The climb available where the player was standing at the last `update`, or null. */
-  get liveClimb(): MantleTarget | null {
+  /** The mantle available where the player was standing at the last `update`, or null. */
+  get liveClimb(): MantleFound | null {
     return this.live;
   }
 
@@ -215,15 +214,15 @@ export class MantleView {
    * Refresh the live outline from where the player is standing and looking.
    *
    * Asks the same `find` the simulation asks, with the same body and the same
-   * collision, so what lights up is exactly what a jump would climb.
+   * collision, so what lights up is exactly what holding jump would climb.
    */
-  update(movement: Readonly<MovementState>, world: CapsuleWorld): MantleTarget | null {
+  update(movement: Readonly<MovementState>, world: CapsuleWorld): MantleFound | null {
     if (!this.shown) {
       this.live = null;
       this.liveLadder = null;
       return null;
     }
-    // Neither is offered to a body the simulation would refuse: no ladder lying down, no climb but standing.
+    // Neither is offered to a body the simulation would refuse: no ladder lying down, no mantle but standing with the eye at rest.
     this.liveLadder = movement.stance.kind === "prone" ? null : ladderAhead(movement, this.ladders, PLAYER_MOVEMENT);
     this.ladderObject.visible = this.liveLadder !== null;
     if (this.liveLadder) {
@@ -235,9 +234,10 @@ export class MantleView {
       });
       position.needsUpdate = true;
     }
-    const found = movement.stance.kind === "stand" ? this.query.find(movement.feet, movement.yaw, PLAYER_MOVEMENT, world) : null;
+    const standing = movement.stance.kind === "stand" && movement.eyeShift === null;
+    const found = standing ? this.query.find(movement.feet, movement.yaw, PLAYER_MOVEMENT, world) : null;
     // Redrawn every frame it is found: the path starts at the player's feet,
-    // and the face — so the landing — changes as they walk round the volume.
+    // and the face — so the ledge — changes as they walk round the volume.
     this.live = found;
     this.liveObject.visible = found !== null;
     if (found) {
@@ -246,19 +246,19 @@ export class MantleView {
     return found;
   }
 
-  /** The live volume's box, the climb's two legs, and a cross where the player would come down. */
-  private drawLive(found: MantleTarget, from: Readonly<Vec3>): void {
+  /** The live volume's box, the mantle's legs, and a cross where it would leave the player. */
+  private drawLive(found: MantleFound, from: Readonly<Vec3>): void {
     const box = corners(found.volume, this.scratch);
     const points: number[] = [];
     for (const [a, b] of BOX_EDGES) {
       points.push(box[a]!.x, box[a]!.y, box[a]!.z, box[b]!.x, box[b]!.y, box[b]!.z);
     }
-    // Up, then across: what `advanceMantle` moves along and `find` checked clear.
-    const { x: tx, y: ty, z: tz } = found.feet;
-    points.push(from.x, from.y, from.z, from.x, ty, from.z, from.x, ty, from.z, tx, ty, tz);
-    // A cross at the landing, at the feet height the climb ends on: where the
-    // player will actually be standing, which is the half of a mantle that no
-    // amount of looking at the box tells you.
+    // Up, across, and down for a vault: what `advanceMantle` moves along and
+    // `find` checked clear. Onto a ledge, the third leg has no length.
+    const top = found.ledge.y;
+    const { x: tx, y: ty, z: tz } = found.end;
+    points.push(from.x, from.y, from.z, from.x, top, from.z, from.x, top, from.z, tx, top, tz, tx, top, tz, tx, ty, tz);
+    // A cross where the feet are left, which no amount of looking at the box tells you.
     const r = PLAYER_MOVEMENT.radius;
     points.push(tx - r, ty, tz, tx + r, ty, tz, tx, ty, tz - r, tx, ty, tz + r, tx, ty, tz, tx, ty + 0.25, tz);
 

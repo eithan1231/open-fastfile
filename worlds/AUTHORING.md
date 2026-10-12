@@ -698,17 +698,29 @@ mode, and a script can still remove it and put it back during a match.
 
 ### `mantle <name>` (top level or inside a group; optional name)
 
-Where a player may **climb**. A mantle volume is a box **around** the thing to
-be climbed — the crate, the wall, the sill — reaching a little past it on every
-side, with **its top level with the surface they end on**. A player at any of its
-four sides, facing in, climbs straight in through that side.
+Where a player may **climb**, by holding jump. A mantle volume is a box
+**around** the thing to be climbed — the crate, the wall, the sill — reaching
+**a little past it on every side: 0.2 to 0.4 m**. A player facing any of its
+four sides within 60°, close enough for the ledge to be 0.4 m ahead of their
+feet, climbs straight in through that side.
+
+How far the box reaches past the obstacle matters. A player's reach for a
+volume starts 0.38 m behind their feet, and a reach that starts inside a volume
+finds nothing — so a box that stands more than about 0.75 m proud of its
+obstacle cannot be climbed by anyone touching it, and neither can anything from
+inside a box drawn round a whole room. The same goes for height: a player
+standing on a crate is inside its box if the box rises more than a centimetre
+above the crate, and climbs nothing from up there. Keep the box's top level
+with the obstacle's.
 
 The volume is permission, not geometry: the engine finds the actual ledge in the
-world's collision, straight ahead of the player and within 15 cm of the box's
-top, and lands them on it. So the obstacle itself must be something that
-collides, and a volume with nothing solid under its top edge climbs nothing. A
-climb is also refused when the player would not fit — a beam overhead, a post on
-the sill — so a volume never lets anyone through a wall.
+world's collision, 0.4 m ahead of the player, and it must be between 0.46 and
+1.52 m above their feet — lower is a step, and higher is climbed only from a
+jump. So the obstacle itself must be something that collides, and the box's own
+height says nothing about the climb: it has only to stand somewhere between the
+player's feet and head. A climb is also refused when the player would not fit —
+a beam overhead, a post on the sill — so a volume never lets anyone through a
+wall. Where only a crouched player fits, they are crouched for it.
 
 Like a `trigger`, it draws nothing. Unlike every other volume in this file, it is
 **not a collider**: a mantle volume that collided would be an invisible wall
@@ -717,17 +729,18 @@ round every ledge in the map.
 | Property | Type                                                 | Default |
 | -------- | ---------------------------------------------------- | ------- |
 | `at`     | 1–3 numbers — the box's centre                       | —       |
-| `size`   | 3 numbers — the box's full extents; `y` is the climb | —       |
+| `size`   | 3 numbers — the box's full extents                   | —       |
 | `rotate` | 1 number (yaw) or 3                                  | `0`     |
 | `kind`   | `onto` or `over`                                     | `onto`  |
 | `tag`    | 1–8 strings — shared group handles                   | —       |
 
 `at` and `size` are both required, and `size`'s height must be above zero: a
-volume with no height names no surface to climb to.
+volume with no height is beside nobody.
 
 `kind` says which climb it is — `onto` ends standing on the surface, `over`
-vaults across it and comes down the far side. An `over` with no room on the far
-side is climbed onto instead. It is **optional, and usually absent**: the imported maps carry
+vaults across it and lets go 0.8 m past the ledge and 0.46 m below it. An `over`
+with something in that run, or a floor under its far end, is climbed onto
+instead: a vault wants a rail or a sill, not a crate. It is **optional, and usually absent**: the imported maps carry
 it only where the source brush named it, which is not on every imported map
 (Black Ops maps exported before its face flags were read have none). Absent
 means `onto`.

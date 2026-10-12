@@ -34,18 +34,19 @@ What it draws, and why each half is there:
 - **Every volume** as a wireframe box, coloured by the kind the source map named
   — `onto` blue, `over` yellow, unnamed grey. Unnamed is the ordinary case, not a
   fault: no Black Ops volume names a kind and nor does a third of Modern
-  Warfare's. A volume's **top edges are drawn brighter**, because the top face is
-  the surface you land on; a bright edge that does not sit on the ledge is a map
-  breaking the convention the exporter assumes.
+  Warfare's. A volume's **top edges are drawn brighter**: an exporter fits the
+  box's top to its obstacle's, though where the ledge is, the collision says.
 - **The volume you could climb right now**, highlighted in green and drawn
-  through walls, with the path the capsule would take (up from your feet, then
-  across) and a cross where your feet would come down. This asks
-  `MantleVolumes.find` — the same call `stepMovement` makes, with the same body
-  and the same collision — so it cannot disagree with what pressing jump does.
-  That is the half worth having: **a box you are standing at that stays
-  unhighlighted is the answer to "why did that not climb?"** — facing the wrong
-  way, no ledge within reach, a ledge the wrong height, or something in the
-  capsule's way (a post, a beam overhead).
+  through walls, with the path the capsule would take (up from your feet,
+  across, and down where it vaults) and a cross where your feet would be left.
+  This asks `MantleVolumes.find` — the same call `stepMovement` makes, with the
+  same body and the same collision — so it cannot disagree with what holding
+  jump does. That is the half worth having: **a box in front of you that stays
+  unhighlighted is the answer to "why did that not climb?"** — looking more than
+  60° off its face, standing so deep in it that the probe starts inside, not
+  standing at all, no ledge 0.4 m ahead, a ledge the wrong height, or something
+  in the capsule's way (a post, a beam overhead). The stats line gives the
+  ledge's height, and says when the mantle would vault or be made crouched.
 
 - **Every ladder** as an orange box: all bright where every side can be climbed,
   and only the named side bright where the node names one (`face`).

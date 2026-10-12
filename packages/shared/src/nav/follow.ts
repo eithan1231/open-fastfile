@@ -9,7 +9,7 @@
 // Pure: everything it remembers is in the cursor, and it reads the movement
 // state without touching it. It never looks at the world. What it cannot see
 // (where a ledge is, whether a mantle volume is there) it learns the way a
-// player does: by walking into it. A climb presses jump when forward motion
+// player does: by walking into it. A climb puts jump down when forward motion
 // stops, which is when a body is against the obstacle and a mantle can start.
 
 import type { PlayerInput } from "../sim/input.js";
@@ -80,7 +80,7 @@ export interface NavCursor {
   tries: number;
   /** This leg's stage on a ladder: 0 until the ladder has been held, 1 after. */
   phase: number;
-  /** Jump was pressed on the last call, so the next may release it (a press is an edge). */
+  /** Jump was down on the last call, so the next may release it (a press is an edge) or keep it down (a hold). */
   pressed: boolean;
   /** A jump across has taken off. */
   jumped: boolean;
@@ -283,8 +283,8 @@ function stopsWithin(cursor: NavCursor, graph: FollowGraph, tx: number, tz: numb
 
 /**
  * Press jump against an obstacle: a press is an edge, so never two ticks
- * running. One too soon after the last jump to be another still climbs a
- * ledge that offers a climb, and is not counted as a jump tried.
+ * running. One too soon after the last jump to be another is not counted as a
+ * jump tried.
  */
 function press(m: Readonly<MovementState>, cursor: NavCursor, out: PlayerInput, blocked: boolean): void {
   out.jump = blocked && !cursor.pressed;
@@ -292,6 +292,21 @@ function press(m: Readonly<MovementState>, cursor: NavCursor, out: PlayerInput, 
   if (out.jump && m.sinceJump >= JUMP_REPEAT) {
     cursor.tries++;
   }
+}
+
+/**
+ * Hold jump against an obstacle, for a mantle: down from the first tick
+ * against it and through any jump that press began. On the ground it is let
+ * go for one tick whenever a new press would be a jump, so a ledge that
+ * offers nothing from the ground is jumped at again, and counted.
+ */
+function hold(m: Readonly<MovementState>, cursor: NavCursor, out: PlayerInput, blocked: boolean): void {
+  const again = cursor.pressed && m.sinceJump >= JUMP_REPEAT;
+  out.jump = m.grounded ? blocked && !again : cursor.pressed;
+  if (out.jump && !cursor.pressed && m.sinceJump >= JUMP_REPEAT) {
+    cursor.tries++;
+  }
+  cursor.pressed = out.jump;
 }
 
 /**
@@ -337,7 +352,9 @@ function traverse(
   const ladder = kind === TRAVERSAL_KINDS.LADDER_UP || kind === TRAVERSAL_KINDS.LADDER_DOWN;
   const move = m.move;
   if (move.kind === "mantle") {
+    // On rails: no key is needed, and letting jump go makes the next one a press.
     out.yaw = along;
+    cursor.pressed = false;
     return true;
   }
   if (move.kind === "ladder" && !ladder) {
@@ -346,15 +363,21 @@ function traverse(
   }
 
   switch (kind) {
-    case TRAVERSAL_KINDS.STEP_UP:
     case TRAVERSAL_KINDS.MANTLE_ON:
     case TRAVERSAL_KINDS.MANTLE_OVER:
+      // Walk at it; against it, hold jump. A mantle starts on any step the key
+      // is down facing its ledge, and a ledge out of reach from the ground is
+      // in reach from the top of the jump the press began.
+      walk(out, facing, horizontal, false);
+      hold(m, cursor, out, blocked);
+      return true;
+
+    case TRAVERSAL_KINDS.STEP_UP:
     case TRAVERSAL_KINDS.JUMP_UP:
     case TRAVERSAL_KINDS.JUMP_DOWN:
-      // Walk at it; against it, press jump. With a mantle volume there the press
-      // climbs (a press facing a face within 60°); without one it is a jump,
-      // which the forward key carries onto anything a jump clears. A jump down
-      // walks off its edge, and presses only where a railing is in the way.
+      // Walk at it; against it, press jump, which the forward key carries onto
+      // anything a jump clears. A jump down walks off its edge, and presses
+      // only where a railing is in the way.
       walk(out, facing, horizontal, false);
       press(m, cursor, out, blocked);
       return true;

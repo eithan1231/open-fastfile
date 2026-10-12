@@ -539,12 +539,13 @@ describe("what forces a stance", () => {
     const crouched = setup(world(), rules);
     at(crouched);
     crouched.settle("crouch");
-    // The press stands them up, and only a key still down once they are climbs.
+    // The press stands them up, and only a key still down once the eye is up there climbs.
     crouched.input.jump = true;
     expect(crouched.step()).toBe("stand");
     expect(crouched.state.move.kind).toBe("walk");
     crouched.input.crouch = false;
-    crouched.step();
+    crouched.run(0.15, () => expect(crouched.state.move.kind).toBe("walk"));
+    crouched.run(0.1);
     expect(crouched.state.move.kind).toBe("mantle");
 
     // Lying down that is 600 ms later, and nothing at all with the key let go.

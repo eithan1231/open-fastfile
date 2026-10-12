@@ -165,7 +165,7 @@ export class Overlays {
     this.ctx.toaster.show(total || ladders ? `mantle volumes: ${total}, ladders: ${ladders}` : "this world declares no mantle volumes or ladders");
     console.info(
       total
-        ? `[mantles] ${total} volume(s), ${named} naming a kind (onto/over); the highlighted one is what a jump would climb`
+        ? `[mantles] ${total} volume(s), ${named} naming a kind (onto/over); the highlighted one is what holding jump would climb`
         : "[mantles] this world declares none — imported maps get them from the exporter (scripts/cod/mantle.py)",
     );
     console.info(
@@ -285,7 +285,7 @@ export class Overlays {
       // is the reading that explains a mantle that would not start.
       const climb = this.mantles.liveClimb;
       primary.push(`${this.mantles.count} mantle${this.mantles.count === 1 ? "" : "s"}`);
-      primary.push(climb ? `climb ${climb.rise.toFixed(2)} m${climb.over ? " (over)" : ""}` : "no climb here");
+      primary.push(climb ? `climb ${climb.height.toFixed(2)} m${climb.over ? " (over)" : ""}${climb.crouched ? " (crouched)" : ""}` : "no climb here");
       if (this.mantles.ladderCount) {
         // On one, or reaching one: which is the difference a stuck grab needs.
         const on = firstPerson.player.movement.move.kind === "ladder";

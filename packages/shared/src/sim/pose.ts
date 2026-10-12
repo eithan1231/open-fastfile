@@ -26,7 +26,7 @@
 // which is the same number on both ends, since both read it from the catalogue.
 
 import { AIM_LIMIT, STANCE_ROLES, type CharacterRole, type StanceRoles } from "./characterDef.js";
-import { mantleDuration } from "./moves/mantle.js";
+import { mantleProgress } from "./moves/mantle.js";
 import { LAND_WINDOW, type MovementState, type StanceKind } from "./movement.js";
 import { eyePathEnds, eyePathSeconds } from "./stance.js";
 import { UNIT } from "./units.js";
@@ -257,13 +257,12 @@ function legLayers(movement: MovementState, weapon: WeaponData | null, stances: 
   // for its duration, so none of the ground or air states apply.
   const move = movement.move;
   if (move.kind === "mantle") {
-    const duration = mantleDuration(move.rise);
-    // Scrubbed by how far through the climb they are rather than played at its own
-    // speed, so the body arrives at the top exactly when the capsule does however
-    // long the climb takes. Also means a peer whose first snapshot lands mid-climb
-    // starts in the right pose instead of at the beginning.
-    const done = duration > 0 ? clamp01((duration - move.left) / duration) : 1;
-    return [{ role: move.over ? "mantleOver" : "mantle", weight: 1, phase: done }];
+    // Its two parts are two clips, the way onto the ledge and the vault over
+    // it, each scrubbed by how far through its part the move is rather than
+    // played at its own speed: the body arrives when the capsule does, and a
+    // peer first seen mid-mantle starts in the right pose.
+    const { over, done } = mantleProgress(move);
+    return [{ role: over ? "mantleOver" : "mantle", weight: 1, phase: clamp01(done) }];
   }
 
   // On a ladder, likewise. Posed from the feet's height rather than a clock, so a

@@ -65,7 +65,7 @@ import {
  * disagree must refuse each other rather than guess: JSON failed a mismatch
  * loudly, and this does not. A wrong version decodes into plausible nonsense.
  */
-export const PROTOCOL_VERSION = 36;
+export const PROTOCOL_VERSION = 37;
 
 /**
  * The leading byte of every packet. These are the old channel names: a raw

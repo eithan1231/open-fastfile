@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { createMovement, LAND_WINDOW, RUN_SPEED, type MovementState } from "../src/sim/movement.js";
 import { IDLE_SPEED } from "../src/sim/gait.js";
-import { mantleDuration } from "../src/sim/moves/mantle.js";
+import { mantleSeconds } from "../src/sim/moves/mantle.js";
 import { LAND_DIP, poseLayers, bodyPitch, bodyYaw, type PoseLayers, type RoleSet } from "../src/sim/pose.js";
 import { AIM_LIMIT, CHARACTER_ROLES, type CharacterRole } from "../src/sim/characterDef.js";
 import { eyePathSeconds } from "../src/sim/stance.js";
@@ -137,7 +137,7 @@ describe("poseLayers is a pure function of the state", () => {
       movement({ grounded: false, airborne: 0.5, sinceJump: 0.1 }),
       running({ landing: dip(0.6), gait: 0.5, airborne: 0.4 }),
       movement({ move: { kind: "ladder", facing: 1 } }),
-      movement({ move: { kind: "mantle", target: { x: 0, y: 1, z: 0 }, left: 0.2, rise: 1, over: false } }),
+      movement({ move: { kind: "mantle", ledge: { x: 0, y: 1, z: 0 }, yaw: 0, row: 3, over: false, left: 0.2 } }),
     ];
     for (const m of cases) {
       const total = pose(m, weapon()).legs.reduce((sum, l) => sum + l.weight, 0);
@@ -190,18 +190,23 @@ describe("what a body is doing", () => {
   });
 
   it("scrubs a mantle by how much of it is left, not by a clock", () => {
-    // So the body arrives at the top exactly when the capsule does, however long the
-    // climb takes — and a peer whose first snapshot lands mid-climb starts there.
-    const rise = 1.2;
-    const total = mantleDuration(rise);
-    const at = (left: number) => pose(movement({ move: { kind: "mantle", target: { x: 0, y: 0, z: 0 }, left, rise, over: false } }), weapon()).legs[0]!;
-    expect(at(total).phase).toBeCloseTo(0, 6);
-    expect(at(total / 2).phase).toBeCloseTo(0.5, 6);
-    expect(at(0).phase).toBeCloseTo(1, 6);
-    expect(at(total).role).toBe("mantle");
-    // `over` picks the clip that carries the player across rather than up.
-    const over = pose(movement({ move: { kind: "mantle", target: { x: 0, y: 0, z: 0 }, left: 0.1, rise, over: true } }), weapon()).legs[0]!;
-    expect(over.role).toBe("mantleOver");
+    // So the body arrives at the top exactly when the capsule does, whatever the
+    // row's time — and a peer whose first snapshot lands mid-mantle starts there.
+    const row = 2;
+    const up = mantleSeconds(row, false);
+    const total = mantleSeconds(row, true);
+    const at = (left: number, over: boolean) =>
+      pose(movement({ move: { kind: "mantle", ledge: { x: 0, y: 0, z: 0 }, yaw: 0, row, over, left } }), weapon()).legs[0]!;
+    expect(at(up, false).phase).toBeCloseTo(0, 6);
+    expect(at(up / 2, false).phase).toBeCloseTo(0.5, 6);
+    expect(at(0, false).phase).toBeCloseTo(1, 6);
+    expect(at(up, false).role).toBe("mantle");
+    // A vault is the same clip onto the ledge, and then its own from there over.
+    const vault = total - up;
+    expect(at(total, true)).toMatchObject({ role: "mantle", phase: expect.closeTo(0, 6) });
+    expect(at(vault + up / 2, true)).toMatchObject({ role: "mantle", phase: expect.closeTo(0.5, 6) });
+    expect(at(vault / 2, true)).toMatchObject({ role: "mantleOver", phase: expect.closeTo(0.5, 6) });
+    expect(at(0, true)).toMatchObject({ role: "mantleOver", phase: expect.closeTo(1, 6) });
   });
 
   it("poses a ladder from the feet's height, so a still climber holds a pose", () => {

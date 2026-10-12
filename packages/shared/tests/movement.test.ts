@@ -715,7 +715,7 @@ describe("the pose blends", () => {
       advanceBlends(state, DT);
     }
     expect(state.gait).toBe(1);
-    state.move = { kind: "mantle", target: { x: 0, y: 1, z: 0 }, left: 0.4, rise: 1, over: false };
+    state.move = { kind: "mantle", ledge: { x: 0, y: 1, z: 0 }, yaw: 0, row: 3, over: false, left: 0.4 };
     for (let t = 0; t < GAIT_BLEND; t += DT) {
       advanceBlends(state, DT);
     }

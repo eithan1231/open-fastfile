@@ -158,14 +158,15 @@ function copyMove(src: Move, dst: Move): Move {
       return WALKING;
     case "mantle":
       if (dst.kind !== "mantle") {
-        return { kind: "mantle", target: { ...src.target }, left: src.left, rise: src.rise, over: src.over };
+        return { kind: "mantle", ledge: { ...src.ledge }, yaw: src.yaw, row: src.row, over: src.over, left: src.left };
       }
-      dst.target.x = src.target.x;
-      dst.target.y = src.target.y;
-      dst.target.z = src.target.z;
-      dst.left = src.left;
-      dst.rise = src.rise;
+      dst.ledge.x = src.ledge.x;
+      dst.ledge.y = src.ledge.y;
+      dst.ledge.z = src.ledge.z;
+      dst.yaw = src.yaw;
+      dst.row = src.row;
       dst.over = src.over;
+      dst.left = src.left;
       return dst;
     case "ladder":
       if (dst.kind !== "ladder") {

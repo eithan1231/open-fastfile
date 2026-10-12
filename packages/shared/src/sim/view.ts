@@ -1,11 +1,12 @@
 // Where a player may look. The view is absolute in the input, so a rule that
-// holds it — a ladder's, a lying body's — is a function of the state that both
+// holds it — a ladder's, a mantle's, a lying body's — is a function of the state that both
 // the step and the camera ask: the step of the input's angles, and the camera
 // of the mouse movement no step has spent yet, so it stops at the limit rather
 // than swinging past it and back. The games write the overshoot into the
 // view's delta angles for the same effect.
 
 import { ladderYaw } from "./moves/ladder.js";
+import { mantleYaw } from "./moves/mantle.js";
 import type { MovementEnv } from "./movementEnv.js";
 import { clampPitch, type MovementState } from "./movementState.js";
 import { pronePitch, proneYaw } from "./stance.js";
@@ -14,6 +15,9 @@ import { pronePitch, proneYaw } from "./stance.js";
 export function capYaw(s: Readonly<MovementState>, yaw: number, env: MovementEnv): number {
   if (s.move.kind === "ladder") {
     return ladderYaw(s, yaw);
+  }
+  if (s.move.kind === "mantle") {
+    return mantleYaw(s.move, yaw);
   }
   if (s.stance.kind === "prone") {
     return proneYaw(s, s.stance, yaw, env);
