@@ -31,10 +31,10 @@
 
 import * as THREE from "three";
 import { AIM_LIMIT, LEG_ROLES, type CharacterRole } from "../sim/characterDef.js";
-import { bodyYaw, poseLayers, type PoseLayer } from "../sim/pose.js";
+import { bodyPitch, bodyYaw, poseLayers, type PoseLayer, type RoleSet } from "../sim/pose.js";
 import type { MovementState } from "../sim/movement.js";
 import type { WeaponData } from "../sim/weapon.js";
-import type { CharacterRig } from "./character.js";
+import { MODEL_FACING, type CharacterRig } from "./character.js";
 
 interface Layer {
   action: THREE.AnimationAction;
@@ -47,6 +47,11 @@ export class CharacterPoser {
   private readonly mixer: THREE.AnimationMixer;
   private readonly legs = new Map<CharacterRole, Layer>();
   private readonly torso = new Map<CharacterRole, Layer>();
+  /**
+   * The roles this rig has a clip for, which is what the pose is asked for: the
+   * set's own table (`CharacterSet.roles`), so both ends ask with the same one.
+   */
+  private readonly roles: RoleSet;
   /**
    * The aim joint as the *mixer* last left it: the clips' own pose for it, before
    * the turn. Put back before every mixer pass.
@@ -82,6 +87,7 @@ export class CharacterPoser {
     for (const role of rig.set.torsoRoles) {
       this.add(this.torso, role);
     }
+    this.roles = new Set([...this.legs.keys(), ...this.torso.keys()]);
     if (rig.aim) {
       this.aimBase.copy(rig.aim.quaternion);
     }
@@ -117,7 +123,7 @@ export class CharacterPoser {
    * frame rate wanders.
    */
   update(movement: MovementState, weapon: WeaponData | null, dt: number): void {
-    const pose = poseLayers(movement, weapon);
+    const pose = poseLayers(movement, weapon, this.roles);
     this.apply(this.legs, pose.legs);
     this.applyTorso(pose.torso);
     this.rig.aim?.quaternion.copy(this.aimBase);
@@ -199,6 +205,24 @@ export class CharacterPoser {
     this.mixer.stopAllAction();
     this.mixer.uncacheRoot(this.rig.root);
   }
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
+const RIGHT = new THREE.Vector3(1, 0, 0);
+const tip = new THREE.Quaternion();
+
+/**
+ * Put a rig's root where a body is: at its feet, turned to face `bodyYaw` and
+ * tipped by `bodyPitch` about its own right axis. The one placement, because a
+ * client draws a body with it and a server traces a shot at the same one. Before
+ * `CharacterPoser.update`, which aims the spine from the root's rotation.
+ */
+export function placeBody(root: THREE.Object3D, movement: MovementState): void {
+  root.position.set(movement.feet.x, movement.feet.y, movement.feet.z);
+  // Yaw, then the tip in the body's own frame (it faces -Z there), then the rig's quarter turn.
+  root.quaternion.setFromAxisAngle(UP, bodyYaw(movement));
+  root.quaternion.multiply(tip.setFromAxisAngle(RIGHT, bodyPitch(movement)));
+  root.quaternion.multiply(tip.setFromAxisAngle(UP, MODEL_FACING));
 }
 
 export { bodyYaw };

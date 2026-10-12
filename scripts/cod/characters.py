@@ -15,9 +15,11 @@ The clips are not a map's. Every player clip lives in `common_mp.ff`, one set fo
 every character in the game, so they are written once into `animations.glb` — a
 skeleton with no meshes — and played on any body whose joints have those names.
 What each of them is called is the game's own business, which is why the role
-table below is per game. The data: docs/cod/reference.md#characters.
+table below is per game; cast_clips.py is what builds the set, into the catalogue.
+The data: docs/cod/reference.md#characters.
 """
 
+import dataclasses
 import json
 import os
 
@@ -27,7 +29,7 @@ from .files import read_bytes, read_json, write_text
 from .gltf import joint_subtree, read_glb, skin_roots, write_glb
 from .pack import pack_one
 from .textures import texture_index
-from .xanim import decode
+from .xanim import BoneTrack, Track, decode
 
 OUT_DIR = "characters"  # under the world's assets/
 # Seen across a map rather than at arm's length, so a prop's 512 px rather than the viewmodel's 1024.
@@ -81,6 +83,30 @@ IW_CLIP_ROLES = {
     # cycle, which is what lets the engine scrub them by height.
     "climbUp": ("pb_climbup",),
     "climbDown": ("pb_climbdown",),
+    # Crouched and prone. MW2 and MW3 ship no stand <-> crouch clip and no prone
+    # ADS idle or fire, and those roles are dropped there; Black Ops ships them all.
+    "crouchIdle": ("pb_crouch_alert",),
+    "crouchIdleAds": ("pb_crouch_ads",),
+    "crouchForward": ("pb_crouch_run_forward",),
+    "crouchBack": ("pb_crouch_run_back",),
+    "crouchLeft": ("pb_crouch_run_left",),
+    "crouchRight": ("pb_crouch_run_right",),
+    "proneIdle": ("pb_prone_aim",),
+    "proneIdleAds": ("pb_prone_aim_ads",),
+    "proneForward": ("pb_prone_crawl",),
+    "proneBack": ("pb_prone_crawl_back",),
+    "proneLeft": ("pb_prone_crawl_left",),
+    "proneRight": ("pb_prone_crawl_right",),
+    "standToCrouch": ("pb_rifle_stand2crouch",),
+    "crouchToStand": ("pb_rifle_crouch2stand",),
+    "crouchToProne": ("pb_crouch2prone",),
+    "proneToCrouch": ("pb_prone2crouch",),
+    "crouchFire": ("pt_crouch_shoot_auto",),
+    "crouchFireAds": ("pt_crouch_shoot_auto_ads",),
+    "crouchReload": ("pt_reload_crouch_rifle",),
+    "proneFire": ("pt_prone_shoot_auto",),
+    "proneFireAds": ("pt_prone_ads_shoot_auto",),
+    "proneReload": ("pt_reload_prone_auto",),
 }
 # Ghosts renames most of the set and spells its torso clips `mp_` rather than
 # `pt_`; the ones it keeps (`pb_stand_ads`, the jumps, the climbs,
@@ -109,6 +135,28 @@ IW6_CLIP_ROLES = {
     "mantleOver": ("mp_mantle_40_over",),
     "climbUp": ("pb_climbup",),
     "climbDown": ("pb_climbdown",),
+    # Ghosts keeps MW's crawl and its hip fire, and renames the rest. It has no
+    # prone ADS idle or fire, and its prone reload keys the whole body.
+    "crouchIdle": ("mp_crouch_idle",),
+    "crouchIdleAds": ("mp_crouch_idle_ads",),
+    "crouchForward": ("mp_crouch_f",),
+    "crouchBack": ("mp_crouch_b",),
+    "crouchLeft": ("mp_crouch_l",),
+    "crouchRight": ("mp_crouch_r",),
+    "proneIdle": ("mp_prone_idle_iw6",),
+    "proneForward": ("pb_prone_crawl",),
+    "proneBack": ("pb_prone_crawl_back",),
+    "proneLeft": ("pb_prone_crawl_left",),
+    "proneRight": ("pb_prone_crawl_right",),
+    "standToCrouch": ("mp_stand_2_crouch",),
+    "crouchToStand": ("mp_crouch_2_stand",),
+    "crouchToProne": ("mp_crouch_2_prone",),
+    "proneToCrouch": ("mp_prone_2_crouch",),
+    "crouchFire": ("pt_crouch_shoot_auto",),
+    "crouchFireAds": ("pt_crouch_shoot_ads",),
+    "crouchReload": ("mp_crouch{}_reload",),
+    "proneFire": ("pt_prone_shoot_auto",),
+    "proneReload": ("mp_prone_reload_iw6",),
 }
 # Advanced Warfare keeps Ghosts' sprint, jump, mantle and climb clips. Its `pb_hold_*`
 # idle and runs are empty-handed (they key no gun joint), so the armed set is its own:
@@ -126,8 +174,23 @@ S1_CLIP_ROLES = {
 }
 # Black Ops ships every one of MW's names in its own common_mp.ff.
 CLIP_ROLES_BY_GAME = {"iw4": IW_CLIP_ROLES, "iw5": IW_CLIP_ROLES, "iw6": IW6_CLIP_ROLES, "t5": IW_CLIP_ROLES, "s1": S1_CLIP_ROLES}
-# Roles whose clip poses the spine and above only, and so layers over a `pb_` one.
-TORSO_ROLES = ("fire", "fireAds", "reload")
+# Roles whose clip is laid over a `pb_` one, replacing the bones it keys: the spine
+# and above, or the whole body for Ghosts' and AW's prone reload.
+TORSO_ROLES = (
+    "fire",
+    "fireAds",
+    "reload",
+    "crouchFire",
+    "crouchFireAds",
+    "crouchReload",
+    "proneFire",
+    "proneFireAds",
+    "proneReload",
+)
+# Roles the engine holds at their first frame: a body at rest is posed from its
+# state and no clock, so the 8 to 20 s of fidgets after that frame are never
+# read, and are not written.
+HELD_ROLES = ("idle", "idleAds", "crouchIdle", "crouchIdleAds", "proneIdle", "proneIdleAds")
 # A weapon file's `playerAnimType` -> the class its clips are named for, where
 # they exist. Per game because the two enums are not the same list: Ghosts types
 # its machine guns `autorifle` and its shotguns `other`, adds a bullpup spelling
@@ -327,6 +390,37 @@ def clip_names(game_key, info, available):
                 out[role] = name
                 break
     return out
+
+
+def held(clip):
+    """`clip` as its first frame alone: one key a track, no loop, no notes and no root motion."""
+
+    def first(track):
+        return Track([0], [track.values[0]]) if track and track.values else None
+
+    return dataclasses.replace(
+        clip,
+        frames=1,
+        looped=False,
+        bones=[BoneTrack(b.name, first(b.rotation), first(b.translation)) for b in clip.bones],
+        has_root_motion=False,
+        delta_rotation=None,
+        delta_translation=None,
+        notetracks=[],
+    )
+
+
+def load_clips(anim_dir, roles):
+    """{clip name: XAnim} for every clip `roles` names, a HELD_ROLES clip as its first frame.
+
+    A clip some other role plays through is kept whole, whichever role names it first.
+    """
+    played = {name for role, name in roles.items() if role not in HELD_ROLES}
+    clips = {}
+    for name in sorted(set(roles.values())):
+        clip = decode(read_bytes(os.path.join(anim_dir, name)), name)
+        clips[name] = clip if name in played else held(clip)
+    return clips
 
 
 # -- Grafting -------------------------------------------------------------------------
@@ -563,27 +657,30 @@ def pick_t5(raw_dir, xmodel_dir, choice):
 
 
 # What the characters stage decided, beside the GLBs it decided it for: which
-# head each body wears, its side and the gun grafted into it. `harvest` reads it,
-# because the pairing is not recoverable from filenames (harvest._cast_of).
+# head each body wears, its side, the gun grafted into it and the anim type of
+# the clip set it plays. `harvest` reads it, because the pairing is not
+# recoverable from filenames (harvest._cast_of).
 CAST_FILE = "cast.json"
 
 
-def write_cast(out_dir, built, world_model):
-    """`cast.json`: [(side, body glb, head glb)] and the held gun, as `harvest` reads them."""
+def write_cast(out_dir, built, world_model, anim_type):
+    """`cast.json`: [(side, body glb, head glb)], the held gun and its anim type, as `harvest` reads them."""
     body = {
         "characters": [{"side": side, "body": b, "head": h} for side, b, h in built],
         "weapon": f"assets/{OUT_DIR}/{world_model}.glb",
+        "animType": anim_type,
     }
     write_text(os.path.join(out_dir, CAST_FILE), json.dumps(body, indent=1) + "\n")
 
 
-def export_characters(work, assets_dir, game_key, states, info, weapon, choice=None):
-    """The characters stage: the map's MP bodies, their heads, the held weapon and every clip.
+def export_characters(work, assets_dir, game_key, states, info, choice=None):
+    """The characters stage: the map's MP bodies, their heads and the held weapon.
 
     `info` is the chosen weapon's parsed infostring (viewmodel.parse_infostring),
-    which names the world model and the animation type. Returns
-    (out dir relative to the world, [(side, body glb, head glb)], weapon glb) or
-    None when this map ships no player bodies.
+    which names the world model and the animation type. No clips: those are the
+    game's, and cast_clips.py builds them once the bodies are in the catalogue.
+    Returns (out dir relative to the world, [(side, body glb, head glb)], weapon
+    glb) or None when this map ships no player bodies.
     """
     models = os.path.join(work, "models")
     xmodel = os.path.join(models, "xmodel")
@@ -612,21 +709,13 @@ def export_characters(work, assets_dir, game_key, states, info, weapon, choice=N
         print(f"      no characters: the weapon's world model {world_model or '?'} was not dumped")
         return None
 
-    anim_dir = os.path.join(work, "view_anim", "xanim")
-    available = set(os.listdir(anim_dir)) if os.path.isdir(anim_dir) else set()
-    roles = clip_names(game_key, info, available)
-    if "idle" not in roles:
-        print(f"      no characters: no {game_key} player idle clip in the zone (is the clip companion dumped?)")
-        return None
-    clips = {name: decode(read_bytes(os.path.join(anim_dir, name)), name) for name in sorted(set(roles.values()))}
-
     out_dir = os.path.join(assets_dir, OUT_DIR)
     os.makedirs(out_dir, exist_ok=True)
     iwi = texture_index(os.path.join(work, "img"))
     missing = _pack(weapon_raw, os.path.join(out_dir, f"{world_model}.glb"), iwi, states)
     weapon_graft, _ = read_glb(weapon_raw)
 
-    built, specs, problems = [], [], []
+    built, problems = [], []
     for side, body, head in chosen:
         body_raw, head_raw = _model_glb(models, body), _model_glb(models, head)
         if body_raw is None or head_raw is None:
@@ -643,16 +732,12 @@ def export_characters(work, assets_dir, game_key, states, info, weapon, choice=N
         gun = graft_weapon(gltf, weapon_graft, GUN_JOINT_BY_GAME.get(game_key, GUN_JOINT))
         gltf["buffers"] = [{"byteLength": len(buf)}]
         write_glb(packed, gltf, buf)
-        specs.append(skeleton_spec(gltf))
         built.append((side, f"assets/{OUT_DIR}/{body}.glb", f"assets/{OUT_DIR}/{head}.glb"))
         print(f"      {side}: {body} + {head} (+{len(added)} head joints, +{len(gun)} weapon joints)")
 
-    spec = definition(game_key, weapon, info, roles, clips)
-    problems += write_anim_glb(os.path.join(out_dir, "animations.glb"), specs, clips, roles, spec)
-    write_cast(out_dir, built, world_model)
+    write_cast(out_dir, built, world_model, (info.get("playerAnimType") or "").strip())
     if missing:
         problems.append(f"{missing} texture(s) not in the dump, drawn white")
-    print(f"      animations.glb: {len(roles)} roles over {len(spec['clips'])} clips, {world_model} in hand")
     for p in problems:
         print(f"      !! {p}")
     return f"assets/{OUT_DIR}", built, f"assets/{OUT_DIR}/{world_model}.glb"

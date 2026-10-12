@@ -4,4 +4,4 @@
 //
 // Re-exported under the old name because `net/remotePlayers.ts` owns one per peer
 // and reaches for it by this path.
-export { CharacterPoser as CharacterAnimator, bodyYaw } from "@3d/shared/rig/poser.js";
+export { CharacterPoser as CharacterAnimator, bodyYaw, placeBody } from "@3d/shared/rig/poser.js";

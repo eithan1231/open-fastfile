@@ -413,10 +413,10 @@ def export_map(
 
     # The cast the two stages above staged in `assets/` belongs to no one map, so it
     # goes to the catalogue rather than into a world file. Done here rather than
-    # inside each stage because the clip file is merged across every world of the
-    # game, which one map's export cannot see on its own.
+    # inside each stage because the clip set is built over every body of the game
+    # the catalogue holds, which one map's stage cannot see on its own.
     if has_viewmodel or has_characters:
-        problems = harvest.harvest_after_export(os.path.dirname(os.path.abspath(out)))
+        problems = harvest.harvest_after_export(os.path.dirname(os.path.abspath(out)), work, game_key)
         for problem in problems:
             print(f"      !! {problem}")
 
@@ -663,9 +663,9 @@ def export_characters_stage(map_name, out, work, game_key, states, weapon_info):
     if weapon_info is None:
         print("      no characters: this map exported no viewmodel, so no weapon to hold")
     else:
-        weapon, info = weapon_info
+        _, info = weapon_info
         try:
-            result = characters.export_characters(work, os.path.join(out, "assets"), game_key, states, info, weapon, choice)
+            result = characters.export_characters(work, os.path.join(out, "assets"), game_key, states, info, choice)
         except ValueError as exc:
             sys.exit(f"{map_name}: {exc}")
     return result is not None
@@ -694,7 +694,7 @@ def export_parts_only(map_name, ff, zone, out, backend, work, common, want_chara
     # still run whichever was asked for, because the characters stage needs the
     # weapon the viewmodel stage picks.
     if has_viewmodel or has_characters:
-        problems = harvest.harvest_after_export(os.path.dirname(os.path.abspath(out)))
+        problems = harvest.harvest_after_export(os.path.dirname(os.path.abspath(out)), work, game_key)
         for problem in problems:
             print(f"      !! {problem}")
 

@@ -59,6 +59,11 @@ def main(argv=None):
         action="store_true",
         help="build the sound bank alone (catalog/sounds/<game>/mp/); weapons, props and the index are left as they are",
     )
+    cat.add_argument(
+        "--clips-only",
+        action="store_true",
+        help="build the clip set the game's bodies play (catalog/animations/<game>/) and the index; nothing else is rebuilt",
+    )
 
     mig = commands.add_parser("migrate", help="bring the worlds on disk up to date with a DSL change (no game files)")
     mig.add_argument("--worlds", default="worlds", help="the worlds root to migrate")

@@ -1,43 +1,33 @@
-// `POSE_MARGIN`: the number the broad phase is only as good as.
+// `POSE_MARGIN` and `PRONE_REACH`: the numbers the broad phase is only as good as.
 //
-// `Match.traceShot` rejects most players on the capsule the simulation moves,
-// widened by `POSE_MARGIN` and dropped by it, because posing a skeleton is the
-// expensive half of judging a shot. A margin short of where the boxes actually go
-// is not a slow server; it is a bullet that passes through somebody with nothing to
-// say about it — the broad phase never reports why it said no.
+// `Match.traceShot` rejects most players on `couldHitBody` — the capsule the
+// simulation moves, widened by `POSE_MARGIN` and dropped by it, or a ball of
+// `PRONE_REACH` about a lying body — because posing a skeleton is the expensive
+// half of judging a shot. A margin short of where the boxes actually go is not a
+// slow server; it is a bullet that passes through somebody with nothing to say
+// about it — the broad phase never reports why it said no.
 //
-// Corpses are not in here and must not be. A ragdoll leaves this envelope entirely —
-// a body lying flat reaches further from its pelvis than any pose a player can be in
-// — and widening `POSE_MARGIN` to cover a sprawl would slow the broad phase for every
-// living player on every shot to fix a case it does not answer for. A corpse stops no
-// bullets today; when one does, it will be rejected against its own world AABB.
+// Corpses are not in here and must not be. A ragdoll leaves both envelopes — a
+// sprawl reaches further than any pose a player can be in — and widening either to
+// cover one would slow the broad phase for every living player on every shot to fix
+// a case it does not answer for. A corpse stops no bullets today; when one does, it
+// will be rejected against its own world AABB.
 //
 // So the margin is measured rather than chosen, and this is the measurement: every
 // body the catalogue holds, posed through every clip a player can be in, with every
 // corner of every box required to lie inside the envelope. It skips where no
 // catalogue has been built, like the other tests that need real bodies.
 
-import "reflect-metadata";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { testApp } from "@3d/api/testing/app.js";
-import type { GameKey } from "@3d/shared/dsl/resolved.js";
-import { catalogueViewOf, type CatalogueView } from "@3d/shared/game/catalogueView.js";
-import { createApiClient, type ApiClient } from "@3d/shared/protocol/api.js";
-import type { HttpFetch } from "@3d/shared/protocol/http.js";
-import { MODEL_FACING } from "@3d/shared/rig/character.js";
-import { couldHit, POSE_MARGIN, readHitboxes, type Hitbox } from "@3d/shared/rig/hitboxes.js";
-import type { Vec3 } from "@3d/shared/sim/capsule.js";
-import { createMovement, RADIUS, STAND_HEIGHT as HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
+import { couldHitBody, POSE_MARGIN, PRONE_REACH, type Hitbox } from "@3d/shared/rig/hitboxes.js";
+import { CROUCHING, createMovement, EYE_PATHS, RADIUS, type MovementState, type Stance } from "@3d/shared/sim/movement.js";
 import { mantleDuration } from "@3d/shared/sim/moves/mantle.js";
-import { bodyYaw } from "@3d/shared/sim/pose.js";
-import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
-import type { Api } from "../src/api.js";
-import { Bodies, type LoadedBody } from "../src/bodies.js";
-import type { Weapons } from "../src/weapons.js";
+import { eyePathEnds, eyePathSeconds } from "@3d/shared/sim/stance.js";
+import { poseBody, type LoadedBody } from "../src/bodies.js";
+import { catalogueBodies, GAMES, sidecar } from "./catalogueBodies.js";
 
-const GAMES: GameKey[] = ["iw4", "iw5", "iw6", "t5", "s1"];
-/** A millimetre of segment through a point, which is how a *point* is asked of `couldHit`. */
+/** A millimetre of segment through a point, which is how a *point* is asked of `couldHitBody`. */
 const PROBE = 0.0005;
 
 /**
@@ -104,53 +94,69 @@ function poses(): { name: string; movement: MovementState }[] {
     movement.pitch = pitch;
     out.push({ name: `aim ${pitch}`, movement });
   }
+
+  // Crouched and lying, at rest and moving each way through a stride. A lying
+  // body is turned and tipped as far as the simulation lets one be.
+  const low: [string, () => Stance][] = [
+    ["crouch", () => CROUCHING],
+    ["prone", () => ({ kind: "prone", heading: 0, torso: 0 })],
+    ["prone uphill", () => ({ kind: "prone", heading: 2.4, torso: Math.PI / 4 })],
+    ["prone downhill", () => ({ kind: "prone", heading: -1.1, torso: -Math.PI / 4 })],
+  ];
+  for (const [stance, make] of low) {
+    for (const pitch of [-1.4, 0, 1.4]) {
+      const movement = standing();
+      movement.stance = make();
+      movement.pitch = pitch;
+      out.push({ name: `${stance} aim ${pitch}`, movement });
+    }
+    for (const [forward, right, way] of [
+      [1, 0, "forward"],
+      [-1, 0, "back"],
+      [0, 1, "right"],
+      [0, -1, "left"],
+    ] as const) {
+      for (const stride of [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875]) {
+        const movement = standing();
+        movement.stance = make();
+        movement.gait = 1;
+        movement.stride = stride;
+        movement.travelForward = forward;
+        movement.travelRight = right;
+        out.push({ name: `${stance} ${way} ${stride}`, movement });
+      }
+    }
+  }
+
+  // Every way between two stances, through it.
+  for (const path of EYE_PATHS) {
+    for (const through of [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1]) {
+      const movement = standing();
+      const to = eyePathEnds(path).to;
+      movement.stance = to === "prone" ? { kind: "prone", heading: 0.6, torso: 0.3 } : to === "crouch" ? CROUCHING : movement.stance;
+      movement.eyeShift = { path, elapsed: through * eyePathSeconds(path) };
+      out.push({ name: `${path} ${through}`, movement });
+    }
+  }
   return out;
 }
 
-/** Where the broad phase says a posed body may be: the walking capsule, dropped and widened. */
-function envelope(feet: Vec3): Vec3 {
-  return { x: feet.x, y: feet.y - POSE_MARGIN, z: feet.z };
+/** Whether a body in `movement` is one the broad phase takes for lying: `couldHitBody`'s own test. */
+function lying(movement: MovementState): boolean {
+  return movement.stance.kind === "prone" || movement.eyeShift?.path === "crouchToProne" || movement.eyeShift?.path === "proneToCrouch";
 }
 
-/** Whether a single point is inside that envelope — a millimetre of segment through it. */
-function inside(point: THREE.Vector3, feet: Vec3): boolean {
+/** Whether a single point is inside the broad phase's envelope for that state — a millimetre of segment through it. */
+function inside(point: THREE.Vector3, movement: MovementState): boolean {
   const from = { x: point.x - PROBE, y: point.y, z: point.z };
   const to = { x: point.x + PROBE, y: point.y, z: point.z };
-  return couldHit(from, to, envelope(feet), RADIUS, HEIGHT + POSE_MARGIN, POSE_MARGIN) !== null;
-}
-
-interface Loaded {
-  bodies: Bodies;
-  catalogue: CatalogueView;
-  client: ApiClient;
-}
-
-async function everything(): Promise<Loaded | null> {
-  const { app } = testApp();
-  const client = createApiClient({ fetch: app.request.bind(app) as HttpFetch });
-  const index = await client.catalogIndex();
-  const catalogue = catalogueViewOf(index, new WeaponRegistry(index.weapons as WeaponEntry[]));
-  if (GAMES.every((game) => catalogue.charactersFor(game).length === 0)) {
-    return null;
-  }
-  const bodies = new Bodies({ client } as unknown as Api, { catalogue } as unknown as Weapons);
-  await bodies.load();
-  return { bodies, catalogue, client };
-}
-
-/** The sidecar the boxes came from: `BoundHitboxes` keeps them, and does not hand them back. */
-async function sidecar(client: ApiClient, game: GameKey, id: string): Promise<Hitbox[]> {
-  const bytes = await client.catalogFile({ kind: "characters", game, id, rest: `${id}.hitboxes.json` });
-  return readHitboxes(JSON.parse(new TextDecoder().decode(bytes)));
+  return couldHitBody(from, to, movement) !== null;
 }
 
 /** Every corner of every box of one body in one pose, in world space. */
 function corners(body: LoadedBody, boxes: readonly Hitbox[], movement: MovementState): THREE.Vector3[] {
   const root = body.rig.root;
-  root.position.set(movement.feet.x, movement.feet.y, movement.feet.z);
-  root.rotation.y = bodyYaw(movement) + MODEL_FACING;
-  body.poser.update(movement, null, 0);
-  root.updateMatrixWorld(true);
+  poseBody(body, movement, null);
 
   const out: THREE.Vector3[] = [];
   for (const box of boxes) {
@@ -171,7 +177,7 @@ function corners(body: LoadedBody, boxes: readonly Hitbox[], movement: MovementS
 
 describe("the envelope a posed body may occupy", () => {
   it("holds every box of every body, through every pose", async () => {
-    const real = await everything();
+    const real = await catalogueBodies();
     if (!real) {
       return; // no catalogue built in this checkout
     }
@@ -179,6 +185,8 @@ describe("the envelope a posed body may occupy", () => {
     const escaped: string[] = [];
     /** How far outside the *bare* capsule anything reached, which is what the margin is for. */
     let beyondCapsule = 0;
+    /** How far from the feet a lying body reached, which is what PRONE_REACH is for. */
+    let lyingReach = 0;
     let checked = 0;
 
     for (const game of GAMES) {
@@ -191,7 +199,7 @@ describe("the envelope a posed body may occupy", () => {
         for (const { name, movement } of poses()) {
           for (const corner of corners(body, boxes, movement)) {
             checked++;
-            if (!inside(corner, movement.feet)) {
+            if (!inside(corner, movement)) {
               escaped.push(
                 `${entry.id} ${name} at ${corner
                   .toArray()
@@ -200,7 +208,11 @@ describe("the envelope a posed body may occupy", () => {
               );
             }
             const radial = Math.hypot(corner.x - movement.feet.x, corner.z - movement.feet.z);
-            beyondCapsule = Math.max(beyondCapsule, radial - RADIUS, movement.feet.y - corner.y);
+            if (lying(movement)) {
+              lyingReach = Math.max(lyingReach, Math.hypot(radial, corner.y - movement.feet.y));
+            } else {
+              beyondCapsule = Math.max(beyondCapsule, radial - RADIUS, movement.feet.y - corner.y);
+            }
           }
         }
       }
@@ -216,5 +228,8 @@ describe("the envelope a posed body may occupy", () => {
     // is the extreme — it carries the drawn body a metre past its own feet.
     expect(beyondCapsule).toBeGreaterThan(0.5);
     expect(beyondCapsule).toBeLessThan(POSE_MARGIN);
+    // A lying body likewise: it lies well outside the capsule's margin, and inside its own reach.
+    expect(lyingReach).toBeGreaterThan(RADIUS + POSE_MARGIN);
+    expect(lyingReach).toBeLessThan(PRONE_REACH);
   }, 300_000);
 });

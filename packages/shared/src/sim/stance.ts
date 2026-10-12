@@ -134,6 +134,11 @@ export function reversedEyePath(path: EyePath): EyePath {
   return EYE_CURVES[path].reversed;
 }
 
+/** The stance `path` leaves and the one it arrives at. */
+export function eyePathEnds(path: EyePath): { readonly from: StanceKind; readonly to: StanceKind } {
+  return EYE_CURVES[path];
+}
+
 /** How tall the capsule of `body` is in a stance. */
 export function stanceHeight(kind: StanceKind, body: MovementParams): number {
   return kind === "stand" ? body.height : kind === "crouch" ? CROUCH_HEIGHT : PRONE_HEIGHT;
@@ -180,7 +185,12 @@ export function speedScale(s: Readonly<MovementState>): number {
     const t = Math.min(1, shift.elapsed / EYE_CURVES[shift.path].seconds);
     return shift.path === "crouchToProne" ? CROUCH_SPEED + (PRONE_SPEED - CROUCH_SPEED) * t : PRONE_SPEED + (CROUCH_SPEED - PRONE_SPEED) * t;
   }
-  return s.stance.kind === "prone" ? PRONE_SPEED : s.stance.kind === "crouch" ? CROUCH_SPEED : 1;
+  return stanceSpeed(s.stance.kind);
+}
+
+/** The share a stance at rest leaves of it: what `speedScale` settles at. */
+export function stanceSpeed(kind: StanceKind): number {
+  return kind === "prone" ? PRONE_SPEED : kind === "crouch" ? CROUCH_SPEED : 1;
 }
 
 export function groundAccel(s: Readonly<MovementState>): number {

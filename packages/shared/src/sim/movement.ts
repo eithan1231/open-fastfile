@@ -65,7 +65,7 @@ export function stepMovement(s: MovementState, input: PlayerInput, dt: number, e
   // Before any move below, and from the state the step *starts* from, so every
   // path advances them exactly once and a replay reaches the same phase.
   const sprinting = wantsSprint(s, input, env) && carry.sprint;
-  advanceStride(s, dt, env.body.runSpeed);
+  advanceStride(s, dt, env.body);
   advanceBlends(s, dt);
 
   if (s.move.kind === "mantle") {

@@ -351,6 +351,10 @@ In this order, since each step assumes the previous:
   alone, so blends show as hard seams until its shell is re-exported. Black Ops
   II, Ghosts and AW keep their layers elsewhere, and none of the three is read
   yet ([layered materials](docs/cod/reference.md#layered-materials)).
+- **A crouched or crawling body's stride is one number, not its game's.** The stride
+  clock is simulation state and reads no asset, so Ghosts' and AW's crouched feet
+  turn 45% and 18% too fast for the ground and Black Ops' crawl 14% slow
+  ([the player clip set](docs/cod/pipeline.md#the-player-clip-set)).
 - **An actor walks a graph measured for a player.** Which nodes are usable and which
   links a part's corridor fills were sampled with a player's capsule.
 
@@ -421,6 +425,9 @@ Run from the repo root; each delegates to the package that owns it.
   all), and sixteen player footsteps and landings exist only in map zones, so the
   build takes the union with one and proves the overlap identical —
   [docs/cod/pipeline.md](docs/cod/pipeline.md#the-sound-bank).
+  `--clips-only --work .cache/cod/catalog-<game> --game <key>` rebuilds just the
+  clip set a game's bodies are posed from, and the index, from a dump already made
+  — [docs/cod/pipeline.md](docs/cod/pipeline.md#the-player-clip-set).
 - `python3 -m scripts.cod actors`: build the creatures an actor kind is drawn as
   (`worlds/catalog/actors/` and their clip sets under `animations/`), from Black
   Ops' zombies zones. Needs game files, like `catalog`; `--no-dump` rebuilds from

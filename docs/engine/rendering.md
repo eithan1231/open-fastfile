@@ -358,8 +358,10 @@ draws it, `net/remotePlayers.ts` owns one per peer; the data is in
 built world, not in it** — a root added straight to the scene, which updates its
 own matrices, the same opt-out [animated props](#animated-props) make.
 
-- **The pose is decided in `@3d/shared`, not here.** `poseLayers(movement, weapon)`
-  returns which clips carry weight and where in each, as a pure function; the
+- **The pose is decided in `@3d/shared`, not here.** `poseLayers(movement, weapon, roles)`
+  returns which clips carry weight and where in each, as a pure function of the
+  state and of which roles the clip set has
+  ([player.md](player.md#the-body-in-a-stance)); the
   animator gives the mixer those weights and phases and turns the aim joint. That
   split exists because a bullet is traced against a posed skeleton: a server has to
   know where a peer's head was, and a pose decided separately on each end is a hit

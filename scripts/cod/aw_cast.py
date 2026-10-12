@@ -20,25 +20,14 @@ import json
 import os
 import shutil
 
-from . import catalog, costumes
-from .characters import (
-    AIM_JOINT,
-    GUN_JOINT_BY_GAME,
-    TORSO_ROLES,
-    clip_names,
-    definition,
-    graft_head,
-    graft_weapon,
-    skeleton_spec,
-    write_anim_glb,
-)
+from . import cast_clips, catalog, costumes
+from .characters import GUN_JOINT_BY_GAME, graft_head, graft_weapon
 from .composite import _inverse, _world_matrices, compose, single_skin
-from .files import read_bytes, read_text, write_text
+from .files import read_text, write_text
 from .gltf import _mul, read_glb, skin_roots, write_glb
 from .pack import pack_one
 from .textures import texture_index
 from .viewmodel import VIEW_TEXTURE_SIZE, _model_glb, parse_infostring
-from .xanim import decode
 
 GAME = "s1"
 # Every MP string table, the costume tables among them, is in this one localized zone.
@@ -276,7 +265,7 @@ def build(work, worlds_root, states):
     weapon_graft, _ = read_glb(weapon_raw)
     print(f"  + worldweapons/{GAME}/{world} ({weapon}, the default class's primary)")
 
-    specs, hands = [], {}
+    hands = {}
     for ident, costume, source in members:
         parts = [costume.parts[c] for c in BODY_PARTS if c in costume.parts]
         raw = os.path.join(scratch, f"{ident}.glb")
@@ -298,7 +287,6 @@ def build(work, worlds_root, states):
         gun = graft_weapon(gltf, weapon_graft, GUN_JOINT_BY_GAME[GAME])
         gltf["buffers"] = [{"byteLength": len(buf)}]
         write_glb(body_path, gltf, buf)
-        specs.append(skeleton_spec(gltf))
 
         view = tuple(costume.views.get(c) for c in VIEW_PARTS if costume.views.get(c))
         hands.setdefault(view, f"viewhands_{ident}")
@@ -330,37 +318,9 @@ def build(work, worlds_root, states):
         _entry("viewhands", ident, {"id": ident, "game": GAME, "hands": f"{ident}.glb", "parts": list(view)}, worlds_root)
         print(f"  + viewhands/{GAME}/{ident}: {', '.join(view)}")
 
-    problems += build_animations(work, worlds_root, info, weapon, specs)
+    # The clip set those bodies play, keyed by the default class's weapon.
+    problems += cast_clips.build(work, worlds_root, GAME, weapon)
     shutil.rmtree(scratch, ignore_errors=True)
     if missing:
         problems.append(f"{missing} texture(s) not in the dump, drawn white")
-    return problems
-
-
-def build_animations(work, worlds_root, info, weapon, specs):
-    """The clip set every AW body plays, keyed by the default weapon's anim type."""
-    anim_dir = os.path.join(work, "view_anim", "xanim")
-    roles = clip_names(GAME, info, set(os.listdir(anim_dir)))
-    clips = {name: decode(read_bytes(os.path.join(anim_dir, name)), name) for name in sorted(set(roles.values()))}
-    spec = definition(GAME, weapon, info, roles, clips)
-    anim_type = spec["animType"] or "default"
-    out = catalog.entry_dir(worlds_root, "animations", GAME, anim_type)
-    os.makedirs(out, exist_ok=True)
-    # A body's tagPositions are real, so every translation key is an offset from them
-    # (reverse/s1-zone/README.md#the-animations); an additive clip is refused.
-    problems = write_anim_glb(os.path.join(out, "animations.glb"), specs, clips, roles, spec, absolute_bones=set())
-    joints = {name for s in specs for name, _, _ in s}
-    entry = {
-        "id": anim_type,
-        "game": GAME,
-        "animType": anim_type,
-        "clips": "animations.glb",
-        "joints": len(joints),
-        "aimJoint": AIM_JOINT,
-        "roles": roles,
-        "torsoRoles": [r for r in TORSO_ROLES if r in roles],
-        "clipTable": spec["clips"],
-    }
-    _entry("animations", anim_type, entry, worlds_root)
-    print(f"  + animations/{GAME}/{anim_type}: {len(roles)} role(s) over {len(clips)} clip(s), {len(joints)} joints")
     return problems

@@ -24,7 +24,8 @@ import { createApiClient, type ApiClient } from "@3d/shared/protocol/api.js";
 import type { HttpFetch } from "@3d/shared/protocol/http.js";
 import type { RayHit, Vec3 } from "@3d/shared/sim/capsule.js";
 import { idleInput, type PlayerInput } from "@3d/shared/sim/input.js";
-import { STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
+import { POSE_MARGIN } from "@3d/shared/rig/hitboxes.js";
+import { RADIUS, STAND_EYE_HEIGHT } from "@3d/shared/sim/movement.js";
 import { aimAngles, aimDirection, coneSample, shotStream, type ViewKick } from "@3d/shared/sim/recoil.js";
 import { hashString } from "@3d/shared/game/random.js";
 import { WeaponRegistry, type WeaponEntry } from "@3d/shared/sim/weaponRegistry.js";
@@ -122,8 +123,8 @@ function world(): ResolvedWorld {
 
 const running: PlayerInput = { ...idleInput(0, 0), forward: 1, run: true };
 
-function input(seq: number, renderTick: number, renderFrac = 0): InputMessage {
-  return { seq, dt: DT, input: running, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: renderTick, frac: renderFrac } };
+function input(seq: number, renderTick: number, renderFrac = 0, command: PlayerInput = running): InputMessage {
+  return { seq, dt: DT, input: command, claim: { x: 0, y: 0, z: 0 }, drawn: { tick: renderTick, frac: renderFrac } };
 }
 
 interface Real {
@@ -225,11 +226,11 @@ interface Played {
 }
 
 /**
- * A match with a target running away from a standing shooter, played for `ticks`
- * with every snapshot delivered — without which every rewind below would be clamped
- * as a tick this server never sent.
+ * A match with a target running away from a standing shooter — or doing what
+ * `command` says — played for `ticks` with every snapshot delivered, without which
+ * every rewind below would be clamped as a tick this server never sent.
  */
-async function played(ticks: number): Promise<Played | null> {
+async function played(ticks: number, command: PlayerInput = running): Promise<Played | null> {
   const real = await realBodies();
   if (!real) {
     return null;
@@ -247,7 +248,7 @@ async function played(ticks: number): Promise<Played | null> {
 
   const seen: { tick: number; feet: Vec3 }[] = [];
   for (let i = 1; i <= ticks; i++) {
-    match.receive(target, input(i, 0));
+    match.receive(target, input(i, 0, 0, command));
     match.receive("shooter", { ...input(i, 0), input: idleInput(0, 0) });
     const snapshot = match.step();
     match.snapshotFor("shooter", snapshot.players);
@@ -360,6 +361,37 @@ describe("a shot", () => {
     // A wall *behind* them changes nothing: the nearest of everything wins.
     p.ground.wallAt = STANDOFF + 2;
     expect(p.shoot(chest, past.tick)?.kind).toBe("player");
+  }, 120_000);
+
+  it("is traced against the stance the target was in: over a lying body, and into it where it lies", async () => {
+    // A second and a half of holding prone: down to a crouch, down again, and at rest.
+    const p = await played(90, { ...idleInput(0, 0), prone: true });
+    if (!p) {
+      return;
+    }
+    const now = p.seen[p.seen.length - 1]!;
+    // Where a standing body's chest and head are, there is nobody.
+    expect(p.shoot({ y: now.feet.y + 1.3, z: now.feet.z }, now.tick)).toBeNull();
+    expect(p.shoot({ y: now.feet.y + STAND_EYE_HEIGHT, z: now.feet.z }, now.tick)).toBeNull();
+
+    // Facing -z, so it lies back along +z: the hips are behind the point the
+    // simulation moves and a hand's height off the ground.
+    const hips = p.shoot({ y: now.feet.y + 0.15, z: now.feet.z + 0.45 }, now.tick);
+    expect(hips).toMatchObject({ kind: "player", id: p.target });
+    // The head is down there with them. From the side the arm holding the gun
+    // is in front of it, so which of the two stops the round is the pose's to say.
+    const head = worldPosition(p.body, "j_head").lerp(worldPosition(p.body, "j_head_end"), 0.5);
+    expect(head.y - now.feet.y).toBeLessThan(0.5);
+    expect(p.shoot({ y: head.y, z: head.z }, now.tick)).toMatchObject({
+      kind: "player",
+      location: expect.stringMatching(/head|helmet|neck|torsoUpper|leftArm/),
+    });
+
+    // And a foot, which is further from that point than the walking capsule's
+    // margin reaches: the broad phase has to know the body is lying down.
+    const foot = worldPosition(p.body, "j_ankle_ri");
+    expect(Math.hypot(foot.x - now.feet.x, foot.z - now.feet.z)).toBeGreaterThan(RADIUS + POSE_MARGIN);
+    expect(p.shoot({ y: foot.y, z: foot.z }, now.tick)).toMatchObject({ kind: "player", location: expect.stringMatching(/Foot|LegLower/) });
   }, 120_000);
 
   it("does not find the shooter in it", async () => {

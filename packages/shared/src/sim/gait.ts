@@ -5,7 +5,8 @@
 // step: a bullet is traced against a posed skeleton, so both ends have to reach
 // the same pose from the same inputs. What reads them is sim/pose.ts.
 
-import { horizontalSpeed, type MovementState } from "./movementState.js";
+import { horizontalSpeed, type MovementParams, type MovementState, type StanceKind } from "./movementState.js";
+import { stanceSpeed } from "./stance.js";
 
 /**
  * Below this a player is standing still as far as the legs are concerned, so the
@@ -57,6 +58,14 @@ export const GAIT_BLEND = 0.18;
  * backwards at full speed.
  */
 export const TRAVEL_BLEND = 0.125;
+/**
+ * Seconds one loop of a stance's moving clips takes at that stance's own top
+ * speed: what keeps a foot on the ground it is drawn on. Crouched and prone it
+ * is the forward loop's own travel over the stance's speed, 6.9 m and 2.8 m —
+ * constants for STRIDE_PERIOD's reason, and each game's own are in
+ * docs/cod/pipeline.md#the-player-clip-set.
+ */
+const STANCE_STRIDE_PERIOD: Record<StanceKind, number> = { stand: STRIDE_PERIOD, crouch: 2.2, prone: 3.9 };
 /** How far the stride rate may be pushed from the clip's own by the speed being made. */
 const STRIDE_RATE_RANGE = [0.35, 1.6] as const;
 
@@ -119,7 +128,7 @@ function approach(value: number, target: number, step: number): number {
  * Nothing reads it while a body is genuinely standing: `gait` is zero by then and
  * the run layer is dropped before its phase is looked at.
  */
-export function advanceStride(s: MovementState, dt: number, runSpeed: number): void {
+export function advanceStride(s: MovementState, dt: number, body: MovementParams): void {
   if (s.move.kind !== "walk") {
     s.stride = 0;
     return;
@@ -128,6 +137,8 @@ export function advanceStride(s: MovementState, dt: number, runSpeed: number): v
   if (s.grounded && speed <= IDLE_SPEED) {
     return;
   }
-  const rate = Math.max(STRIDE_RATE_RANGE[0], Math.min(STRIDE_RATE_RANGE[1], speed / runSpeed));
-  s.stride = (s.stride + (dt * rate) / STRIDE_PERIOD) % 1;
+  const kind = s.stance.kind;
+  const top = kind === "stand" ? body.runSpeed : body.walkSpeed * stanceSpeed(kind);
+  const rate = Math.max(STRIDE_RATE_RANGE[0], Math.min(STRIDE_RATE_RANGE[1], speed / top));
+  s.stride = (s.stride + (dt * rate) / STANCE_STRIDE_PERIOD[kind]) % 1;
 }

@@ -14,6 +14,7 @@
 import * as THREE from "three";
 import { nearCapsule, rayBox, type Vec3 } from "../sim/hit.js";
 import { HIT_LOCATIONS, type HitLocation } from "../sim/hitLocations.js";
+import { RADIUS, STAND_HEIGHT, type MovementState } from "../sim/movementState.js";
 import type { CharacterRig } from "./character.js";
 
 /** Bumped whenever the sidecar changes shape; scripts/cod/hitboxes.py writes it. */
@@ -144,4 +145,29 @@ export function couldHit(from: Vec3, to: Vec3, feet: Vec3, radius: number, heigh
   const bottom = { x: feet.x, y: feet.y + wide, z: feet.z };
   const top = { x: feet.x, y: feet.y + Math.max(height + margin - wide, wide), z: feet.z };
   return nearCapsule(from, to, bottom, top, wide);
+}
+
+/**
+ * How far a lying body's boxes reach from the point the simulation moves, m. It
+ * lies behind that point along its heading, so the capsule's margin does not
+ * hold it: a foot is 1.67 m away. Measured as POSE_MARGIN is, by the same test.
+ */
+export const PRONE_REACH = 1.9;
+
+const dropped: Vec3 = { x: 0, y: 0, z: 0 };
+
+/**
+ * `couldHit` for a player's body as `state` poses it: the standing capsule
+ * dropped and widened by POSE_MARGIN, which holds a crouch too, or — lying, or
+ * on the way down or up — a ball of PRONE_REACH about the feet.
+ */
+export function couldHitBody(from: Vec3, to: Vec3, state: Pick<MovementState, "feet" | "stance" | "eyeShift">): number | null {
+  const { feet, stance, eyeShift } = state;
+  if (stance.kind === "prone" || eyeShift?.path === "crouchToProne" || eyeShift?.path === "proneToCrouch") {
+    return nearCapsule(from, to, feet, feet, PRONE_REACH);
+  }
+  dropped.x = feet.x;
+  dropped.y = feet.y - POSE_MARGIN;
+  dropped.z = feet.z;
+  return couldHit(from, to, dropped, RADIUS, STAND_HEIGHT + POSE_MARGIN, POSE_MARGIN);
 }

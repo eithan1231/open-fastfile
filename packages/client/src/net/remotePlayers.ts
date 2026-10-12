@@ -29,8 +29,8 @@ import { releaseRig } from "@3d/shared/rig/release.js";
 import { TICK_RATE } from "@3d/shared/net/messages/fields.js";
 import type { PlayerSnapshot } from "@3d/shared/net/messages/snapshot.js";
 import type { WeaponData } from "@3d/shared/sim/weapon.js";
-import { bodyYaw, CharacterAnimator } from "../engine/characterAnimator.js";
-import { MODEL_FACING, type CharacterKit, type CharacterRig } from "../scene/character.js";
+import { bodyYaw, CharacterAnimator, placeBody } from "../engine/characterAnimator.js";
+import type { CharacterKit, CharacterRig } from "../scene/character.js";
 
 /**
  * How far behind the newest snapshot a body is drawn, as a multiple of the
@@ -233,17 +233,17 @@ export class RemotePlayers {
         this.drawnAt = { tick: whole, frac: exact - whole };
       }
 
-      // A character stands on its feet, where the state's origin already is; a
-      // capsule's origin is its middle, so it is lifted by half its height —
-      // the stance's, as the capsule drawn is.
-      let lift = 0;
-      if (!remote.rig) {
+      if (remote.rig) {
+        // Placed as a server places the body it traces a shot at, then posed.
+        placeBody(object, drawn);
+        remote.rig.animator.update(drawn, remote.weapon, dt);
+      } else {
+        // A capsule's origin is its middle, so it is lifted by half its height —
+        // the stance's, as the capsule drawn is: the hull, which does not lie down.
         (object as THREE.Mesh).geometry = this.geometry[drawn.stance.kind];
-        lift = hullHeight(drawn, PLAYER_MOVEMENT) / 2;
+        object.position.set(drawn.feet.x, drawn.feet.y + hullHeight(drawn, PLAYER_MOVEMENT) / 2, drawn.feet.z);
+        object.rotation.y = bodyYaw(drawn);
       }
-      object.position.set(drawn.feet.x, drawn.feet.y + lift, drawn.feet.z);
-      object.rotation.y = bodyYaw(drawn) + (remote.rig ? MODEL_FACING : 0);
-      remote.rig?.animator.update(drawn, remote.weapon, dt);
     }
     // The scene does not do this for us; see the note at the top of the file.
     this.root.updateMatrixWorld(true);

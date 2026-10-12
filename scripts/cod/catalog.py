@@ -22,7 +22,7 @@ import json
 import os
 import shutil
 
-from . import attachments, aw_cast, backends, composite, materials, sound, t6_catalog, textures, zones
+from . import attachments, aw_cast, backends, cast_clips, composite, materials, sound, t6_catalog, textures, zones
 from .animations import absolute_joints
 from .fastfile import is_t5
 from .files import find_file, read_bytes, read_json, read_text, write_text
@@ -841,12 +841,14 @@ def main(args):
     work, game = args.work, args.game
     if getattr(args, "sounds_only", False):
         return main_sounds(args)
+    clips_only = getattr(args, "clips_only", False)
     if args.dump:
         game = GAME_KEYS[args.dump]
         work = work or os.path.join(CACHE_DIR, f"catalog-{args.dump}")
         if dump_common(args.dump, work) is None:
             return False
-        dump_sound(args.dump, work)
+        if not clips_only:
+            dump_sound(args.dump, work)
     if not work:
         print("  ! nothing to build from: pass --dump <game> to dump a companion zone, or --work <dir> to reuse one")
         return False
@@ -857,11 +859,17 @@ def main(args):
             print(f"  ! {work} has no zone listing to tell its game by: pass --game")
             return False
         game = zone_listing(listing)[0]
+    if clips_only:
+        return main_clips(work, args.worlds, game)
     _, _, _, states = classify_materials(os.path.join(work, "mat", "materials"), set(), game)
     entries = build_from_zone(work, args.worlds, game, states, args.hands or (t6_catalog.DEFAULT_HANDS if game == "t6" else None))
     if game == "s1":
         # AW's bodies are costumes no map ships, so the cast is built here, not harvested.
         for problem in aw_cast.build(work, args.worlds, states):
+            print(f"  !! {problem}")
+    else:
+        # The clips the game's harvested bodies play; AW's are built with its cast, above.
+        for problem in cast_clips.build(work, args.worlds, game):
             print(f"  !! {problem}")
     if game == "t6":
         # No map zone ships Black Ops II's hands: the faction zones do (t6_catalog.py).
@@ -877,6 +885,24 @@ def main(args):
     counts = ", ".join(f"{len(v)} {k}" for k, v in by_kind.items() if v)
     print(f"  = {counts} in the catalogue -> {os.path.relpath(path, args.worlds)}")
     return bool(by_kind.get("weapons"))
+
+
+def main_clips(work, worlds_root, game):
+    """`catalog --clips-only`: the clip set `game`'s bodies play, and the index, from `work`'s dumps.
+
+    Nothing else is rebuilt. The weapon whose class the clips are spelt for is the
+    one every body of the game holds: AW's default class's, read from its tables.
+    """
+    weapon = aw_cast.default_weapon(work) if game == "s1" else cast_clips.DEFAULT_WEAPON.get(game)
+    if not weapon or not cast_clips.bodies(worlds_root, game):
+        print(f"  ! no clip set for {game}: the catalogue holds no body of it (harvest or build its cast first)")
+        return False
+    problems = cast_clips.build(work, worlds_root, game, weapon)
+    for problem in problems:
+        print(f"  !! {problem}")
+    path = write_index(worlds_root, scan_entries(worlds_root))
+    print(f"  = index -> {os.path.relpath(path, worlds_root)}")
+    return not problems
 
 
 def main_sounds(args):

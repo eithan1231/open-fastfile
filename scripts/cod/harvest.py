@@ -23,10 +23,11 @@ import os
 import re
 import shutil
 
+from . import cast_clips
 from .catalog import entry_dir, scan_entries, write_index
-from .characters import AIM_JOINT, CAST_FILE, side_of
+from .characters import CAST_FILE, side_of
 from .files import read_json, read_text, write_text
-from .gltf import add_view, read_glb, write_glb
+from .gltf import read_glb
 from .viewmodel import is_view_hands
 from .worlds import imported_worlds
 
@@ -36,8 +37,8 @@ from .worlds import imported_worlds
 CHARACTERS_DIR = "characters"
 VIEWHANDS_DIR = "viewmodel"
 
-# The clip file every `characters` in a world names. It is not a character, and it
-# is not one per map either — see `harvest_animations`.
+# A world whose `cast.json` names no anim type has it in this file's extras
+# instead, beside its bodies. Read for that alone: the clips in it are not harvested.
 ANIM_FILE = "animations.glb"
 
 # The third-person gun hung on a body's `j_gun`. Its own kind rather than a file
@@ -73,22 +74,6 @@ def scene_extras(path, key):
     gltf, _ = read_glb(path)
     scenes = gltf.get("scenes") or [{}]
     return (scenes[gltf.get("scene", 0)].get("extras") or {}).get(key), gltf
-
-
-def _animated_joints(gltf):
-    """The names of every node an animation channel in this file targets."""
-    nodes = gltf.get("nodes") or []
-    named = set()
-    for anim in gltf.get("animations") or []:
-        for channel in anim.get("channels") or []:
-            node = (channel.get("target") or {}).get("node")
-            if node is not None and 0 <= node < len(nodes):
-                named.add(nodes[node].get("name"))
-    return named - {None}
-
-
-def _joint_names(gltf):
-    return {n.get("name") for n in gltf.get("nodes") or []} - {None}
 
 
 class Collisions:
@@ -214,6 +199,7 @@ def _cast_of(world_dir):
 
     if os.path.isfile(cast_path):
         cast = read_json(cast_path)
+        anim_type = cast.get("animType", anim_type)
         pairs = [(c["body"], c.get("head"), cast.get("weapon")) for c in cast.get("characters", [])]
     else:
         blocks = CHARACTER_BLOCK.finditer(read_text(path, "utf-8"))
@@ -248,183 +234,11 @@ def harvest_viewhands(worlds_root, collisions, dry_run=False):
     return entries
 
 
-def _node_index(gltf):
-    """name -> node index, for a rig whose joint names are unique (a skeleton's are)."""
-    return {n["name"]: i for i, n in enumerate(gltf.get("nodes") or []) if n.get("name")}
-
-
-def _parent_index(gltf):
-    """child index -> parent index, so a donated joint can be hung where it belongs."""
-    parents = {}
-    for i, node in enumerate(gltf.get("nodes") or []):
-        for child in node.get("children") or []:
-            parents[child] = i
-    return parents
-
-
-def _copy_accessor(src_gltf, src_buf, index, dst_gltf, dst_buf):
-    """One accessor and the bytes behind it into `dst`. Returns its new index."""
-    acc = dict(src_gltf["accessors"][index])
-    view = src_gltf["bufferViews"][acc["bufferView"]]
-    start = view.get("byteOffset", 0)
-    payload = src_buf[start : start + view["byteLength"]]
-    acc["bufferView"] = add_view(dst_buf, dst_gltf["bufferViews"], payload, view.get("target"))
-    dst_gltf["accessors"].append(acc)
-    return len(dst_gltf["accessors"]) - 1
-
-
-def merge_anim_rigs(base, donors):
-    """One clip file carrying every joint and every channel across `base` and `donors`.
-
-    No single world's copy can serve a game. Each was written as the union of *that
-    map's chosen bodies'* skeletons (`characters.write_anim_glb`), so a map with no
-    gas-masked body has neither the `j_gasmask_*` joints nor the channels that turn
-    them — and the richest file on disk is still missing joints that a clip
-    animates. Covering iw4's union takes three files and iw5's takes two.
-
-    Merging by joint *name* is safe for the same reason playing these clips on any
-    body is: a channel names a joint, and a body that lacks one ignores it. A
-    donated joint is hung under its own parent's name, and only channels for joints
-    the base did not have are copied — so a joint both files animate keeps the
-    base's samples and the two can never disagree.
-
-    `base` and each donor are (gltf, bin) as `read_glb` returns them.
-    """
-    gltf, buf = base
-    added_joints, added_channels = [], 0
-    for donor_gltf, donor_buf in donors:
-        have = _node_index(gltf)
-        donor_nodes = _node_index(donor_gltf)
-        donor_parents = _parent_index(donor_gltf)
-
-        # Shallowest first, so a joint's parent is already there when it arrives.
-        def depth(name, nodes=donor_nodes, parents=donor_parents):
-            d, i = 0, nodes[name]
-            while i in parents:
-                i, d = parents[i], d + 1
-            return d
-
-        # `(depth, name)`, not just depth: a set's iteration order is randomised
-        # per process, so ties would order donated joints — and the accessors and
-        # bytes behind them — differently on every run. A build artifact that is
-        # not byte-reproducible cannot be compared between two machines.
-        for name in sorted(set(donor_nodes) - set(have), key=lambda n: (depth(n), n)):
-            parent = donor_parents.get(donor_nodes[name])
-            parent_name = (donor_gltf["nodes"][parent] or {}).get("name") if parent is not None else None
-            if parent_name is None or parent_name not in have:
-                # Nothing to hang it from: a root the base does not share, which
-                # is not a joint of the same skeleton at all.
-                continue
-            src = donor_gltf["nodes"][donor_nodes[name]]
-            node = {k: v for k, v in src.items() if k in ("name", "translation", "rotation", "scale")}
-            gltf["nodes"].append(node)
-            index = len(gltf["nodes"]) - 1
-            gltf["nodes"][have[parent_name]].setdefault("children", []).append(index)
-            have[name] = index
-            added_joints.append(name)
-            # A joint of the rig, so it belongs to the skin the rig is posed through.
-            for skin in gltf.get("skins") or []:
-                if "joints" in skin:
-                    skin["joints"].append(index)
-
-        if not added_joints:
-            continue
-        # The channels that turn the joints just donated, clip by matching name.
-        by_name = {a.get("name"): a for a in gltf.get("animations") or []}
-        for donor_anim in donor_gltf.get("animations") or []:
-            mine = by_name.get(donor_anim.get("name"))
-            if mine is None:
-                continue
-            for channel in donor_anim.get("channels") or []:
-                target = (channel.get("target") or {}).get("node")
-                name = (donor_gltf["nodes"][target] or {}).get("name") if target is not None else None
-                if name not in added_joints:
-                    continue
-                sampler = donor_anim["samplers"][channel["sampler"]]
-                new = {
-                    "input": _copy_accessor(donor_gltf, donor_buf, sampler["input"], gltf, buf),
-                    "output": _copy_accessor(donor_gltf, donor_buf, sampler["output"], gltf, buf),
-                }
-                if "interpolation" in sampler:
-                    new["interpolation"] = sampler["interpolation"]
-                mine["samplers"].append(new)
-                mine["channels"].append(
-                    {"sampler": len(mine["samplers"]) - 1, "target": {"node": have[name], "path": channel["target"]["path"]}}
-                )
-                added_channels += 1
-    gltf["buffers"] = [{"byteLength": len(buf)}]
-    return added_joints, added_channels
-
-
-def harvest_animations(worlds_root, dry_run=False):
-    """One clip set per `(game, animType)`, merged from every world that has one.
-
-    The clips are a game's, not a map's: every world of one game carries the same
-    sixteen under the same names, and a clip binds to a skeleton by joint name at
-    run time. What differs between the 42 copies is only the skeleton each was
-    baked onto, because `write_anim_glb` unions *that map's chosen bodies'* joints.
-
-    So this merges rather than picks. Picking looks safe and is not: the richest
-    iw5 file still lacks three `j_gasmask_*` joints that a clip animates, and the
-    richest iw4 file lacks seven including `j_knee_bulge_*` — a body wearing those
-    would go silently limp. Covering the union takes 2 files for iw5, 3 for iw4, 1
-    for iw6.
-    """
-    candidates = {}  # (game, animType) -> [(joints, animated, path, world, spec)]
-    for world_dir, world, game in imported_worlds(worlds_root):
-        path = os.path.join(world_dir, "assets", CHARACTERS_DIR, ANIM_FILE)
-        if not os.path.isfile(path):
-            continue
-        spec, gltf = scene_extras(path, "characters")
-        anim_type = (spec or {}).get("animType") or "default"
-        candidates.setdefault((game, anim_type), []).append((_joint_names(gltf), _animated_joints(gltf), path, world, spec))
-
-    entries, problems = [], []
-    for (game, anim_type), found in sorted(candidates.items()):
-        union = set().union(*(joints for joints, _, _, _, _ in found))
-        # Richest first, then whichever donor adds the most of what is still
-        # missing — so the merge reads two or three files rather than all 25.
-        order = sorted(found, key=lambda c: len(c[0]), reverse=True)
-        base_joints, _, base_path, base_world, spec = order[0]
-        donors, have = [], set(base_joints)
-        for joints, _, path, world, _ in order[1:]:
-            if joints - have:
-                donors.append((path, world))
-                have |= joints
-
-        base = read_glb(base_path)
-        added, channels = merge_anim_rigs(base, [read_glb(p) for p, _ in donors])
-        if have != union or set(_joint_names(base[0])) != union:
-            missing = sorted(union - set(_joint_names(base[0])))
-            problems.append(f"{game}/{anim_type}: merged rig still lacks {len(missing)} joint(s): {', '.join(missing[:8])}")
-            continue
-
-        out = entry_dir(worlds_root, "animations", game, anim_type)
-        if not dry_run:
-            os.makedirs(out, exist_ok=True)
-            write_glb(os.path.join(out, ANIM_FILE), base[0], base[1])
-        entry = {
-            "id": anim_type,
-            "game": game,
-            "animType": anim_type,
-            "clips": ANIM_FILE,
-            "joints": len(union),
-            "aimJoint": AIM_JOINT,
-            "roles": (spec or {}).get("roles") or {},
-            "torsoRoles": (spec or {}).get("torsoRoles") or [],
-            "clipTable": (spec or {}).get("clips") or {},
-        }
-        _write_entry("animations", game, anim_type, entry, worlds_root, dry_run)
-        entries.append(entry)
-        donated = f", +{len(added)} joint(s) and {channels} channel(s) from {', '.join(w for _, w in donors)}" if donors else ""
-        print(f"      {game}/{anim_type}: {len(union)} joints from {base_world}{donated}")
-    return entries, problems
-
-
 # Props are not in the default set. They are 717 MB and 44 tracked `props.world`
 # files, so moving them is a deliberate act with a reviewable diff of its own, not
-# something a cast harvest does on the way past.
-HARVESTERS = ("characters", "viewhands", "animations")
+# something a cast harvest does on the way past. Nor are the clips a body plays:
+# they are a game's and no world's, and cast_clips.py builds them.
+HARVESTERS = ("characters", "viewhands")
 ALL_HARVESTERS = (*HARVESTERS, "props")
 
 
@@ -436,10 +250,6 @@ def harvest(worlds_root, kinds=HARVESTERS, dry_run=False, prune=False):
         by_kind["characters"] = harvest_characters(worlds_root, collisions, dry_run)
     if "viewhands" in kinds:
         by_kind["viewhands"] = harvest_viewhands(worlds_root, collisions, dry_run)
-    if "animations" in kinds:
-        entries, trouble = harvest_animations(worlds_root, dry_run)
-        by_kind["animations"] = entries
-        problems += trouble
     if "props" in kinds:
         counts, kept = harvest_props(worlds_root, dry_run)
         print(f"      props: {counts['entries']} entries, {counts['rewritten']} declaration(s) rewritten")
@@ -454,13 +264,15 @@ def harvest(worlds_root, kinds=HARVESTERS, dry_run=False, prune=False):
     return by_kind, problems
 
 
-def harvest_after_export(worlds_root):
-    """The cast harvest an export runs on its way out, and the index rebuilt after it.
+def harvest_after_export(worlds_root, work, game_key):
+    """The cast harvest an export runs on its way out, the clip set rebuilt over it, and the index after both.
 
-    Without the index the entries land on disk and neither end is served them.
-    Returns the harvest's problems.
+    The clips come out of the export's own dumps in `work`, over every body of
+    `game_key` the harvest has just left in the catalogue. Without the index the
+    entries land on disk and neither end is served them. Returns the problems.
     """
     _, problems = harvest(worlds_root)
+    problems += cast_clips.build(work, worlds_root, game_key)
     write_index(worlds_root, scan_entries(worlds_root))
     return problems
 

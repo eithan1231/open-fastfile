@@ -581,11 +581,73 @@ death.
 
 Bots and actors never set either level.
 
+### The body in a stance
+
+A body is posed from its stance by the same function on both ends
+(`poseLayers` in `sim/pose.ts`), so a peer is drawn crouched or lying and the
+hit boxes a shot is traced against are where that body is. Each stance has its
+own clips, named in one table (`STANCE_ROLES`, `sim/characterDef.ts`): an idle
+and an aiming idle, four directions of travel blended by `travelForward` and
+`travelRight` exactly as the run is, and its own fire and reload over the arms
+and chest. Only a standing body sprints or takes a landing's dip, and a lying
+one is never posed as jumping.
+
+**A change of stance is the eye's own timer.** While `eyeShift` runs, the two
+stances its path joins are crossfaded by how far along it is, and the path's own
+clip — `standToCrouch` and the other three, named as the paths are — is laid over
+the middle of the change, fading in and out over the first and last quarter. The
+clip is scrubbed by the path's progress, not played at its own length, so a
+rewind poses the moment it rewound to.
+
+**A clip set says which roles it has, and the pose names no other.** The set's
+role table travels in its GLB (`CharacterSet.roles`), `CharacterPoser` hands the
+roles it holds a clip for to `poseLayers`, and each gap has one answer:
+
+| The set lacks                | The pose uses                                            |
+| ---------------------------- | -------------------------------------------------------- |
+| a stance's idle              | the next stance up for all of that stance, standing last |
+| an aiming idle or aimed fire | the stance's own idle or hip fire                        |
+| one direction of travel      | the stance's forward clip, or its idle                   |
+| a path's clip                | the crossfade alone                                      |
+| a crouched fire or reload    | the standing one                                         |
+| a lying fire or reload       | nothing: an upright spine on a flat pelvis is not a pose |
+| `sprint`, `jump` or `land`   | the run, the ground pose, no dip                         |
+
+So a set with no stance clips at all poses a standing body in every stance, and
+no layer is ever one the presenter has no clip for — weight three would make up
+out of the bind pose.
+
+**Where a body is put is one function too** (`placeBody`, `rig/poser.ts`), which
+a client draws a peer with and a server places the body it traces a shot at
+with. A lying body faces `stance.heading`, not the view, and is tipped about its
+own right axis by `stance.torso`, taken up across `crouchToProne`; the aim joint
+turns by the pitch left over.
+
+**The stride clock runs at the stance's own pace** (`advanceStride`,
+`sim/gait.ts`): one loop takes 1.8 s at a run, 2.2 s at a crouched walk and 3.9 s
+at a crawl, each at that stance's top speed and scaled by the speed being made.
+The periods are constants, because a step reads no asset; a clip set whose loop
+covers a different distance slides by the difference.
+
+**The broad phase knows a lying body is long** (`couldHitBody`,
+`rig/hitboxes.ts`). Standing or crouched, a posed body is inside the walking
+capsule dropped and widened by `POSE_MARGIN`. Lying, or on either path to or
+from it, it is inside a ball of `PRONE_REACH` about the point the simulation
+moves — its feet are 1.7 m from there, which the capsule's margin does not
+reach. `game-server/tests/poseEnvelope.test.ts` measures both.
+
 Open:
 
-- **Nothing has been seen in game.**
-- **A peer's body does not crouch or lie down.** Its capsule is the stance's
-  hull; its rig, and the hit boxes posed from it, stand.
+- **Nothing has been seen in game.** The poses have been measured headless and
+  drawn as skeletons (`game-server/tests/stancePose.test.ts`), not looked at on a
+  body.
+- **Getting up turns a body at once.** The heading and the torso belong to the
+  lying stance, which is gone on the first step of `proneToCrouch`, so a body
+  whose view was turned from it faces the view from that step.
+- **A change of stance with no clip of its own crossfades two poses**, and half
+  way between standing and crouched a foot dips through the ground.
+- **A footstep is still two to a loop**, which is a run's count and not a
+  crouched walk's or a crawl's.
 - **The first-person weapon does not move with the stance.**
 - **Nothing tells a player that prone was refused.**
 

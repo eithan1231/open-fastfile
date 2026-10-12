@@ -1,23 +1,18 @@
 """Harvesting the cast out of the worlds and into the catalogue.
 
-The two things worth pinning are the ones that silently produce a plausible wrong
-result: pairing a body with the wrong head, and shipping one map's clip file as a
-game's when it is missing joints a clip animates.
+The thing worth pinning is the one that silently produces a plausible wrong
+result: pairing a body with the wrong head.
 """
 
 import json
 import re
 
-from scripts.cod.gltf import add_view, pack, read_glb, write_glb
 from scripts.cod.harvest import (
     CHARACTER_BLOCK,
     Collisions,
-    _animated_joints,
-    _joint_names,
     harvest_characters,
     harvest_props,
     harvest_viewhands,
-    merge_anim_rigs,
     prop_id,
     prune_props,
 )
@@ -111,12 +106,15 @@ def test_harvest_characters_reads_the_cast_an_export_writes(tmp_path):
             }
         ],
         "weapon": "assets/characters/weapon_m4.glb",
+        "animType": "default",
     }
     (d / "assets" / "characters" / "cast.json").write_text(json.dumps(cast))
     (entry,) = harvest_characters(str(tmp_path), Collisions())
     assert entry["head"] == "c_usa_cia_mp_head_4.glb"
     assert entry["side"] == "allies"
     assert entry["bakedWeapon"] == "weapon_m4"
+    # The clip set it plays is the cast's to name: an export writes no clip file to read it from.
+    assert entry["animType"] == "default"
 
 
 def test_harvest_viewhands_takes_black_ops_arms(tmp_path):
@@ -166,134 +164,6 @@ def test_collisions_says_nothing_when_the_bytes_agree(tmp_path):
     assert c.claim("props", "iw5", "x.glb", str(b), "second") is False
     # The overwhelmingly common case: 2254 of 2261 shared prop keys.
     assert c.clashes == []
-
-
-# --- The clip-file merge ------------------------------------------------------
-
-
-def rig(path, joints, clips):
-    """A minimal animations.glb: a joint chain under `tag_origin`, and clips over it.
-
-    `joints` is [(name, parent or None)]; `clips` is {clip: [joint...]} naming which
-    joints each clip turns.
-    """
-    extras = {"characters": {"animType": "autorifle"}}
-    gltf = {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0], "extras": extras}]}
-    nodes, index = [], {}
-    for name, parent in joints:
-        nodes.append({"name": name, "translation": [0.0, 0.0, 0.0]})
-        index[name] = len(nodes) - 1
-        if parent is not None:
-            nodes[index[parent]].setdefault("children", []).append(index[name])
-    gltf["nodes"] = nodes
-    gltf["skins"] = [{"joints": list(range(len(nodes)))}]
-    buf, views, accessors, animations = bytearray(), [], [], []
-    for clip, turned in clips.items():
-        channels, samplers = [], []
-        for joint in turned:
-            t = add_view(buf, views, pack("f", [0.0, 1.0]))
-            accessors.append({"bufferView": t, "componentType": 5126, "count": 2, "type": "SCALAR", "min": [0.0], "max": [1.0]})
-            v = add_view(buf, views, pack("f", [0.0] * 8))
-            accessors.append({"bufferView": v, "componentType": 5126, "count": 2, "type": "VEC4"})
-            samplers.append({"input": len(accessors) - 2, "output": len(accessors) - 1, "interpolation": "LINEAR"})
-            channels.append({"sampler": len(samplers) - 1, "target": {"node": index[joint], "path": "rotation"}})
-        animations.append({"name": clip, "channels": channels, "samplers": samplers})
-    gltf["bufferViews"], gltf["accessors"], gltf["animations"] = views, accessors, animations
-    gltf["buffers"] = [{"byteLength": len(buf)}]
-    write_glb(str(path), gltf, buf)
-    return str(path)
-
-
-CHAIN = [("tag_origin", None), ("j_spine", "tag_origin"), ("j_head", "j_spine")]
-
-
-def test_merge_adds_a_joint_the_base_lacks_and_the_channel_that_turns_it(tmp_path):
-    # The real case: one map's bodies wear a gas mask and another's do not, so
-    # only one map's clip file has the joints *or* the channels for them.
-    base = read_glb(rig(tmp_path / "base.glb", CHAIN, {"pb_stand_alert": ["j_spine"]}))
-    donor = read_glb(rig(tmp_path / "donor.glb", [*CHAIN, ("j_gasmask", "j_head")], {"pb_stand_alert": ["j_spine", "j_gasmask"]}))
-    added, channels = merge_anim_rigs(base, [donor])
-    assert added == ["j_gasmask"]
-    assert channels == 1
-    gltf, buf = base
-    assert "j_gasmask" in _joint_names(gltf)
-    assert "j_gasmask" in _animated_joints(gltf)
-    # Hung under its own parent, not at the root.
-    head = next(i for i, n in enumerate(gltf["nodes"]) if n["name"] == "j_head")
-    mask = next(i for i, n in enumerate(gltf["nodes"]) if n["name"] == "j_gasmask")
-    assert mask in gltf["nodes"][head]["children"]
-    # And it is a joint of the rig, so the skin poses it.
-    assert mask in gltf["skins"][0]["joints"]
-    assert gltf["buffers"][0]["byteLength"] == len(buf)
-
-
-def test_merge_leaves_a_joint_both_files_animate_on_the_base(tmp_path):
-    # A joint the base already has keeps the base's samples, so two files can
-    # never disagree about it.
-    base = read_glb(rig(tmp_path / "base.glb", CHAIN, {"pb_stand_alert": ["j_spine"]}))
-    donor = read_glb(rig(tmp_path / "donor.glb", CHAIN, {"pb_stand_alert": ["j_spine", "j_head"]}))
-    before = len(base[0]["animations"][0]["channels"])
-    added, channels = merge_anim_rigs(base, [donor])
-    assert added == [] and channels == 0
-    assert len(base[0]["animations"][0]["channels"]) == before
-
-
-def test_merge_writes_a_glb_that_reads_back(tmp_path):
-    base = read_glb(rig(tmp_path / "base.glb", CHAIN, {"pb_stand_alert": ["j_spine"]}))
-    donor = read_glb(rig(tmp_path / "donor.glb", [*CHAIN, ("j_tail", "j_head")], {"pb_stand_alert": ["j_tail"]}))
-    merge_anim_rigs(base, [donor])
-    out = tmp_path / "merged.glb"
-    write_glb(str(out), base[0], base[1])
-    gltf, buf = read_glb(str(out))
-    # Every reference still in range after the round trip.
-    for a in gltf["accessors"]:
-        view = gltf["bufferViews"][a["bufferView"]]
-        assert view.get("byteOffset", 0) + view["byteLength"] <= len(buf)
-    for anim in gltf["animations"]:
-        for c in anim["channels"]:
-            assert c["target"]["node"] < len(gltf["nodes"])
-            assert anim["samplers"][c["sampler"]]["output"] < len(gltf["accessors"])
-
-
-def test_merge_ignores_a_donor_joint_whose_parent_is_not_shared(tmp_path):
-    # Not a joint of the same skeleton at all: there is nothing to hang it from.
-    base = read_glb(rig(tmp_path / "base.glb", CHAIN, {"pb_stand_alert": ["j_spine"]}))
-    orphan = [("other_root", None), ("j_thing", "other_root")]
-    donor = read_glb(rig(tmp_path / "donor.glb", orphan, {"pb_stand_alert": ["j_thing"]}))
-    added, channels = merge_anim_rigs(base, [donor])
-    assert added == [] and channels == 0
-
-
-def test_merge_skips_a_clip_the_base_does_not_have(tmp_path):
-    base = read_glb(rig(tmp_path / "base.glb", CHAIN, {"pb_stand_alert": ["j_spine"]}))
-    donor = read_glb(rig(tmp_path / "donor.glb", [*CHAIN, ("j_new", "j_head")], {"pb_other": ["j_new"]}))
-    added, channels = merge_anim_rigs(base, [donor])
-    # The joint arrives; the clip the base never had does not.
-    assert added == ["j_new"] and channels == 0
-    assert [a["name"] for a in base[0]["animations"]] == ["pb_stand_alert"]
-
-
-def test_merge_is_byte_reproducible(tmp_path):
-    """Two runs must produce the same bytes, or two machines hold different catalogues.
-
-    A set's iteration order is randomised per process, so the donated joints — and
-    the accessors and buffer bytes behind them — have to be ordered by something
-    stable rather than by whatever the set yields.
-    """
-    donor_joints = [*CHAIN, ("j_b", "j_head"), ("j_a", "j_head"), ("j_c", "j_spine")]
-    out = []
-    for run in range(2):
-        base = read_glb(rig(tmp_path / f"base{run}.glb", CHAIN, {"pb_stand_alert": ["j_spine"]}))
-        donor = read_glb(rig(tmp_path / f"donor{run}.glb", donor_joints, {"pb_stand_alert": ["j_a", "j_b", "j_c"]}))
-        merge_anim_rigs(base, [donor])
-        path = tmp_path / f"merged{run}.glb"
-        write_glb(str(path), base[0], base[1])
-        out.append(path.read_bytes())
-    assert out[0] == out[1]
-    # And the order is the documented one: shallowest first, then by name.
-    gltf, _ = read_glb(str(tmp_path / "merged0.glb"))
-    added = [n["name"] for n in gltf["nodes"]][len(CHAIN) :]
-    assert added == ["j_c", "j_a", "j_b"]
 
 
 # --- Props --------------------------------------------------------------------

@@ -5,10 +5,10 @@ import type { PlayerId } from "@3d/shared/net/messages/fields.js";
 import type { InputMessage } from "@3d/shared/net/messages/input.js";
 import type { ActorId } from "@3d/shared/game/actors/actor.js";
 import { shotDamage, type CombatRules } from "@3d/shared/game/rules.js";
-import { couldHit, POSE_MARGIN } from "@3d/shared/rig/hitboxes.js";
+import { couldHitBody } from "@3d/shared/rig/hitboxes.js";
 import type { CapsuleWorld, RayHit, Vec3 } from "@3d/shared/sim/capsule.js";
 import type { HitLocation } from "@3d/shared/sim/hitLocations.js";
-import { createMovement, RADIUS, STAND_HEIGHT, type MovementState } from "@3d/shared/sim/movement.js";
+import { createMovement, type MovementState } from "@3d/shared/sim/movement.js";
 import { eyeHeight } from "@3d/shared/sim/stance.js";
 import { aimAngles, aimDirection, coneSample, shotSpread, shotStream, spreadDirection, type Aim, type ReadKick } from "@3d/shared/sim/recoil.js";
 import { DEFAULT_SURFACE } from "@3d/shared/sim/surfaces.js";
@@ -247,14 +247,10 @@ export class Shots {
         continue;
       }
 
-      // The broad phase, against the capsule rather than a pose — posing is the
-      // expensive half and almost nobody survives this. The capsule is dropped as
-      // well as widened by `POSE_MARGIN`: a vaulting body hangs its legs below the
-      // feet the simulation moves, and the boxes there are hittable. A standing
-      // capsule whatever their stance: it bounds the pose, and the pose stands.
-      const feet = rewound.feet;
-      const envelope = { x: feet.x, y: feet.y - POSE_MARGIN, z: feet.z };
-      if (couldHit(from, to, envelope, RADIUS, STAND_HEIGHT + POSE_MARGIN, POSE_MARGIN) === null) {
+      // The broad phase, against where a pose can reach rather than a pose — posing
+      // is the expensive half and almost nobody survives this. The stance decides
+      // the reach: a lying body is not inside the capsule that walks.
+      if (couldHitBody(from, to, rewound) === null) {
         continue;
       }
 

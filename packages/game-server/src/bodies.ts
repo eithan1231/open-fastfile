@@ -19,15 +19,14 @@ import type { GameKey } from "@3d/shared/dsl/resolved.js";
 import { castFor, type CastCharacter, type CatalogRef } from "@3d/shared/game/cast.js";
 import { defaultGametype } from "@3d/shared/game/gametypes/default.js";
 import { castFilePath } from "@3d/shared/protocol/routes/catalog.js";
-import { buildCharacterRig, MODEL_FACING, readCharacterSet, type CharacterRig, type CharacterSet, type GltfAsset } from "@3d/shared/rig/character.js";
+import { buildCharacterRig, readCharacterSet, type CharacterRig, type CharacterSet, type GltfAsset } from "@3d/shared/rig/character.js";
 import { BoundHitboxes, readHitboxes, type Hitbox } from "@3d/shared/rig/hitboxes.js";
-import { CharacterPoser } from "@3d/shared/rig/poser.js";
+import { CharacterPoser, placeBody } from "@3d/shared/rig/poser.js";
 import { ActorPoser } from "@3d/shared/rig/actorPoser.js";
 import { buildActorRig } from "@3d/shared/rig/actorRig.js";
 import { actorAssetsFor } from "@3d/shared/game/actors/assets.js";
 import { ACTOR_KINDS, type ActorKindDef, type ActorKindId } from "@3d/shared/game/actors/kinds.js";
 import type { MovementState } from "@3d/shared/sim/movement.js";
-import { bodyYaw } from "@3d/shared/sim/pose.js";
 import type { WeaponData } from "@3d/shared/sim/weapon.js";
 import { Api } from "./api.js";
 import { Weapons } from "./weapons.js";
@@ -83,8 +82,7 @@ export interface LoadedBody {
  */
 export function poseBody(body: LoadedBody, movement: MovementState, weapon: WeaponData | null): void {
   const root = body.rig.root;
-  root.position.set(movement.feet.x, movement.feet.y, movement.feet.z);
-  root.rotation.y = bodyYaw(movement) + MODEL_FACING;
+  placeBody(root, movement);
   // `dt` is spent on the mixer's own bookkeeping and nothing else: the pose is a
   // function of the state, which is what lets one rig be posed per shot.
   body.poser.update(movement, weapon, 0);

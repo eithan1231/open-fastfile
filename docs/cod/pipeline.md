@@ -14,7 +14,7 @@ against silent failures print there too.
 | 6. Collision          | `collision.py`, `mantle.py`, `ladder.py`, `triggers.py`                                                                       | clipmap manifest + soup blobs, entity lump                                  | `assets/collision.glb`, `mantle.world`, `ladder.world`, `volumes.world`         |
 | 7. Prop placements    | `props.py`                                                                                                                    | stage 5 + XModel JSON + clipmap                                             | `props.world`                                                                   |
 | 8. Viewmodel          | `viewmodel.py`                                                                                                                | the weapon files and the view-hands GLBs                                    | `assets/viewmodel/*.glb` (hands), harvested into `catalog/viewhands/`           |
-| 9. Characters         | `characters.py`, `animations.py`                                                                                              | the map's MP bodies and heads, the weapon's world model, the player clips   | `assets/characters/*.glb`, harvested into `catalog/characters/`                 |
+| 9. Characters         | `characters.py`, `animations.py`                                                                                              | the map's MP bodies and heads, the weapon's world model                     | `assets/characters/*.glb`, harvested into `catalog/characters/`                 |
 | 10. Loadscreen        | `textures.py`                                                                                                                 | the `.iwd` archives, `<map>_load.ff`, or a backend's `loadscreen_zones`     | `assets/loadscreen.jpg`                                                         |
 | 11. Minimap, metadata | `textures.py`, `metadata.py`, `worldfile.py`, `nav/`                                                                          | `.iwd` or the image dump, entity lump, rawfiles, zone list, `<map>_path.ff` | `assets/minimap.png`, `export_metadata.json`, `minimap.world`, `gameplay.world` |
 | 12. Effects           | `fx.py`, `worldfile.py`                                                                                                       | `fx` + material dumps, stage 11's createfx placements                       | `assets/fx/`, `fx.world`                                                        |
@@ -508,22 +508,17 @@ builds its cast straight into the catalogue from the game's own costume tables
 [reverse/s1-zone/README.md](../../reverse/s1-zone/README.md#the-characters)).
 
 What the stage decided is written to `assets/characters/cast.json` — each body, its
-head and its side, and the gun grafted into them — because `harvest` cannot recover
-the pairing from filenames.
+head and its side, the gun grafted into them and the anim type of the clip set
+they play — because `harvest` cannot recover the pairing from filenames.
 
 A zone whose bodies name no faction — every Ghosts map, which ships one side's —
 gets one character per body instead, named for the body. Nothing invents a second
 side out of a camo variant: each catalogue entry records the `side` the game put
 that body on, so two teams that are one faction say so.
 
-The clips are not the map's: every player clip lives in `common_mp.ff` and serves
-every character in the game, so they are written once into
-`assets/characters/animations.glb` — a skeleton with no meshes — along with the
-table of which clip plays which role. What each clip is _called_ is per game
-(`CLIP_ROLES_BY_GAME`), since Ghosts shares almost no name with the two Modern
-Warfares. `harvest` then merges those clip files into **one per game**, because no
-single map's copy holds every joint a clip animates. The data:
-[reference.md](reference.md#characters).
+The clips are not the map's, and the stage writes none: every player clip lives
+in `common_mp.ff` and serves every character in the game. They are built once a
+game, straight into the catalogue ([the player clip set](#the-player-clip-set)).
 
 `--characters-only` runs stages 8 and 9 from the dumps they need. Both, because
 a character holds the weapon the viewmodel stage picks; only the flag's own
@@ -711,6 +706,65 @@ catalog/index.json                       the kinds something has to enumerate
 `kind` and `game` are path segments rather than parts of an id, so `m4` can exist
 in both iw4 and iw5 without colliding and a whole branch is a prefix — which is
 what let characters and props move in here without a route each.
+
+### The player clip set
+
+`catalog/animations/<game>/<animType>/animations.glb` is the one clip set every
+body of a game plays: a skeleton with no meshes — the union of the joints of
+every body `catalog/characters/<game>/` holds, because a clip has to be able to
+turn any of them — carrying the clips and, in its scene extras, the table of
+which clip plays which role. `scripts/cod/cast_clips.py` builds it from a
+companion-zone dump and from nothing else, in three places:
+
+- `catalog --dump <game>` (or `--work <dir>`), after the weapons;
+- an `export`, after its harvest, from the export's own dumps — a new body's
+  joints join the set there;
+- `catalog --clips-only --work .cache/cod/catalog-<game> --game <key>`, which
+  rebuilds the set and the index from a dump already made and touches nothing
+  else. With `--dump <game>` it dumps the companion zones first.
+
+`harvest` does not carry clips: a world ships none.
+
+What each clip is _called_ is per game (`characters.CLIP_ROLES_BY_GAME`), and a
+role whose clip the zone lacks is left out of the table, which is how the engine
+knows to fall back ([player.md](../engine/player.md#the-body-in-a-stance)). The
+standing roles are in [reference.md](reference.md#characters); crouched and prone:
+
+| Role                             | MW2, MW3, Black Ops                                               | Ghosts, AW                                       |
+| -------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
+| `crouchIdle`, `crouchIdleAds`    | `pb_crouch_alert`, `pb_crouch_ads`                                | `mp_crouch_idle`, `mp_crouch_idle_ads`           |
+| `crouchForward/Back/Left/Right`  | `pb_crouch_run_{forward,back,left,right}`                         | `mp_crouch_{f,b,l,r}`                            |
+| `proneIdle`, `proneIdleAds`      | `pb_prone_aim`; `pb_prone_aim_ads` (Black Ops)                    | `mp_prone_idle_iw6`; none                        |
+| `proneForward/Back/Left/Right`   | `pb_prone_crawl{,_back,_left,_right}`                             | the same clips                                   |
+| `standToCrouch`, `crouchToStand` | `pb_rifle_stand2crouch`, `pb_rifle_crouch2stand` (Black Ops only) | `mp_stand_2_crouch`, `mp_crouch_2_stand`         |
+| `crouchToProne`, `proneToCrouch` | `pb_crouch2prone`, `pb_prone2crouch`                              | `mp_crouch_2_prone`, `mp_prone_2_crouch`         |
+| `crouchFire`, `crouchFireAds`    | `pt_crouch_shoot_auto`, `pt_crouch_shoot_auto_ads`                | `pt_crouch_shoot_auto`, `pt_crouch_shoot_ads`    |
+| `crouchReload`                   | `pt_reload_crouch_rifle`                                          | `mp_crouch_reload`                               |
+| `proneFire`, `proneFireAds`      | `pt_prone_shoot_auto`; `pt_prone_ads_shoot_auto` (Black Ops)      | `pt_prone_shoot_auto`; none                      |
+| `proneReload`                    | `pt_reload_prone_auto`                                            | `mp_prone_reload_iw6`, which keys the whole body |
+
+So a Modern Warfare set has 34 roles, Ghosts' and AW's 36 and Black Ops' all 38.
+Black Ops II plays Black Ops' set. Where each was found, and what else the zones
+ship: [reverse/cod-stance-anims](../../reverse/cod-stance-anims/README.md).
+
+**An idle is written as its first frame** (`characters.HELD_ROLES`). The engine
+holds a body at rest at phase 0 — a pose is a function of the state and of no
+clock — so the 8 to 20 seconds of fidgets after that frame would be bytes nothing
+reads.
+
+**A loop's stride is the game's own, and the engine's is one number a stance.**
+The engine turns a crouched loop once every 6.9 m and a crawl once every 2.8 m
+(`sim/gait.ts`). The forward loops' own root travel:
+
+|                 | MW2, MW3 | Black Ops | Ghosts  | AW     |
+| --------------- | -------- | --------- | ------- | ------ |
+| `crouchForward` | 6.89 m   | 6.89 m    | 10.03 m | 8.14 m |
+| `proneForward`  | 2.83 m   | 2.40 m    | 2.91 m  | 2.91 m |
+
+so a Ghosts body's feet turn 45% too fast for the ground under a crouched walk,
+an AW body's 18%, and a Black Ops body crawls 14% slow. The other three
+directions are different lengths again in every game, and share the forward
+clip's clock.
 
 **Only some kinds are in the index.** A kind is listed when something has to
 enumerate it — weapons for Create-a-Class, bodies and hands for a gametype

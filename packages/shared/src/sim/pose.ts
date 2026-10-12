@@ -25,9 +25,10 @@
 // not know how long anything is. The caller multiplies by the duration it holds —
 // which is the same number on both ends, since both read it from the catalogue.
 
-import { AIM_LIMIT, RUN_DIRECTIONS, type CharacterRole } from "./characterDef.js";
+import { AIM_LIMIT, STANCE_ROLES, type CharacterRole, type StanceRoles } from "./characterDef.js";
 import { mantleDuration } from "./moves/mantle.js";
-import { LAND_WINDOW, type MovementState } from "./movement.js";
+import { LAND_WINDOW, type MovementState, type StanceKind } from "./movement.js";
+import { eyePathEnds, eyePathSeconds } from "./stance.js";
 import { UNIT } from "./units.js";
 import type { WeaponData } from "./weapon.js";
 
@@ -70,15 +71,42 @@ export interface PoseLayers {
    * blended by how far into the sights the weapon is.
    */
   torso: PoseLayer[];
-  /** Which way the body faces, radians. Not the view: a ladder turns the body to face it. */
+  /** Which way the body faces, radians. Not the view: a ladder turns the body to face it, and a lying one has a heading. */
   yaw: number;
-  /** How far the aim joint turns, radians, already clamped to what a spine can do. */
+  /** How far the whole body is tipped about its own right axis, radians, head up positive: a lying body's slope. */
+  pitch: number;
+  /** How far the aim joint turns, radians, already clamped to what a spine can do. Measured from `pitch`. */
   aim: number;
 }
 
-/** Which way a body faces: the view, except on a ladder, where it faces the ladder (IW5's `PM_LadderMove`). */
-export function bodyYaw(state: Pick<MovementState, "yaw" | "move">): number {
-  return state.move.kind === "ladder" ? state.move.facing + Math.PI : state.yaw;
+/**
+ * The roles a clip set has a clip for, which is all a pose may name: a layer the
+ * presenter has no clip for is weight three makes up out of the bind pose. A set
+ * says which itself (`CharacterSet.roles`), so both ends hold the same answer.
+ */
+export type RoleSet = ReadonlySet<CharacterRole>;
+
+/**
+ * Which way a body faces: the view, except on a ladder, where it faces the ladder
+ * (IW5's `PM_LadderMove`), and lying down, where it lies along its own heading.
+ */
+export function bodyYaw(state: Pick<MovementState, "yaw" | "move" | "stance">): number {
+  if (state.move.kind === "ladder") {
+    return state.move.facing + Math.PI;
+  }
+  return state.stance.kind === "prone" ? state.stance.heading : state.yaw;
+}
+
+/**
+ * How far a body is tipped, head up positive: a lying body's torso, taken up as
+ * it goes down. Getting up has none — the stance that held it is already gone.
+ */
+export function bodyPitch(state: Pick<MovementState, "stance" | "eyeShift">): number {
+  if (state.stance.kind !== "prone") {
+    return 0;
+  }
+  const shift = state.eyeShift;
+  return state.stance.torso * (shift?.path === "crouchToProne" ? ease(shift.elapsed / eyePathSeconds(shift.path)) : 1);
 }
 
 /**
@@ -111,13 +139,58 @@ export function bodyYaw(state: Pick<MovementState, "yaw" | "move">): number {
  * `airborne` beside it for the same reason. Two bytes, and the pose stays exact on
  * both ends.
  */
-export function poseLayers(movement: MovementState, weapon: WeaponData | null): PoseLayers {
+export function poseLayers(movement: MovementState, weapon: WeaponData | null, roles: RoleSet): PoseLayers {
+  const stances = stanceShares(movement, roles);
+  const pitch = bodyPitch(movement);
   return {
-    legs: fold(legLayers(movement, weapon)),
-    torso: torsoLayers(weapon),
+    legs: fold(legLayers(movement, weapon, stances, roles)),
+    torso: fold(torsoLayers(weapon, stances, roles)),
     yaw: bodyYaw(movement),
-    aim: Math.max(-AIM_LIMIT, Math.min(AIM_LIMIT, movement.pitch)),
+    pitch,
+    aim: Math.max(-AIM_LIMIT, Math.min(AIM_LIMIT, movement.pitch - pitch)),
   };
+}
+
+/** The share of a change of stance its own clip fades in over, and out over, where a set has one. */
+const STANCE_CLIP_FADE = 0.25;
+
+/** How much of each stance a body is in, and the clip of the change between two of them, if it is shown. */
+interface Stances {
+  shares: { kind: StanceKind; weight: number }[];
+  via: PoseLayer | null;
+}
+
+/** The stance a set can pose `kind` as: itself where the set has its rest clip, else the next one up. */
+function posed(kind: StanceKind, roles: RoleSet): StanceKind {
+  const lowest = kind === "prone" && !roles.has(STANCE_ROLES.prone.idle) ? "crouch" : kind;
+  return lowest === "crouch" && !roles.has(STANCE_ROLES.crouch.idle) ? "stand" : lowest;
+}
+
+/**
+ * The stances a body is between, by how far along the eye's path it is: the
+ * simulation's own timer, so a rewind poses the change it rewound to. The two
+ * are crossfaded, and the path's own clip is laid over the middle of it — faded
+ * at both ends, because a body arrives moving and the clip starts standing still.
+ */
+function stanceShares(movement: MovementState, roles: RoleSet): Stances {
+  const shift = movement.eyeShift;
+  if (shift === null) {
+    return { shares: [{ kind: posed(movement.stance.kind, roles), weight: 1 }], via: null };
+  }
+  const ends = eyePathEnds(shift.path);
+  const from = posed(ends.from, roles);
+  const to = posed(ends.to, roles);
+  if (from === to) {
+    return { shares: [{ kind: to, weight: 1 }], via: null };
+  }
+  const t = clamp01(shift.elapsed / eyePathSeconds(shift.path));
+  const k = ease(t);
+  const shares = [
+    { kind: from, weight: 1 - k },
+    { kind: to, weight: k },
+  ];
+  const share = roles.has(shift.path) ? ease(Math.min(t, 1 - t) / STANCE_CLIP_FADE) : 0;
+  return { shares, via: share > 0 ? { role: shift.path, weight: share, phase: t } : null };
 }
 
 /**
@@ -179,7 +252,7 @@ function weigh(layers: readonly PoseLayer[], by: number): PoseLayer[] {
   return by <= 0 ? [] : layers.map((l) => ({ ...l, weight: l.weight * by })).filter((l) => l.weight > 0);
 }
 
-function legLayers(movement: MovementState, weapon: WeaponData | null): PoseLayer[] {
+function legLayers(movement: MovementState, weapon: WeaponData | null, stances: Stances, roles: RoleSet): PoseLayer[] {
   // A climb first, and to the exclusion of everything else: the player is on rails
   // for its duration, so none of the ground or air states apply.
   const move = movement.move;
@@ -204,25 +277,40 @@ function legLayers(movement: MovementState, weapon: WeaponData | null): PoseLaye
     return [{ role: up ? "climbUp" : "climbDown", weight: 1, phase: up ? phase : 1 - phase }];
   }
 
+  const layers: PoseLayer[] = [];
+  for (const { kind, weight } of stances.shares) {
+    layers.push(...weigh(stanceLegs(kind, movement, weapon, roles), weight));
+  }
+  return stances.via ? [...weigh(layers, 1 - stances.via.weight), stances.via] : layers;
+}
+
+/** What the legs do in one stance, in the air or on the ground. Sums to 1. */
+function stanceLegs(kind: StanceKind, movement: MovementState, weapon: WeaponData | null, roles: RoleSet): PoseLayer[] {
+  const ground = groundLayers(kind, movement, weapon, roles);
+  // A lying body falls as it lies: the jump clip is a body on its feet.
+  if (kind === "prone" || !roles.has("jump")) {
+    return ground;
+  }
   // Off the ground and on it, blended rather than switched: `airborne` is a smoothed
   // `grounded`, so walking off a ledge and landing both crossfade. `sinceJump` stops
   // counting at JUMP_REPEAT, which is longer than the clip, so a long fall holds the
   // jump's last frame — which is what a clip that plays once does anyway.
   const air = ease(movement.airborne);
   const layers = weigh([{ role: "jump", weight: 1, phase: clamp01(movement.sinceJump) }], air);
-  return [...layers, ...weigh(groundLayers(movement, weapon), 1 - air)];
+  return [...layers, ...weigh(ground, 1 - air)];
 }
 
-/** What the legs do while there is ground under them. Sums to 1. */
-function groundLayers(movement: MovementState, weapon: WeaponData | null): PoseLayer[] {
+/** What the legs do in one stance while there is ground under them. Sums to 1. */
+function groundLayers(kind: StanceKind, movement: MovementState, weapon: WeaponData | null, roles: RoleSet): PoseLayer[] {
+  const clips = STANCE_ROLES[kind];
   const moving = ease(movement.gait);
-  const out = [...weigh(standing(weapon), 1 - moving), ...weigh(gait(movement, weapon), moving)];
+  const out = [...weigh(rest(clips, weapon, roles), 1 - moving), ...weigh(gait(kind, clips, movement, weapon, roles), moving)];
 
   // The landing is an overlay over whatever is underneath: a player who lands
   // mid-sprint keeps running, with a dip in it. Timed by the simulation's own
-  // landing rather than the clip's length, because that timer is in the state:
-  // the dip is the first LAND_DIP of it.
-  const share = ease(clamp01((movement.landing - (LAND_WINDOW - LAND_DIP)) / LAND_DIP));
+  // landing, the first LAND_DIP of it. On a standing body only: the clip is one,
+  // and lying down starts the same timer for its grip.
+  const share = kind === "stand" && roles.has("land") ? ease(clamp01((movement.landing - (LAND_WINDOW - LAND_DIP)) / LAND_DIP)) : 0;
   if (share <= 0) {
     return out;
   }
@@ -230,34 +318,31 @@ function groundLayers(movement: MovementState, weapon: WeaponData | null): PoseL
 }
 
 /**
- * Standing still: the idle clip, or the aiming one, blended by how far into the
- * sights the weapon is.
- *
- * `weapon.ads` is a 0..1 ramp over the weapon's own `adsInTime` — a real quarter of
- * a second of transition that a `> 0.5` threshold was throwing away to pick one clip
- * or the other.
+ * At rest in a stance: its idle clip, or its aiming one where the set has it,
+ * blended by how far into the sights the weapon is — `weapon.ads` is a 0..1 ramp
+ * over the weapon's own `adsInTime`.
  */
-function standing(weapon: WeaponData | null): PoseLayer[] {
-  const aim = ease(weapon?.ads ?? 0);
+function rest(clips: StanceRoles, weapon: WeaponData | null, roles: RoleSet): PoseLayer[] {
+  const aim = roles.has(clips.idleAds) ? ease(weapon?.ads ?? 0) : 0;
   const layers: PoseLayer[] = [
-    { role: "idle", weight: 1 - aim, phase: 0 },
-    { role: "idleAds", weight: aim, phase: 0 },
+    { role: clips.idle, weight: 1 - aim, phase: 0 },
+    { role: clips.idleAds, weight: aim, phase: 0 },
   ];
   return layers.filter((l) => l.weight > 0);
 }
 
 /**
- * Moving: the sprint clip and the four-way run blend, both placed by the stride
- * clock and blended into each other.
+ * Moving in a stance: its four-way blend and, standing, the sprint clip blended
+ * into it, all placed by the stride clock.
  *
  * The sprint's share comes from the weapon's own timed states — `sprintIn` ramps it
  * up and `sprintOut` ramps it down, which is exactly as long as the weapon takes to
- * come down and go back up. Nothing new on the wire for it.
+ * come down and go back up.
  */
-function gait(movement: MovementState, weapon: WeaponData | null): PoseLayer[] {
-  const sprint = ease(sprintShare(weapon));
+function gait(kind: StanceKind, clips: StanceRoles, movement: MovementState, weapon: WeaponData | null, roles: RoleSet): PoseLayer[] {
+  const sprint = kind === "stand" && roles.has("sprint") ? ease(sprintShare(weapon)) : 0;
   const out = weigh([{ role: "sprint", weight: 1, phase: movement.stride }], sprint);
-  return [...out, ...weigh(runBlend(movement), 1 - sprint)];
+  return [...out, ...weigh(directionBlend(clips, movement, roles), 1 - sprint)];
 }
 
 /** How much of the sprint clip is showing, from the weapon's own sprint states. */
@@ -275,7 +360,7 @@ function sprintShare(weapon: WeaponData | null): number {
 }
 
 /**
- * The four-way run blend. Sums to 1.
+ * A stance's four-way blend: its run, its crouched walk or its crawl. Sums to 1.
  *
  * **Read off `travelForward`/`travelRight`, not off the velocity.** Those are the
  * same direction, smoothed in the state — and the smoothing is the whole point: a
@@ -287,24 +372,27 @@ function sprintShare(weapon: WeaponData | null): number {
  * The pair walks towards the origin and out the other side, so its *length* falls to
  * nothing through a reversal, and that length is what the run clips are weighted by
  * here: the direction is at its most meaningless exactly where the legs stop
- * listening to it. Whatever is left over is the standing clip, which is what a body
- * settling out of a run is on its way to anyway (`fold` merges it with the one
- * `standing` is playing).
+ * listening to it. Whatever is left over is the stance's idle clip, which is what a
+ * body settling out of a run is on its way to anyway (`fold` merges it with the one
+ * `rest` is playing).
  */
-function runBlend(movement: MovementState): PoseLayer[] {
+function directionBlend(clips: StanceRoles, movement: MovementState, roles: RoleSet): PoseLayer[] {
   const forward = movement.travelForward;
   const right = movement.travelRight;
+  // A direction the set has no clip for is walked as the forward one, or stood through.
+  const ahead = clips.directions[0]![0];
+  const spare = roles.has(ahead) ? ahead : clips.idle;
 
   // Each clip takes the share of the direction it points along, so the two that
   // bracket it hold all the weight and the two behind it hold none. One stride
-  // clock for all four: they are 1.1 to 1.9 s long, and playing each at its own
+  // clock for all four: they are different lengths, and playing each at its own
   // rate would let a strafe's feet slide against a run's.
   const shares: [CharacterRole, number][] = [];
   let total = 0;
-  for (const [role, dr, df] of RUN_DIRECTIONS) {
+  for (const [role, dr, df] of clips.directions) {
     const share = Math.max(0, right * dr + forward * df);
     if (share > 0) {
-      shares.push([role, share]);
+      shares.push([roles.has(role) ? role : spare, share]);
       total += share;
     }
   }
@@ -314,7 +402,7 @@ function runBlend(movement: MovementState): PoseLayer[] {
   const running = Math.min(1, total);
   const layers: PoseLayer[] = shares.map(([role, share]) => ({ role, weight: (share / total) * running, phase: movement.stride }));
   if (running < 1) {
-    layers.push({ role: "idle", weight: 1 - running, phase: 0 });
+    layers.push({ role: clips.idle, weight: 1 - running, phase: 0 });
   }
   return layers;
 }
@@ -333,8 +421,12 @@ function runBlend(movement: MovementState): PoseLayer[] {
  * reload clip and its legs from the run. `weight` is that replacement's share,
  * which `rig/poser.ts` turns into a mixer weight; see the note there.
  */
-function torsoLayers(weapon: WeaponData | null): PoseLayer[] {
+function torsoLayers(weapon: WeaponData | null, stances: Stances, roles: RoleSet): PoseLayer[] {
   if (!weapon) {
+    return [];
+  }
+  const reloading = weapon.state === "reloading" || weapon.state === "reloadStart" || weapon.state === "reloadEnd";
+  if (!reloading && weapon.state !== "firing") {
     return [];
   }
   const phase = statePhase(weapon);
@@ -342,23 +434,42 @@ function torsoLayers(weapon: WeaponData | null): PoseLayer[] {
   // leaves rather than appearing. From the state's own phase, so it is as long as the
   // state is: a 0.1 s shot fades over 8 ms and a 2 s reload over 160.
   const share = ease(Math.min(phase / TORSO_FADE, (1 - phase) / TORSO_FADE));
-  if (share <= 0) {
-    return [];
+  // Hip and sights blended by how far into them the weapon is, as the idle pair is.
+  const aim = reloading ? 0 : ease(weapon.ads);
+  const layers: PoseLayer[] = [];
+  for (const { kind, weight } of stances.shares) {
+    const chain = overlayStances(kind);
+    const hip = firstOf(roles, chain, reloading ? (c) => [c.reload] : (c) => [c.fire]);
+    const sights = aim > 0 ? firstOf(roles, chain, (c) => [c.fireAds, c.fire]) : null;
+    if (hip !== null) {
+      layers.push({ role: hip, weight: share * weight * (1 - aim), phase });
+    }
+    if (sights !== null) {
+      layers.push({ role: sights, weight: share * weight * aim, phase });
+    }
   }
-  if (weapon.state === "reloading" || weapon.state === "reloadStart" || weapon.state === "reloadEnd") {
-    return [{ role: "reload", weight: share, phase }];
+  return layers.filter((l) => l.weight > 0);
+}
+
+/**
+ * The stances whose overlays a stance may wear, its own first. A crouch with
+ * none wears the standing one, whose spine is as upright; a lying body wears
+ * only its own, because an upright spine laid on a flat pelvis is not a pose.
+ */
+function overlayStances(kind: StanceKind): readonly StanceRoles[] {
+  return kind === "crouch" ? [STANCE_ROLES.crouch, STANCE_ROLES.stand] : [STANCE_ROLES[kind]];
+}
+
+/** The first role the set has, trying each stance's candidates in order, or null. */
+function firstOf(roles: RoleSet, chain: readonly StanceRoles[], pick: (clips: StanceRoles) => readonly CharacterRole[]): CharacterRole | null {
+  for (const clips of chain) {
+    for (const role of pick(clips)) {
+      if (roles.has(role)) {
+        return role;
+      }
+    }
   }
-  if (weapon.state === "firing") {
-    // Hip and sights blended by how far into them the weapon is, for the same reason
-    // the idle pair is: `ads` is a real ramp and a threshold threw it away.
-    const aim = ease(weapon.ads);
-    const layers: PoseLayer[] = [
-      { role: "fire", weight: share * (1 - aim), phase },
-      { role: "fireAds", weight: share * aim, phase },
-    ];
-    return layers.filter((l) => l.weight > 0);
-  }
-  return [];
+  return null;
 }
 
 /**

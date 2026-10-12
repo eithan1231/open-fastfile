@@ -11,10 +11,19 @@ import { describe, expect, it } from "vitest";
 import { createMovement, LAND_WINDOW, RUN_SPEED, type MovementState } from "../src/sim/movement.js";
 import { IDLE_SPEED } from "../src/sim/gait.js";
 import { mantleDuration } from "../src/sim/moves/mantle.js";
-import { LAND_DIP, poseLayers, bodyYaw } from "../src/sim/pose.js";
-import { AIM_LIMIT } from "../src/sim/characterDef.js";
+import { LAND_DIP, poseLayers, bodyPitch, bodyYaw, type PoseLayers, type RoleSet } from "../src/sim/pose.js";
+import { AIM_LIMIT, CHARACTER_ROLES, type CharacterRole } from "../src/sim/characterDef.js";
+import { eyePathSeconds } from "../src/sim/stance.js";
 import type { WeaponData } from "../src/sim/weapon.js";
 import { restingKick, restingViewKick } from "../src/sim/recoil.js";
+
+/** A set with a clip for every role, and the sixteen a set held before it had a stance to pose. */
+const EVERY: RoleSet = new Set(CHARACTER_ROLES);
+const STANDING_ONLY: RoleSet = new Set(CHARACTER_ROLES.slice(0, CHARACTER_ROLES.indexOf("crouchIdle")));
+
+function pose(m: MovementState, w: WeaponData | null, roles: RoleSet = EVERY): PoseLayers {
+  return poseLayers(m, w, roles);
+}
 
 /** The `landing` that has share `t` of the landing's dip still to go: 1 the step it lands, 0 once the dip is over. */
 function dip(t: number): number {
@@ -81,9 +90,9 @@ function weapon(over: Partial<WeaponData> = {}): WeaponData {
 }
 
 /** Weights by role, so a test can name what it expects without indexing an array. */
-function legs(m: MovementState, w: WeaponData | null = weapon()): Record<string, number> {
+function legs(m: MovementState, w: WeaponData | null = weapon(), roles: RoleSet = EVERY): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const layer of poseLayers(m, w).legs) {
+  for (const layer of pose(m, w, roles).legs) {
     out[layer.role] = (out[layer.role] ?? 0) + layer.weight;
   }
   return out;
@@ -93,9 +102,9 @@ describe("poseLayers is a pure function of the state", () => {
   it("gives the same answer for the same state, however many times it is asked", () => {
     const m = movement({ velocity: { x: 1, y: 0, z: -3 }, stride: 0.42, gait: 0.6, airborne: 0.2 });
     const w = weapon({ state: "reloading", span: 2, timer: 0.5 });
-    const first = poseLayers(m, w);
+    const first = pose(m, w);
     for (let i = 0; i < 5; i++) {
-      expect(poseLayers(m, w)).toEqual(first);
+      expect(pose(m, w)).toEqual(first);
     }
   });
 
@@ -103,7 +112,7 @@ describe("poseLayers is a pure function of the state", () => {
     // The real claim: two ends holding equal states agree, having shared no history.
     const a = movement({ velocity: { x: 2, y: 0, z: -2 }, stride: 0.7, landing: dip(0.4), gait: 0.8 });
     const b = structuredClone(a) as MovementState;
-    expect(poseLayers(b, weapon())).toEqual(poseLayers(a, weapon()));
+    expect(pose(b, weapon())).toEqual(pose(a, weapon()));
   });
 
   it("does not depend on the order states are asked about", () => {
@@ -111,9 +120,9 @@ describe("poseLayers is a pure function of the state", () => {
     // must give the walk's pose both times — no blend left over from the sprint.
     const walk = running({ velocity: { x: 0, y: 0, z: -2 }, stride: 0.3 });
     const sprint = running({ stride: 0.3 });
-    const before = poseLayers(walk, weapon());
-    poseLayers(sprint, weapon({ state: "sprinting" }));
-    expect(poseLayers(walk, weapon())).toEqual(before);
+    const before = pose(walk, weapon());
+    pose(sprint, weapon({ state: "sprinting" }));
+    expect(pose(walk, weapon())).toEqual(before);
   });
 
   it("weights sum to one, so a body is never half-drawn", () => {
@@ -131,7 +140,7 @@ describe("poseLayers is a pure function of the state", () => {
       movement({ move: { kind: "mantle", target: { x: 0, y: 1, z: 0 }, left: 0.2, rise: 1, over: false } }),
     ];
     for (const m of cases) {
-      const total = poseLayers(m, weapon()).legs.reduce((sum, l) => sum + l.weight, 0);
+      const total = pose(m, weapon()).legs.reduce((sum, l) => sum + l.weight, 0);
       expect(total).toBeCloseTo(1, 6);
     }
   });
@@ -139,7 +148,7 @@ describe("poseLayers is a pure function of the state", () => {
   it("keeps every phase inside the clip", () => {
     for (const stride of [0, 0.5, 0.999]) {
       for (const m of [running({ stride }), movement({ move: { kind: "ladder", facing: 0 }, feet: { x: 0, y: 3.7, z: 0 } })]) {
-        for (const layer of poseLayers(m, weapon()).legs) {
+        for (const layer of pose(m, weapon()).legs) {
           expect(layer.phase).toBeGreaterThanOrEqual(0);
           expect(layer.phase).toBeLessThanOrEqual(1);
         }
@@ -173,9 +182,9 @@ describe("what a body is doing", () => {
     // They are 1.1 to 1.9 s long. Played at their own rates, a strafe's feet would
     // walk away from a run's over a few seconds of holding a diagonal.
     const speed = RUN_SPEED / Math.SQRT2;
-    const pose = poseLayers(running({ velocity: { x: speed, y: 0, z: -speed }, stride: 0.31 }), weapon());
-    expect(pose.legs).toHaveLength(2);
-    for (const layer of pose.legs) {
+    const diagonal = pose(running({ velocity: { x: speed, y: 0, z: -speed }, stride: 0.31 }), weapon());
+    expect(diagonal.legs).toHaveLength(2);
+    for (const layer of diagonal.legs) {
       expect(layer.phase).toBe(0.31);
     }
   });
@@ -185,19 +194,19 @@ describe("what a body is doing", () => {
     // climb takes — and a peer whose first snapshot lands mid-climb starts there.
     const rise = 1.2;
     const total = mantleDuration(rise);
-    const at = (left: number) => poseLayers(movement({ move: { kind: "mantle", target: { x: 0, y: 0, z: 0 }, left, rise, over: false } }), weapon()).legs[0]!;
+    const at = (left: number) => pose(movement({ move: { kind: "mantle", target: { x: 0, y: 0, z: 0 }, left, rise, over: false } }), weapon()).legs[0]!;
     expect(at(total).phase).toBeCloseTo(0, 6);
     expect(at(total / 2).phase).toBeCloseTo(0.5, 6);
     expect(at(0).phase).toBeCloseTo(1, 6);
     expect(at(total).role).toBe("mantle");
     // `over` picks the clip that carries the player across rather than up.
-    const over = poseLayers(movement({ move: { kind: "mantle", target: { x: 0, y: 0, z: 0 }, left: 0.1, rise, over: true } }), weapon()).legs[0]!;
+    const over = pose(movement({ move: { kind: "mantle", target: { x: 0, y: 0, z: 0 }, left: 0.1, rise, over: true } }), weapon()).legs[0]!;
     expect(over.role).toBe("mantleOver");
   });
 
   it("poses a ladder from the feet's height, so a still climber holds a pose", () => {
     const at = (y: number, vy: number) =>
-      poseLayers(movement({ move: { kind: "ladder", facing: 0 }, feet: { x: 0, y, z: 0 }, velocity: { x: 0, y: vy, z: 0 } }), weapon()).legs[0]!;
+      pose(movement({ move: { kind: "ladder", facing: 0 }, feet: { x: 0, y, z: 0 }, velocity: { x: 0, y: vy, z: 0 } }), weapon()).legs[0]!;
     expect(at(0, 1).role).toBe("climbUp");
     expect(at(0, -1).role).toBe("climbDown");
     // The same height twice is the same pose: nothing is integrating.
@@ -226,14 +235,14 @@ describe("what a body is doing", () => {
     expect(legs(movement({ grounded: false, airborne: 1, sinceJump: 0.05 }))).toEqual({ jump: 1 });
     // `sinceJump` stops counting at half a second, so a long fall holds the clip's
     // last frame — which is what a one-shot does anyway.
-    expect(poseLayers(movement({ grounded: false, airborne: 1, sinceJump: 0.5 }), weapon()).legs[0]!.phase).toBe(0.5);
+    expect(pose(movement({ grounded: false, airborne: 1, sinceJump: 0.5 }), weapon()).legs[0]!.phase).toBe(0.5);
   });
 });
 
 describe("the torso overlay", () => {
   /** The overlay's total weight, and which roles carry it. */
   function torso(w: WeaponData | null) {
-    const layers = poseLayers(movement(), w).torso;
+    const layers = pose(movement(), w).torso;
     const total = layers.reduce((sum, l) => sum + l.weight, 0);
     return { total, roles: layers.map((l) => l.role), layers };
   }
@@ -286,9 +295,9 @@ describe("where a body looks", () => {
   });
 
   it("turns the aim joint no further than a spine bends", () => {
-    expect(poseLayers(movement({ pitch: 0.3 }), weapon()).aim).toBeCloseTo(0.3, 6);
-    expect(poseLayers(movement({ pitch: 1.5 }), weapon()).aim).toBeCloseTo(AIM_LIMIT, 6);
-    expect(poseLayers(movement({ pitch: -1.5 }), weapon()).aim).toBeCloseTo(-AIM_LIMIT, 6);
+    expect(pose(movement({ pitch: 0.3 }), weapon()).aim).toBeCloseTo(0.3, 6);
+    expect(pose(movement({ pitch: 1.5 }), weapon()).aim).toBeCloseTo(AIM_LIMIT, 6);
+    expect(pose(movement({ pitch: -1.5 }), weapon()).aim).toBeCloseTo(-AIM_LIMIT, 6);
   });
 });
 
@@ -353,7 +362,7 @@ describe("a change of pose is blended, not switched", () => {
   });
 
   it("keeps the weights summing to one all the way through every blend", () => {
-    const total = (m: MovementState, w: WeaponData | null) => poseLayers(m, w).legs.reduce((sum, l) => sum + l.weight, 0);
+    const total = (m: MovementState, w: WeaponData | null) => pose(m, w).legs.reduce((sum, l) => sum + l.weight, 0);
     for (let i = 0; i <= 10; i++) {
       const t = i / 10;
       expect(total(movement({ velocity: RUN, gait: t }), weapon())).toBeCloseTo(1, 6);
@@ -400,7 +409,7 @@ describe("a change of pose is blended, not switched", () => {
     // tick while `gait` has GAIT_BLEND left, so `runBlend` has no direction to blend
     // and falls back to `idle` — the clip `standing` is already playing.
     const distinct = (m: MovementState, w: WeaponData | null) => {
-      const roles = poseLayers(m, w).legs.map((l) => l.role);
+      const roles = pose(m, w).legs.map((l) => l.role);
       expect(new Set(roles).size, `${roles.join(", ")}`).toBe(roles.length);
     };
     const STOPPED = { x: 0, y: 0, z: 0 };
@@ -426,11 +435,11 @@ describe("a change of pose is blended, not switched", () => {
       const weights = (t: number) => {
         const { m, w } = build(t);
         const out = new Map<string, number>();
-        const pose = poseLayers(m, w);
-        for (const l of pose.legs) {
+        const layers = pose(m, w);
+        for (const l of layers.legs) {
           out.set(`legs:${l.role}`, (out.get(`legs:${l.role}`) ?? 0) + l.weight);
         }
-        for (const l of pose.torso) {
+        for (const l of layers.torso) {
           out.set(`torso:${l.role}`, (out.get(`torso:${l.role}`) ?? 0) + l.weight);
         }
         return out;
@@ -473,5 +482,109 @@ describe("a change of pose is blended, not switched", () => {
       const yaw = t * Math.PI * 2;
       return { m: movement({ yaw, velocity: { x: -Math.sin(yaw) * RUN_SPEED, y: 0, z: -Math.cos(yaw) * RUN_SPEED }, gait: 1 }), w: weapon() };
     });
+    // Every way between two stances, at rest and on the move, with a clip of its own and without.
+    for (const path of ["standToCrouch", "crouchToStand", "crouchToProne", "proneToCrouch"] as const) {
+      const shift = (t: number) => ({ path, elapsed: t * eyePathSeconds(path) });
+      sweep(path, (t) => ({ m: movement({ eyeShift: shift(t) }), w: weapon() }));
+      sweep(`${path}, moving and firing`, (t) => ({
+        m: movement({ velocity: RUN, gait: 1, stride: 0.3, eyeShift: shift(t) }),
+        w: weapon({ state: "firing", span: 0.1, timer: 0.05, ads: 0.5 }),
+      }));
+    }
+  });
+});
+
+describe("a stance is posed from its own clips", () => {
+  const lying = { kind: "prone", heading: 0.4, torso: 0.2 } as const;
+  const crouched = { kind: "crouch" } as const;
+  const roles = (m: MovementState, w: WeaponData | null = weapon(), set: RoleSet = EVERY): string[] => pose(m, w, set).legs.map((l) => l.role);
+  const without = (...missing: CharacterRole[]): RoleSet => new Set(CHARACTER_ROLES.filter((r) => !missing.includes(r)));
+
+  it("rests in the stance's idle, and its aiming one by how far into the sights the weapon is", () => {
+    expect(legs(movement({ stance: crouched }))).toEqual({ crouchIdle: 1 });
+    expect(legs(movement({ stance: lying }))).toEqual({ proneIdle: 1 });
+    expect(legs(movement({ stance: crouched }), weapon({ ads: 1 }))).toEqual({ crouchIdleAds: 1 });
+    expect(legs(movement({ stance: lying }), weapon({ ads: 1 }))).toEqual({ proneIdleAds: 1 });
+  });
+
+  it("walks crouched and crawls by the direction of travel, on the stride clock", () => {
+    const forward = pose(movement({ stance: crouched, velocity: { x: 0, y: 0, z: -3 }, gait: 1, stride: 0.6 }), weapon());
+    expect(forward.legs).toEqual([{ role: "crouchForward", weight: 1, phase: 0.6 }]);
+    const left = pose(movement({ stance: lying, velocity: { x: -0.7, y: 0, z: 0 }, gait: 1, stride: 0.25 }), weapon());
+    expect(left.legs).toEqual([{ role: "proneLeft", weight: 1, phase: 0.25 }]);
+    // A crouch does not sprint, whatever the weapon is doing.
+    expect(roles(running({ stance: crouched }), weapon({ state: "sprinting" }))).toEqual(["crouchForward"]);
+  });
+
+  it("crossfades the two stances along the eye's path, under the path's own clip", () => {
+    const half = movement({ stance: crouched, eyeShift: { path: "standToCrouch", elapsed: eyePathSeconds("standToCrouch") / 2 } });
+    // Mid-way the clip has all of it; without one the two stances share it.
+    expect(legs(half)).toEqual({ standToCrouch: 1 });
+    expect(legs(half, weapon(), without("standToCrouch"))).toEqual({ idle: 0.5, crouchIdle: 0.5 });
+    const early = movement({ stance: crouched, eyeShift: { path: "standToCrouch", elapsed: eyePathSeconds("standToCrouch") / 16 } });
+    const shares = legs(early);
+    expect(shares.standToCrouch).toBeGreaterThan(0);
+    expect(shares.idle).toBeGreaterThan(shares.crouchIdle!);
+    expect(pose(half, weapon()).legs[0]!.phase).toBeCloseTo(0.5, 6);
+  });
+
+  it("names only roles the set has, so nothing is made up out of the bind pose", () => {
+    const states = [
+      movement({ stance: crouched }),
+      movement({ stance: lying, velocity: { x: 0.5, y: 0, z: 0.5 }, gait: 0.7, stride: 0.2 }),
+      movement({ stance: lying, eyeShift: { path: "crouchToProne", elapsed: 0.15 } }),
+      movement({ stance: crouched, airborne: 0.6, eyeShift: { path: "proneToCrouch", elapsed: 0.3 } }),
+    ];
+    const firing = weapon({ state: "firing", span: 0.1, timer: 0.05, ads: 0.4 });
+    const sets = [
+      EVERY,
+      STANDING_ONLY,
+      without("proneIdleAds", "proneFireAds", "standToCrouch", "crouchToStand"),
+      without("proneIdle"),
+      without("crouchLeft", "idleAds"),
+    ];
+    for (const set of sets) {
+      for (const m of states) {
+        for (const w of [weapon({ ads: 0.5 }), firing, weapon({ state: "reloading", span: 2, timer: 1 })]) {
+          const layers = pose(m, w, set);
+          for (const layer of [...layers.legs, ...layers.torso]) {
+            expect(set.has(layer.role), `${layer.role} is not in the set`).toBe(true);
+          }
+          expect(layers.legs.reduce((sum, l) => sum + l.weight, 0)).toBeCloseTo(1, 9);
+        }
+      }
+    }
+  });
+
+  it("stands a set that has no stance clips, exactly as it stood before it had a stance", () => {
+    const m = movement({ velocity: { x: 1, y: 0, z: -2 }, gait: 0.8, stride: 0.4 });
+    const firing = weapon({ state: "firing", span: 0.1, timer: 0.05, ads: 0.4 });
+    const standing = pose(m, firing, STANDING_ONLY);
+    for (const stance of [crouched, lying]) {
+      const low = pose({ ...m, stance }, firing, STANDING_ONLY);
+      expect(low.legs).toEqual(standing.legs);
+      expect(low.torso).toEqual(standing.torso);
+    }
+  });
+
+  it("falls back from an aiming clip to its hip one, and from a crouched overlay to the standing one", () => {
+    const aimed = weapon({ state: "firing", span: 0.1, timer: 0.05, ads: 1 });
+    const torso = (m: MovementState, set: RoleSet): string[] => pose(m, aimed, set).torso.map((l) => l.role);
+    expect(torso(movement({ stance: lying }), EVERY)).toEqual(["proneFireAds"]);
+    expect(torso(movement({ stance: lying }), without("proneFireAds"))).toEqual(["proneFire"]);
+    expect(torso(movement({ stance: crouched }), without("crouchFireAds", "crouchFire"))).toEqual(["fireAds"]);
+    // A lying body wears no other stance's overlay.
+    expect(torso(movement({ stance: lying }), without("proneFireAds", "proneFire"))).toEqual([]);
+    expect(legs(movement({ stance: lying }), weapon({ ads: 1 }), without("proneIdleAds"))).toEqual({ proneIdle: 1 });
+  });
+
+  it("lies along the body's heading and tips with its torso, and aims from there", () => {
+    const m = movement({ stance: lying, yaw: 1.1, pitch: 0.5 });
+    expect(bodyYaw(m)).toBe(0.4);
+    expect(bodyPitch(m)).toBe(0.2);
+    expect(pose(m, weapon()).aim).toBeCloseTo(0.3, 9);
+    // The tip is taken up as the body goes down, and a standing body has none.
+    expect(bodyPitch({ ...m, eyeShift: { path: "crouchToProne", elapsed: 0 } })).toBe(0);
+    expect(bodyPitch(movement({ pitch: 0.5 }))).toBe(0);
   });
 });

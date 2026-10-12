@@ -2027,12 +2027,14 @@ model:
   The `ladder_climb*` clips (on, off, up, down) are in `common.ff`, not
   `common_mp`, and are not exported.
 
-**The clip file.** The clips are written once into
-`assets/characters/animations.glb`, a skeleton with no meshes — the union of
-every exported body's joints — carrying the role table in its scene extras.
-A glTF animation binds by node name, so one file plays on any body whose joints
-have those names, which is what keeps the whole set at ~800 KB instead of a copy
-per character. A rig drops the tracks its own skeleton has no joint for
+**The clip file.** The clips are written once a game into
+`catalog/animations/<game>/<animType>/animations.glb`, a skeleton with no meshes
+— the union of the joints of every body the catalogue holds for the game —
+carrying the role table in its scene extras
+([pipeline.md](pipeline.md#the-player-clip-set), which has the crouched and
+prone clips' names too). A glTF animation binds by node name, so one file plays
+on any body whose joints have those names, which is what keeps the whole set at
+2 to 4 MB instead of a copy per character. A rig drops the tracks its own skeleton has no joint for
 (a body with no coat has no coat bones) rather than letting three warn per track.
 
 **Materials** are the same lit `mc_l_sm_*` as everything else, colour only, at

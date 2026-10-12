@@ -10,6 +10,8 @@
 // two ends deciding that separately is a hit box in a different place from the
 // body on screen.
 
+import type { StanceKind } from "./movementState.js";
+
 /**
  * Bumped whenever the `characters` extras change shape; scripts/cod/characters.py
  * writes it.
@@ -40,6 +42,29 @@ export const CHARACTER_ROLES = [
   "mantleOver",
   "climbUp",
   "climbDown",
+  "crouchIdle",
+  "crouchIdleAds",
+  "crouchForward",
+  "crouchBack",
+  "crouchLeft",
+  "crouchRight",
+  "proneIdle",
+  "proneIdleAds",
+  "proneForward",
+  "proneBack",
+  "proneLeft",
+  "proneRight",
+  // The four ways between stances, named as the eye's own paths are (`EYE_PATHS`).
+  "standToCrouch",
+  "crouchToStand",
+  "crouchToProne",
+  "proneToCrouch",
+  "crouchFire",
+  "crouchFireAds",
+  "crouchReload",
+  "proneFire",
+  "proneFireAds",
+  "proneReload",
 ] as const;
 
 export type CharacterRole = (typeof CHARACTER_ROLES)[number];
@@ -66,25 +91,101 @@ export const LEG_ROLES: readonly CharacterRole[] = [
   "mantleOver",
   "climbUp",
   "climbDown",
+  "crouchIdle",
+  "crouchIdleAds",
+  "crouchForward",
+  "crouchBack",
+  "crouchLeft",
+  "crouchRight",
+  "proneIdle",
+  "proneIdleAds",
+  "proneForward",
+  "proneBack",
+  "proneLeft",
+  "proneRight",
+  "standToCrouch",
+  "crouchToStand",
+  "crouchToProne",
+  "proneToCrouch",
 ];
 
 /** The roles that play once and hold their last frame rather than looping. */
-export const ONCE_ROLES: readonly CharacterRole[] = ["reload", "jump", "land", "mantle", "mantleOver"];
+export const ONCE_ROLES: readonly CharacterRole[] = [
+  "reload",
+  "jump",
+  "land",
+  "mantle",
+  "mantleOver",
+  "standToCrouch",
+  "crouchToStand",
+  "crouchToProne",
+  "proneToCrouch",
+  "crouchReload",
+  "proneReload",
+];
+
+/** A moving clip and where it points in the player's own frame: `(right, forward)`, both in [-1, 1]. */
+export type DirectionClip = readonly [CharacterRole, number, number];
 
 /**
- * The four run clips and where each points in the player's own frame:
- * `(right, forward)`, both in [-1, 1].
+ * The clips one stance is posed from: at rest, moving four ways, and the overlay
+ * on the arms and chest.
  *
- * Here rather than in the animator because the *blend* is part of deciding the
+ * Here rather than in the presenter because the *blend* is part of deciding the
  * pose, not part of drawing it: which clips carry weight, and how much, has to be
  * the same answer on both ends.
  */
-export const RUN_DIRECTIONS: readonly (readonly [CharacterRole, number, number])[] = [
-  ["runForward", 0, 1],
-  ["runBack", 0, -1],
-  ["runRight", 1, 0],
-  ["runLeft", -1, 0],
-];
+export interface StanceRoles {
+  idle: CharacterRole;
+  idleAds: CharacterRole;
+  /** Forward first: the one a missing direction falls back to. */
+  directions: readonly DirectionClip[];
+  fire: CharacterRole;
+  fireAds: CharacterRole;
+  reload: CharacterRole;
+}
+
+export const STANCE_ROLES: Record<StanceKind, StanceRoles> = {
+  stand: {
+    idle: "idle",
+    idleAds: "idleAds",
+    directions: [
+      ["runForward", 0, 1],
+      ["runBack", 0, -1],
+      ["runRight", 1, 0],
+      ["runLeft", -1, 0],
+    ],
+    fire: "fire",
+    fireAds: "fireAds",
+    reload: "reload",
+  },
+  crouch: {
+    idle: "crouchIdle",
+    idleAds: "crouchIdleAds",
+    directions: [
+      ["crouchForward", 0, 1],
+      ["crouchBack", 0, -1],
+      ["crouchRight", 1, 0],
+      ["crouchLeft", -1, 0],
+    ],
+    fire: "crouchFire",
+    fireAds: "crouchFireAds",
+    reload: "crouchReload",
+  },
+  prone: {
+    idle: "proneIdle",
+    idleAds: "proneIdleAds",
+    directions: [
+      ["proneForward", 0, 1],
+      ["proneBack", 0, -1],
+      ["proneRight", 1, 0],
+      ["proneLeft", -1, 0],
+    ],
+    fire: "proneFire",
+    fireAds: "proneFireAds",
+    reload: "proneReload",
+  },
+};
 
 /**
  * The roles a clip set names, which of them pose the whole body, and which play
