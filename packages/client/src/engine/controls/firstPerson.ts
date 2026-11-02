@@ -81,6 +81,9 @@ const SMOOTH_TAU = 0.1;
 /** Below this a "correction" is f32 rounding on the wire, not a disagreement. Metres. */
 const SMOOTH_FLOOR = 0.001;
 
+/** Seconds the crouch key is held before it asks for prone. Counted in ticks, so a frame rate decides nothing. */
+const PRONE_HOLD = 0.25;
+
 export class FirstPersonControls {
   readonly player: Player;
   /** Radians the view turned this frame, yaw left and pitch up positive: the weapon's sway follows it. */
@@ -130,6 +133,14 @@ export class FirstPersonControls {
    * has just refused.
    */
   private stance: StanceKind = "stand";
+  /**
+   * Ticks the crouch key has been down since a press that may yet ask for
+   * prone, or null: no such press, or it has been answered. `stance` is the
+   * rule; this is only its clock.
+   */
+  private crouchHold: number | null = null;
+  /** That press found the player crouched: let go short of the hold, it stands them up. */
+  private crouchStands = false;
   private accumulator = 0;
   private tickDt = 1 / TICK_RATE;
   /** The feet and the eye's height before the most recent tick, and how far through to the next one we are drawing. */
@@ -240,6 +251,7 @@ export class FirstPersonControls {
     this.pressed.clear();
     this.input.takeLook();
     this.stance = this.player.movement.stance.kind;
+    this.crouchHold = null;
     this.holdFeet();
     this.holdKick();
   }
@@ -279,6 +291,7 @@ export class FirstPersonControls {
     // Nobody stays down across a death: the next life starts on its feet.
     if (state.dead) {
       this.stance = "stand";
+      this.crouchHold = null;
     }
 
     const { feet } = this.player.movement;
@@ -380,18 +393,7 @@ export class FirstPersonControls {
 
   /** One fixed step: build the command, round it to what the wire would carry, step, hand it on. */
   private tick(): void {
-    // The stance keys toggle: the key for the stance asked for stands up. So
-    // does a press of run, before them: a sprint is not run while a stance is
-    // asked for, so the later key of the two is the one that wins.
-    if (this.pressed.has("run")) {
-      this.stance = "stand";
-    }
-    if (this.pressed.has("crouch")) {
-      this.stance = this.stance === "crouch" ? "stand" : "crouch";
-    }
-    if (this.pressed.has("prone")) {
-      this.stance = this.stance === "prone" ? "stand" : "prone";
-    }
+    this.readStance();
     const input = this.readInput();
 
     // The symmetry rule (@3d/shared/net/packet.ts): quantized fields are lossy,
@@ -406,7 +408,12 @@ export class FirstPersonControls {
 
     this.player.step(rounded, dt);
     // A jump or a sprint stood them up, or there was no room for what was asked.
-    this.stance = this.player.forcedStance ?? this.stance;
+    // Either way the step has answered the key: a hold on top of it asks nothing more.
+    const forced = this.player.forcedStance;
+    if (forced !== null) {
+      this.stance = forced;
+      this.crouchHold = null;
+    }
 
     this.pending.yaw = this.pending.pitch = 0;
     this.pressed.clear();
@@ -432,6 +439,47 @@ export class FirstPersonControls {
 
   private viewPitch(): number {
     return this.player.viewPitch(this.player.movement.pitch - this.pending.pitch);
+  }
+
+  /**
+   * This tick's stance keys into `stance`. The prone key toggles prone. The
+   * crouch key is both: tapped it toggles a crouch, held for PRONE_HOLD it
+   * lies down — standing, it crouches on the press and goes on down; crouched,
+   * it waits for the key to come up to stand, so a hold never stands first.
+   * A press of run stands up, before either: a sprint is not run while a
+   * stance is asked for, so the later key of the two wins.
+   */
+  private readStance(): void {
+    if (!this.enabled) {
+      this.crouchHold = null;
+      return;
+    }
+    if (this.pressed.has("run")) {
+      this.stance = "stand";
+      this.crouchHold = null;
+    }
+    if (this.pressed.has("crouch")) {
+      // From prone the key gets up to a crouch, and no further down again.
+      this.crouchHold = this.stance === "prone" ? null : 0;
+      this.crouchStands = this.stance === "crouch";
+      this.stance = "crouch";
+    } else if (this.crouchHold !== null) {
+      this.crouchHold++;
+    }
+    if (this.crouchHold !== null) {
+      if (!this.input.isHeld("crouch")) {
+        // Let go short of the hold: a tap, and the stand a crouched player's press was waiting to ask for.
+        this.stance = this.crouchStands ? "stand" : this.stance;
+        this.crouchHold = null;
+      } else if (this.crouchHold >= Math.round(PRONE_HOLD / this.tickDt)) {
+        this.stance = "prone";
+        this.crouchHold = null;
+      }
+    }
+    if (this.pressed.has("prone")) {
+      this.stance = this.stance === "prone" ? "stand" : "prone";
+      this.crouchHold = null;
+    }
   }
 
   /** This tick's keys and mouse as a PlayerInput; nothing held while the pointer is free, and the stance as it was left. */

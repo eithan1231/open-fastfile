@@ -78,6 +78,7 @@ export class CharacterPoser {
   private readonly turn = new THREE.Quaternion();
   private readonly parent = new THREE.Quaternion();
   private readonly offset = new THREE.Quaternion();
+  private readonly round = new THREE.Quaternion();
 
   constructor(private readonly rig: CharacterRig) {
     this.mixer = new THREE.AnimationMixer(rig.root);
@@ -133,7 +134,7 @@ export class CharacterPoser {
     if (this.rig.aim) {
       this.aimBase.copy(this.rig.aim.quaternion);
     }
-    this.aim(pose.yaw, pose.aim);
+    this.aim(pose.yaw, pose.aim, pose.twist);
   }
 
   /** Give each layer the weight and phase the pose asks for, and zero to the rest. */
@@ -186,16 +187,21 @@ export class CharacterPoser {
    * the mixer, which has just written that joint's clip pose, and applied in the
    * joint's parent space: the rig's own axes are the game's, not the engine's, so
    * the turn is built about the player's world right axis and carried into the
-   * joint by its parent's inverse.
+   * joint by its parent's inverse. `twist` turns the chest round to the view
+   * first, so the pitch is about the view's right axis and not the legs'.
    */
-  private aim(yaw: number, pitch: number): void {
+  private aim(yaw: number, pitch: number, twist: number): void {
     const joint = this.rig.aim;
     if (!joint?.parent) {
       return;
     }
     joint.parent.getWorldQuaternion(this.parent);
-    this.axis.set(Math.cos(yaw), 0, -Math.sin(yaw)); // right, for a body facing -Z at yaw 0
+    const view = yaw + twist;
+    this.axis.set(Math.cos(view), 0, -Math.sin(view)); // right, for a body facing -Z at yaw 0
     this.turn.setFromAxisAngle(this.axis, Math.max(-AIM_LIMIT, Math.min(AIM_LIMIT, pitch)));
+    if (twist !== 0) {
+      this.turn.multiply(this.round.setFromAxisAngle(UP, twist));
+    }
     // q_local' = P⁻¹ · R · P · q_local, which turns the joint by R in world space.
     this.offset.copy(this.parent).invert().multiply(this.turn).multiply(this.parent);
     joint.quaternion.premultiply(this.offset);

@@ -77,6 +77,12 @@ export interface PoseLayers {
   pitch: number;
   /** How far the aim joint turns, radians, already clamped to what a spine can do. Measured from `pitch`. */
   aim: number;
+  /**
+   * How far the aim joint turns the chest round from `yaw` to the view, radians.
+   * A lying body's legs keep their heading and catch the view up slowly; the
+   * chest and the gun are on the view at once. Nothing for a body that faces it.
+   */
+  twist: number;
 }
 
 /**
@@ -142,12 +148,16 @@ export function bodyPitch(state: Pick<MovementState, "stance" | "eyeShift">): nu
 export function poseLayers(movement: MovementState, weapon: WeaponData | null, roles: RoleSet): PoseLayers {
   const stances = stanceShares(movement, roles);
   const pitch = bodyPitch(movement);
+  const yaw = bodyYaw(movement);
+  // The view capped a lying player's yaw to within reach of the heading (sim/view.ts).
+  const off = movement.stance.kind === "prone" ? movement.yaw - yaw : 0;
   return {
     legs: fold(legLayers(movement, weapon, stances, roles)),
     torso: fold(torsoLayers(weapon, stances, roles)),
-    yaw: bodyYaw(movement),
+    yaw,
     pitch,
     aim: Math.max(-AIM_LIMIT, Math.min(AIM_LIMIT, movement.pitch - pitch)),
+    twist: Math.atan2(Math.sin(off), Math.cos(off)),
   };
 }
 

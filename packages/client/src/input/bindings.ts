@@ -56,8 +56,9 @@ export const DEFAULT_BINDINGS: Bindings = {
   right: { keys: ["KeyD", "ArrowRight"], scope: "walk", label: "Move right" },
   run: { keys: ["ShiftLeft", "ShiftRight"], scope: "walk", label: "Run" },
   jump: { keys: ["Space"], scope: "walk", label: "Jump" },
-  // Toggles: a press of the key for the stance you are in stands you up.
-  crouch: { keys: ["KeyC"], scope: "walk", label: "Crouch" },
+  // Toggles: a press of the key for the stance you are in stands you up. Holding
+  // the crouch key lies down (engine/controls/firstPerson.ts).
+  crouch: { keys: ["KeyC"], scope: "walk", label: "Crouch · hold: prone" },
   prone: { keys: ["ControlLeft"], scope: "walk", label: "Go prone" },
   fire: { keys: ["Mouse0"], scope: "walk", label: "Fire" },
   ads: { keys: ["Mouse2"], scope: "walk", label: "Aim down sights" },

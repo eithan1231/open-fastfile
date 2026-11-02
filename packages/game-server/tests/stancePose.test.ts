@@ -100,7 +100,8 @@ describe("a stance, posed from each game's own clips", () => {
     // Yaw 0 faces -Z, so a body heading `HEADING` has its feet along (sin, cos).
     const back = new THREE.Vector3(Math.sin(HEADING), 0, Math.cos(HEADING));
     for (const body of everyBody(real)) {
-      const movement = lying();
+      // Looking along the body: a view off it turns the chest (the next test).
+      const movement = { ...lying(), yaw: HEADING };
       poseBody(body, movement, null);
       const name = `${body.game}/${body.id}`;
       expect(finite(body), `${name} has a bone at no finite place`).toBe(true);
@@ -122,6 +123,35 @@ describe("a stance, posed from each game's own clips", () => {
       // The gun points the way the body lies: the firing hand is ahead of the hips.
       const reach = bone(body, "j_wrist_ri").sub(bone(body, "pelvis")).dot(back);
       expect(reach, `${name}'s gun hand is ${(-reach).toFixed(2)} m ahead of its hips`).toBeLessThan(-0.4);
+    }
+  }, 300_000);
+
+  it("turns a lying body's chest and gun to the view at once, and leaves the legs on their heading", async () => {
+    const real = await (loaded ??= catalogueBodies());
+    if (!real) {
+      return;
+    }
+    /** The yaw the gun hand is at from the hips: yaw 0 faces -Z, and yaw grows towards -X. */
+    const reachYaw = (body: LoadedBody): number => {
+      const reach = bone(body, "j_wrist_ri").sub(bone(body, "pelvis"));
+      return Math.atan2(-reach.x, -reach.z);
+    };
+    const back = new THREE.Vector3(Math.sin(HEADING), 0, Math.cos(HEADING));
+    for (const body of everyBody(real)) {
+      const name = `${body.game}/${body.id}`;
+      poseBody(body, { ...lying(), yaw: HEADING }, null);
+      const along = reachYaw(body);
+      for (const off of [-1.2, 1.2]) {
+        const movement = { ...lying(), yaw: HEADING + off };
+        poseBody(body, movement, null);
+        const turned = Math.atan2(Math.sin(reachYaw(body) - along), Math.cos(reachYaw(body) - along));
+        expect(turned, `${name}'s gun turned ${turned.toFixed(2)} for a view ${off} off its heading`).toBeGreaterThan(off - 0.25);
+        expect(turned, `${name}'s gun turned ${turned.toFixed(2)} for a view ${off} off its heading`).toBeLessThan(off + 0.25);
+        for (const ankle of ["j_ankle_le", "j_ankle_ri"]) {
+          const from = bone(body, ankle).sub(new THREE.Vector3(movement.feet.x, movement.feet.y, movement.feet.z));
+          expect(from.dot(back), `${name}'s ${ankle} left its heading`).toBeGreaterThan(0.9);
+        }
+      }
     }
   }, 300_000);
 

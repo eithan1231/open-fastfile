@@ -257,6 +257,77 @@ describe("the stance keys", () => {
     expect(stances(ticks, 8)).toEqual(["prone", "prone", "prone"]);
   });
 
+  describe("the crouch key held", () => {
+    const HOLD_TICKS = 15; // a quarter of a second, at 60 Hz
+    /** A tick a frame: one frame catches up only so many, and a hold is longer than that. */
+    const frames = (controls: { update(dt: number): void }, count: number): void => {
+      for (let i = 0; i < count; i++) {
+        controls.update(TICK_DT);
+      }
+    };
+
+    it("lies down from standing by way of a crouch, and never asks to stand", () => {
+      const { devices, controls, ticks } = setup();
+      devices.press("crouch");
+      devices.hold("crouch");
+      frames(controls, HOLD_TICKS + 3);
+      const asked = stances(ticks, 0);
+      expect(new Set(asked.slice(0, HOLD_TICKS))).toEqual(new Set(["crouch"]));
+      expect(asked.at(-1)).toBe("prone");
+      expect(asked).not.toContain("stand");
+      // Let go, it stays down.
+      devices.release("crouch");
+      controls.update(TICK_DT * 2);
+      expect(stances(ticks, 0).at(-1)).toBe("prone");
+    });
+
+    it("lies down from a crouch too, where a tap would have stood", () => {
+      const { devices, controls, ticks } = setup();
+      devices.press("crouch");
+      controls.update(TICK_DT);
+      const from = ticks.length;
+      devices.press("crouch");
+      devices.hold("crouch");
+      frames(controls, HOLD_TICKS + 3);
+      const asked = stances(ticks, from);
+      expect(asked).not.toContain("stand");
+      expect(asked.at(-1)).toBe("prone");
+    });
+
+    it("stands a crouched player only when a tap comes up", () => {
+      const { devices, controls, ticks } = setup();
+      devices.press("crouch");
+      controls.update(TICK_DT);
+      devices.press("crouch");
+      devices.hold("crouch");
+      controls.update(TICK_DT * 3);
+      expect(ticks.at(-1)!.crouch).toBe(true);
+      devices.release("crouch");
+      controls.update(TICK_DT);
+      expect(stances(ticks, 0).at(-1)).toBe("stand");
+    });
+
+    it("gets up to a crouch from prone, and does not lie back down", () => {
+      const { devices, controls, ticks } = setup();
+      devices.press("prone");
+      controls.update(TICK_DT);
+      devices.press("crouch");
+      devices.hold("crouch");
+      frames(controls, HOLD_TICKS + 3);
+      expect(stances(ticks, 0).at(-1)).toBe("crouch");
+    });
+
+    it("is dropped by a press of run, which stands", () => {
+      const { devices, controls, ticks } = setup();
+      devices.press("crouch");
+      devices.hold("crouch");
+      controls.update(TICK_DT * 3);
+      devices.press("run");
+      frames(controls, HOLD_TICKS + 3);
+      expect(stances(ticks, 0).at(-1)).toBe("stand");
+    });
+  });
+
   it("stands for a press of run, and goes down again for a stance key pressed after it", () => {
     const { devices, controls, ticks } = setup();
     devices.press("crouch");

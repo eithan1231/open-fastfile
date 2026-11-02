@@ -588,6 +588,9 @@ describe("a stance is posed from its own clips", () => {
     expect(bodyYaw(m)).toBe(0.4);
     expect(bodyPitch(m)).toBe(0.2);
     expect(pose(m, weapon()).aim).toBeCloseTo(0.3, 9);
+    // The chest is turned the rest of the way to the view; a body that faces it is not turned.
+    expect(pose(m, weapon()).twist).toBeCloseTo(0.7, 9);
+    expect(pose(movement({ yaw: 1.1 }), weapon()).twist).toBe(0);
     // The tip is taken up as the body goes down, and a standing body has none.
     expect(bodyPitch({ ...m, eyeShift: { path: "crouchToProne", elapsed: 0 } })).toBe(0);
     expect(bodyPitch(movement({ pitch: 0.5 }))).toBe(0);

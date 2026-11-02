@@ -570,9 +570,11 @@ than swinging past it and back.
 moves. A standing player's state costs three bits for all of it. An input carries
 `crouch` and `prone` as two bits.
 
-The keys toggle (`engine/controls/firstPerson.ts`): `C` crouches, left `Ctrl`
-goes prone, and the key of the stance already asked for stands. The toggle is a
-latch on the client, sent as levels, and it **follows the simulation**: after
+The keys toggle (`engine/controls/firstPerson.ts`): left `Ctrl` toggles prone,
+and `C` is both of the others. Tapped it toggles a crouch; held for a quarter of
+a second it lies down, from standing by way of a crouch and never by way of
+standing, which is why a tap that stands a crouched player waits for the key to
+come up. From prone it gets up to a crouch. The toggle is a latch on the client, sent as levels, and it **follows the simulation**: after
 each of its own ticks it takes `Player.forcedStance`, so a jump that stood the
 player up, or a refusal for want of room, leaves the next press meaning what it
 says. A press of run stands the latch up too, which is what lets a sprint start
@@ -621,7 +623,9 @@ out of the bind pose.
 a client draws a peer with and a server places the body it traces a shot at
 with. A lying body faces `stance.heading`, not the view, and is tipped about its
 own right axis by `stance.torso`, taken up across `crouchToProne`; the aim joint
-turns by the pitch left over.
+turns by the pitch left over. **It also turns the chest round to the view**
+(`PoseLayers.twist`): the heading only follows the view slowly, so the legs lie
+where they were while the chest and the gun are on the view at once.
 
 **The stride clock runs at the stance's own pace** (`advanceStride`,
 `sim/gait.ts`): one loop takes 1.8 s at a run, 2.2 s at a crouched walk and 3.9 s
